@@ -22,6 +22,7 @@ import {
   type PingBasicInfo,
 } from "@/types/komari";
 import { fetchWithTimeout } from "@/utils/abort";
+import { getPingHistoryPointLimit } from "@/utils/pingHistoryResolution";
 
 const ApiEnvelope = <T extends z.ZodTypeAny>(inner: T) =>
   z.object({
@@ -534,12 +535,12 @@ export async function getPingRecords(
     return await getOfficialComparisonPingRecords({
       uuids: [uuid],
       hours,
-      maxPoints: getRecordsMaxCount(hours, PING_RECORDS_PER_HOUR),
+      maxPoints: getPingHistoryPointLimit(hours),
     });
   }
   if (!backend) return await getLegacyPingRecords(uuid, hours);
   try {
-    const maxCount = getRecordsMaxCount(hours, PING_RECORDS_PER_HOUR);
+    const maxCount = getPingHistoryPointLimit(hours);
     const payload = await rpcCall(
       "common:getRecords",
       {

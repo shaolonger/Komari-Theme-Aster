@@ -22,6 +22,7 @@ import {
   smoothByCount,
 } from "./chartData";
 import { latencyHeatColor, lossHeatColor } from "@/utils/metricTone";
+import { getPingHistoryPointLimit } from "@/utils/pingHistoryResolution";
 import { getPingRecordSampleCounts, isValidPingLatency } from "@/utils/pingSamples";
 import { formatLatency, formatMetricNumber, formatPacketLoss } from "@/utils/format";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -45,10 +46,6 @@ function weightedPercentileFromSorted(
   }
   return sorted[sorted.length - 1]?.value ?? null;
 }
-
-// 渲染前先按时间分桶降采样到这么多点，避免 uPlot 自身抽稀尖刺。后续平滑窗口会按
-// 实际桶间隔折算为有限时间，而非固定点数，确保长周期仍能呈现真实波动。
-const MAX_RENDER_POINTS = 160;
 
 export function PingChart({
   uuid,
@@ -178,7 +175,7 @@ export function PingChart({
       chartPoints.map((point) => point[taskKey]),
     );
 
-    const reduced = downsamplePingAligned(times, perTask, MAX_RENDER_POINTS);
+    const reduced = downsamplePingAligned(times, perTask, getPingHistoryPointLimit(hours));
     // 平滑只覆盖有限真实时间；7 天和 1 月降采样后的单点已代表数小时，不应再跨桶平均。
     const smoothed = smoothByCount(
       reduced.perTask,
@@ -186,7 +183,7 @@ export function PingChart({
     );
 
     return [reduced.times, ...smoothed] as uPlot.AlignedData;
-  }, [cutPeak, data, taskKeySet, taskKeys, tasks]);
+  }, [cutPeak, data, hours, taskKeySet, taskKeys, tasks]);
 
   useEffect(() => {
     if (chart) chartRef.current = chart;

@@ -204,7 +204,11 @@ function officialPingMetricSeries(params, fixture) {
   const end = new Date(toIsoOrNow(params?.end)).getTime();
   const start = new Date(toIsoOrNow(params?.start)).getTime();
   const windowStart = Number.isFinite(start) && start < end ? start : end - 3_600_000;
-  const pointCount = Math.max(1, Math.min(24, Number(params?.max_points) || 24));
+  const requestedPointCount = Math.max(1, Number(params?.max_points) || 24);
+  // The interactive Ping regression run must exercise the long-history parser
+  // and uPlot path with the same density requested in production. Scale tests
+  // keep their compact response so the gate remains focused on node volume.
+  const pointCount = Math.min(fixture.ui ? 4_320 : 24, requestedPointCount);
   const series = [];
 
   for (const metricKey of metricKeys) {
@@ -805,6 +809,14 @@ try {
       writeFileSync(`${process.env.BROWSER_GATE_SCREENSHOT}.ping.png`, Buffer.from(screenshot.data, "base64"));
     }
   }
+  failGate(
+    rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Number(params.max_points) === 2_016),
+    "7-day Ping range did not request five-minute history resolution",
+  );
+  failGate(
+    rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Number(params.max_points) === 4_320),
+    "monthly Ping range did not request ten-minute history resolution",
+  );
   await waitUntil(cdp, `document.querySelectorAll('input[type="datetime-local"]').length === 2`, 2_000);
   await cdp.value(`(() => {
     const inputs = document.querySelectorAll('input[type="datetime-local"]');
