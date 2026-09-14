@@ -96,22 +96,21 @@ function CompactGauge({
   );
 }
 
-function CompactTrafficSparklines({
-  up,
-  down,
-  upColor,
-  downColor,
+function CompactTrafficLane({
+  direction,
+  rate,
+  samples,
 }: {
-  up: TrafficTrendSample[];
-  down: TrafficTrendSample[];
-  upColor: string;
-  downColor: string;
+  direction: "up" | "down";
+  rate: ByteRateDisplay;
+  samples: TrafficTrendSample[];
 }) {
+  const color = speedRateColor(rate.unit);
   return (
-    <span className="compact-node-traffic-sparklines" title="最近 18 次实时采样的流量趋势" aria-hidden>
-      <TrafficSparkline samples={up} color={upColor} height={10} className="compact-node-traffic-sparkline" />
-      <TrafficSparkline samples={down} color={downColor} height={10} className="compact-node-traffic-sparkline" />
-    </span>
+    <div className="compact-node-traffic-lane" title={`最近 18 次实时采样的${direction === "up" ? "上行" : "下行"}趋势`}>
+      <CompactRate direction={direction} rate={rate} />
+      <TrafficSparkline samples={samples} color={color} height={10} className="compact-node-traffic-sparkline" />
+    </div>
   );
 }
 
@@ -289,16 +288,10 @@ function CompactLiveTraffic({
 
   return (
     <div className="compact-node-live-traffic" title={`流量 · ${traffic.typeLabel} · ${traffic.detail}${totalTitle}`}>
-      <div className="compact-node-rate-stack">
-        <CompactRate direction="up" rate={upRate} />
-        <CompactRate direction="down" rate={downRate} />
+      <div className="compact-node-traffic-lanes">
+        <CompactTrafficLane direction="up" rate={upRate} samples={trafficTrend.up} />
+        <CompactTrafficLane direction="down" rate={downRate} samples={trafficTrend.down} />
       </div>
-      <CompactTrafficSparklines
-        up={trafficTrend.up}
-        down={trafficTrend.down}
-        upColor={speedRateColor(upRate.unit)}
-        downColor={speedRateColor(downRate.unit)}
-      />
       <div className="compact-node-quota-pill" style={style}>
         <span className="compact-node-quota-fill" aria-hidden />
         <span className="compact-node-quota-content">
