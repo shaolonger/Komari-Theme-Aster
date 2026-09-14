@@ -327,7 +327,7 @@
 .compact-node-traffic-lane {
   display: grid;
   min-width: 0;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: 58px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
 }
@@ -335,6 +335,8 @@
 .compact-node-rate {
   display: inline-flex;
   min-width: 0;
+  width: 58px;
+  overflow: hidden;
   align-items: baseline;
   gap: 2px;
   font-size: 9px;
