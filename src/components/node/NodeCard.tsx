@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Cpu,
@@ -30,8 +30,8 @@ import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { MetricBar } from "./MetricBar";
 import { PingSourceMatrix } from "./PingSourceMatrix";
-import { CanvasStrip, mixSrgbTowardWhite, safeCanvasColor } from "./CanvasStrip";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
+import { TrafficSparkline } from "./TrafficSparkline";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
 import type { ByteRateDisplay } from "@/utils/format";
@@ -569,89 +569,6 @@ function TrafficStat({
         <span className="tabular">{total}</span>
       </div>
     </div>
-  );
-}
-
-function TrafficSparkline({
-  samples,
-  color,
-  redrawKey,
-}: {
-  samples: TrafficTrendSample[];
-  color: string;
-  redrawKey: string;
-}) {
-  // 除非 traffic samples(缓存的 store 快照)或 color 变了,否则保持稳定,
-  // 这样 canvas 只在趋势真的变动时才重绘。
-  const draw = useCallback(
-    (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-      if (samples.length === 0) return;
-      const baseColor = safeCanvasColor(color);
-      const inactiveColor = safeCanvasColor("var(--progress-bg)");
-      const top = 3;
-      const bottom = height - 3;
-      const usableHeight = Math.max(1, bottom - top);
-      const step = samples.length > 1 ? width / (samples.length - 1) : width;
-      const points = samples.map((sample, index) => ({
-        x: samples.length > 1 ? index * step : width / 2,
-        y: bottom - Math.max(0.08, Math.min(1, sample.level || 0.08)) * usableHeight,
-        active: sample.value > 0,
-      }));
-
-      ctx.strokeStyle = inactiveColor;
-      ctx.globalAlpha = 0.56;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, bottom);
-      ctx.lineTo(width, bottom);
-      ctx.stroke();
-
-      ctx.beginPath();
-      points.forEach((point, index) => {
-        if (index === 0) ctx.moveTo(point.x, point.y);
-        else ctx.lineTo(point.x, point.y);
-      });
-      ctx.lineTo(points.at(-1)?.x ?? width, bottom);
-      ctx.lineTo(points[0]?.x ?? 0, bottom);
-      ctx.closePath();
-      ctx.fillStyle = mixSrgbTowardWhite(baseColor, 0.78);
-      ctx.globalAlpha = 0.2;
-      ctx.fill();
-
-      ctx.beginPath();
-      points.forEach((point, index) => {
-        if (index === 0) ctx.moveTo(point.x, point.y);
-        else ctx.lineTo(point.x, point.y);
-      });
-      ctx.strokeStyle = baseColor;
-      ctx.lineWidth = 1.5;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      ctx.globalAlpha = 0.92;
-      ctx.stroke();
-
-      points.forEach((point) => {
-        if (!point.active) return;
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 1.35, 0, Math.PI * 2);
-        ctx.fillStyle = baseColor;
-        ctx.globalAlpha = 0.86;
-        ctx.fill();
-      });
-
-      ctx.globalAlpha = 1;
-    },
-    [samples, color],
-  );
-
-  return (
-    <CanvasStrip
-      className="traffic-sparkline"
-      height={28}
-      ariaHidden
-      redrawKey={redrawKey}
-      draw={draw}
-    />
   );
 }
 

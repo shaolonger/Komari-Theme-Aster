@@ -23,14 +23,14 @@ import {
   buildHomepagePingSourceRows,
   type HomepagePingSourceRow,
 } from "@/utils/homepagePingSources";
-import { speedRateColor, speedRateColorFromBytes } from "@/utils/metricTone";
+import { speedRateColor } from "@/utils/metricTone";
 import { PingSourceMatrix } from "./PingSourceMatrix";
+import { TrafficSparkline } from "./TrafficSparkline";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import type { NodeInfo, NodeMetrics, TrafficTrendSample } from "@/types/komari";
 import type { ByteRateDisplay } from "@/utils/format";
 import type { TrafficDisplay } from "@/utils/traffic";
 
-const TRAFFIC_DOT_COUNT = 12;
 type CompactNode = NodeInfo & NodeMetrics;
 type CompactTag = { label: string; color: string };
 type CompactExpire = { value: string; unit: string };
@@ -96,39 +96,21 @@ function CompactGauge({
   );
 }
 
-function CompactTrafficPulse({
+function CompactTrafficSparklines({
   up,
   down,
+  upColor,
+  downColor,
 }: {
   up: TrafficTrendSample[];
   down: TrafficTrendSample[];
+  upColor: string;
+  downColor: string;
 }) {
-  const upSelected = up.slice(-TRAFFIC_DOT_COUNT);
-  const downSelected = down.slice(-TRAFFIC_DOT_COUNT);
-  const padding = Math.max(0, TRAFFIC_DOT_COUNT - Math.max(upSelected.length, downSelected.length));
-
   return (
-    <span className="compact-node-traffic-pulse" aria-hidden>
-      {Array.from({ length: TRAFFIC_DOT_COUNT }, (_, index) => {
-        const sampleIndex = index - padding;
-        const upSample = sampleIndex >= 0 ? upSelected[upSelected.length - (TRAFFIC_DOT_COUNT - index)] : null;
-        const downSample = sampleIndex >= 0
-          ? downSelected[downSelected.length - (TRAFFIC_DOT_COUNT - index)]
-          : null;
-        const value = Math.max(upSample?.value ?? 0, downSample?.value ?? 0);
-        const level = Math.max(upSample?.level ?? 0, downSample?.level ?? 0);
-        return (
-          <span
-            key={index}
-            style={{
-              "--compact-traffic-dot-color":
-                value > 0 ? speedRateColorFromBytes(value) : "var(--progress-bg)",
-              "--compact-traffic-dot-scale": value > 0 ? `${0.72 + level * 0.5}` : "0.52",
-              opacity: value > 0 ? 0.55 + level * 0.4 : 0.34,
-            } as CSSProperties}
-          />
-        );
-      })}
+    <span className="compact-node-traffic-sparklines" title="最近 18 次实时采样的流量趋势" aria-hidden>
+      <TrafficSparkline samples={up} color={upColor} height={10} className="compact-node-traffic-sparkline" />
+      <TrafficSparkline samples={down} color={downColor} height={10} className="compact-node-traffic-sparkline" />
     </span>
   );
 }
@@ -311,7 +293,12 @@ function CompactLiveTraffic({
         <CompactRate direction="up" rate={upRate} />
         <CompactRate direction="down" rate={downRate} />
       </div>
-      <CompactTrafficPulse up={trafficTrend.up} down={trafficTrend.down} />
+      <CompactTrafficSparklines
+        up={trafficTrend.up}
+        down={trafficTrend.down}
+        upColor={speedRateColor(upRate.unit)}
+        downColor={speedRateColor(downRate.unit)}
+      />
       <div className="compact-node-quota-pill" style={style}>
         <span className="compact-node-quota-fill" aria-hidden />
         <span className="compact-node-quota-content">

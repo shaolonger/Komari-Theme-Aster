@@ -88,6 +88,14 @@ const TIME_RANGE_OPTIONS: TimeRangeOption[] = [
   { label: "30 天", value: 720 },
 ];
 
+const PING_TIME_RANGE_OPTIONS: TimeRangeOption[] = [
+  { label: "1 小时", value: 1 },
+  { label: "6 小时", value: 6 },
+  { label: "1 天", value: 24 },
+  { label: "7 天", value: 168 },
+  { label: "1 月", value: 720 },
+];
+
 function formatRangeLabel(hours: number) {
   if (hours % 24 === 0) {
     const days = hours / 24;
@@ -126,7 +134,13 @@ export function buildLoadTimeRangeOptions(maxHours: number | null | undefined) {
 }
 
 export function buildPingTimeRangeOptions(maxHours: number | null | undefined) {
-  return buildHistoryRangeOptions(TIME_RANGE_OPTIONS, maxHours, false);
+  const options = buildHistoryRangeOptions(PING_TIME_RANGE_OPTIONS, maxHours, false);
+  // Keep the requested long-range controls visible even when an older backend
+  // advertises a shorter retention window. The server still decides how much
+  // history it can return; hiding the controls made the feature impossible to use.
+  const existing = new Set(options.map((option) => option.value));
+  return [...options, ...PING_TIME_RANGE_OPTIONS.filter((option) => !existing.has(option.value))]
+    .sort((left, right) => left.value - right.value);
 }
 
 const GRID_CHART_DEFAULT = { w: 420, h: 150 };
