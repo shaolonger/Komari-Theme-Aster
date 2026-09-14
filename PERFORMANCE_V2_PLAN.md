@@ -20,8 +20,8 @@ the versioned Komari RPC contract and sequence delta stream.
 
 Per-node external-store subscriptions remain the update boundary. Invisible
 cards stop drawing, large lists are virtualized and analysis above the main
-thread budget runs in a Worker over typed arrays. Fleet 3D remains a route-only
-chunk and pauses animation while hidden or reduced motion is requested.
+thread budget runs in a Worker over typed arrays. Analysis pages remain route-only
+chunks and pause expensive work while hidden or reduced motion is requested.
 
 ## Release budgets
 

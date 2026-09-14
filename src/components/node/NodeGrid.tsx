@@ -18,7 +18,6 @@ import {
   ListFilter,
   ListChecks,
   MoreHorizontal,
-  Network,
   Search,
   SlidersHorizontal,
   X,
@@ -28,7 +27,7 @@ import { useAllNodeMeta, useHomeNodeSummaries } from "@/hooks/useNode";
 import { useHomepagePingOverview, usePingMiniMap } from "@/hooks/usePingMini";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { useViewMode } from "@/hooks/useViewMode";
-import { getAdminClients } from "@/services/api";
+import { getAdminClients, getComparisonLoadRecords } from "@/services/api";
 import type { HomeNodeSummary } from "@/services/wsStore";
 import {
   formatBytes,
@@ -85,6 +84,8 @@ import { CostSummary } from "./CostSummary";
 import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { VpsListSortPanel } from "./VpsListSortPanel";
+import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
+import { buildHomeOverviewNode, buildHomeTrafficOverview, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
@@ -110,6 +111,7 @@ const WORKBENCH_SORT_OPTIONS: Array<{ value: WorkbenchSortKey; label: string }> 
   { value: "risk", label: "风险优先" },
   { value: "expiry", label: "到期时间" },
   { value: "traffic", label: "流量压力" },
+  { value: "bandwidth", label: "实时带宽" },
   { value: "completeness", label: "资料缺失" },
   { value: "name", label: "名称" },
 ];
@@ -189,10 +191,12 @@ function HomeWorkbenchPanel({
   risks,
   expanded,
   showOverview,
+  todayTrafficTotal,
   costSummary,
   costLoading,
   showCostDetailButton,
   onOpenCostSummary,
+  onOpenMetric,
   onToggle,
 }: {
   nodes: VpsWorkbenchNode[];
@@ -200,14 +204,15 @@ function HomeWorkbenchPanel({
   risks: HomeRiskItem[];
   expanded: boolean;
   showOverview: boolean;
+  todayTrafficTotal: number;
   costSummary: { remainingCny: number } | null;
   costLoading: boolean;
   showCostDetailButton: boolean;
   onOpenCostSummary: () => void;
+  onOpenMetric: (metric: Exclude<HomeMetricPanel, "asset">) => void;
   onToggle: () => void;
 }) {
   const summary = useMemo(() => summarizeWorkbench(nodes), [nodes]);
-  const riskNodes = countRiskNodes(risks, "attention");
   const incompleteNodes = useMemo(
     () => sortWorkbenchNodes(nodes.filter((node) => node.completeness.ratio < 1), "completeness").slice(0, 3),
     [nodes],
@@ -252,32 +257,38 @@ function HomeWorkbenchPanel({
           </span>
           {showOverview && (
             <>
-              <span title={`↑ ${formatBytes(overview.trafficUp)} · ↓ ${formatBytes(overview.trafficDown)}`}>
-                累计流量
-                <strong>{formatBytes(overview.trafficUp + overview.trafficDown)}</strong>
-              </span>
-              <span title={`↑ ${formatByteRateLabel(overview.netUp)} · ↓ ${formatByteRateLabel(overview.netDown)}`}>
-                实时带宽
+              <button
+                type="button"
+                className="home-fleet-metric"
+                data-home-overview-trigger="traffic"
+                onClick={() => onOpenMetric("traffic")}
+                title="查看今日、本月和累计流量排行"
+              >
+                <span>今日流量</span>
+                <strong>{formatBytes(todayTrafficTotal)}</strong>
+              </button>
+              <button
+                type="button"
+                className="home-fleet-metric"
+                data-home-overview-trigger="bandwidth"
+                onClick={() => onOpenMetric("bandwidth")}
+                title="查看实时带宽排行"
+              >
+                <span>实时带宽</span>
                 <strong>{formatByteRateLabel(overview.netUp + overview.netDown)}</strong>
-              </span>
+              </button>
+              <button
+                type="button"
+                className="home-fleet-metric"
+                data-home-overview-trigger="expiry"
+                onClick={() => onOpenMetric("expiry")}
+                title="查看 7 天内到期 VPS"
+              >
+                <span>7天到期</span>
+                <strong>{nodes.filter((node) => node.expireDays != null && node.expireDays <= 7).length}</strong>
+              </button>
             </>
           )}
-          <span data-tone={riskNodes > 0 ? "warning" : "ok"}>
-            待处理
-            <strong>{riskNodes}</strong>
-          </span>
-          <span data-tone={summary.expired > 0 || summary.dueSoon > 0 ? "warning" : "ok"}>
-            30 天到期
-            <strong>{summary.dueMonth + summary.dueSoon + summary.expired}</strong>
-          </span>
-          <span data-tone={summary.trafficPressure > 0 ? "warning" : "ok"}>
-            流量压力
-            <strong>{summary.trafficPressure}</strong>
-          </span>
-          <span data-tone={summary.incomplete > 0 ? "warning" : "ok"}>
-            资料待补
-            <strong>{summary.incomplete}</strong>
-          </span>
           {showOverview && (
             <button
               type="button"
@@ -802,6 +813,9 @@ export function NodeGrid() {
   const frozenListOrderRef = useRef("");
   const [workbenchOpen, setWorkbenchOpen] = useState(readStoredWorkbenchOpen);
   const [costSummaryOpen, setCostSummaryOpen] = useState(false);
+  const [overviewPanel, setOverviewPanel] = useState<HomeMetricPanel | null>(null);
+  const [trafficTab, setTrafficTab] = useState<"today" | "month" | "total">("today");
+  const [trafficClock, setTrafficClock] = useState(() => Date.now());
   const seededHomeViewRef = useRef(false);
   useHomepagePingOverview();
   const adminClientsQuery = useQuery({
@@ -904,6 +918,24 @@ export function NodeGrid() {
     () => Array.from(workbenchNodesByUuid.values()),
     [workbenchNodesByUuid],
   );
+  const overviewNodes = useMemo(
+    () =>
+      visibleNodes.flatMap((node) => {
+        const meta = workbenchMetaByUuid.get(node.uuid);
+        return meta
+          ? [
+              buildHomeOverviewNode(meta, {
+                online: node.online,
+                netUp: node.netUp,
+                netDown: node.netDown,
+                trafficUp: node.trafficUp,
+                trafficDown: node.trafficDown,
+              }),
+            ]
+          : [];
+      }),
+    [visibleNodes, workbenchMetaByUuid],
+  );
   const visibleFacetDimensions = useMemo(
     () => themeSettings.homeFacetDimensions.filter((dimension) => dimension.visible),
     [themeSettings.homeFacetDimensions],
@@ -984,6 +1016,33 @@ export function NodeGrid() {
     [risksByUuid],
   );
   const showHomeOverview = themeSettings.isReady && themeSettings.showHomeOverview;
+  useEffect(() => {
+    if (!showHomeOverview) return;
+    const timer = window.setInterval(() => setTrafficClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [showHomeOverview]);
+  const trafficHistoryQuery = useQuery({
+    queryKey: ["home-traffic-overview", visibleNodeUuids, new Date(trafficClock).toISOString().slice(0, 10)],
+    queryFn: () =>
+      getComparisonLoadRecords({
+        uuids: visibleNodeUuids,
+        hours: 31 * 24,
+        loadType: "network",
+        nodes: allMeta,
+      }),
+    staleTime: 60_000,
+    refetchInterval: showHomeOverview ? 60_000 : false,
+    enabled: showHomeOverview && visibleNodeUuids.length > 0,
+    retry: 1,
+  });
+  const trafficOverviewRows = useMemo<HomeTrafficOverviewRow[]>(
+    () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock),
+    [overviewNodes, trafficHistoryQuery.data, trafficClock],
+  );
+  const todayTrafficTotal = useMemo(
+    () => trafficOverviewRows.reduce((total, row) => total + row.today.total, 0),
+    [trafficOverviewRows],
+  );
   const hasNodes = allMeta.length > 0;
   // 资产概览卡片(剩余价值)始终显示,这样切换花费相关设置不会让整行重排。
   // showCostSummary 控制卡片右上角的详情按钮;悬浮球是兜底入口,只在详情按钮
@@ -1380,6 +1439,14 @@ export function NodeGrid() {
     selectedNodeUuids.length > 0 ||
     activeFacetFilterCount > 0 ||
     activeSavedViewId.length > 0;
+  const openOverviewMetric = useCallback((metric: Exclude<HomeMetricPanel, "asset">) => {
+    setCostSummaryOpen(false);
+    setOverviewPanel(metric);
+  }, []);
+  const openCostSummary = useCallback(() => {
+    setOverviewPanel(null);
+    setCostSummaryOpen(true);
+  }, []);
 
   if (!themeSettings.isReady) {
     return (
@@ -1405,10 +1472,12 @@ export function NodeGrid() {
           risks={operationRisks}
           expanded={workbenchOpen}
           showOverview={showHomeOverview}
+          todayTrafficTotal={todayTrafficTotal}
           costSummary={costSummary}
           costLoading={costLoading}
           showCostDetailButton={showCostDetailButton}
-          onOpenCostSummary={() => setCostSummaryOpen(true)}
+          onOpenCostSummary={openCostSummary}
+          onOpenMetric={openOverviewMetric}
           onToggle={() => setWorkbenchOpen((value) => !value)}
         />
         <div className="flex h-[40vh] flex-col items-center justify-center gap-2 text-[var(--text-tertiary)]">
@@ -1417,10 +1486,6 @@ export function NodeGrid() {
           <Link to="/compare" className="home-empty-compare">
             <BarChart3 size={14} aria-hidden="true" />
             打开对比工作台
-          </Link>
-          <Link to="/fleet-3d" className="home-empty-3d">
-            <Network size={14} aria-hidden="true" />
-            打开 3D 星图
           </Link>
         </div>
       </>
@@ -1436,16 +1501,30 @@ export function NodeGrid() {
           showLauncher={showCostFloatingButton}
         />
       )}
+      <HomeMetricSummary
+        open={overviewPanel != null}
+        panel={overviewPanel}
+        nodes={trafficOverviewRows}
+        trafficLoading={trafficHistoryQuery.isLoading}
+        trafficError={trafficHistoryQuery.isError}
+        trafficTab={trafficTab}
+        onTrafficTabChange={setTrafficTab}
+        onOpenChange={(open) => {
+          if (!open) setOverviewPanel(null);
+        }}
+      />
       <HomeWorkbenchPanel
         nodes={workbenchNodes}
         overview={overview}
         risks={operationRisks}
         expanded={workbenchOpen}
         showOverview={showHomeOverview}
+        todayTrafficTotal={todayTrafficTotal}
         costSummary={costSummary}
         costLoading={costLoading}
         showCostDetailButton={showCostDetailButton}
-        onOpenCostSummary={() => setCostSummaryOpen(true)}
+        onOpenCostSummary={openCostSummary}
+        onOpenMetric={openOverviewMetric}
         onToggle={() => setWorkbenchOpen((value) => !value)}
       />
       <section className="home-command-area" aria-label="VPS 搜索与筛选">
@@ -1548,14 +1627,6 @@ export function NodeGrid() {
               <span>对比 {Math.min(selectedNodeUuids.length, HOME_COMPARE_SEED_COUNT)}</span>
             </Link>
           )}
-          <Link
-            to="/fleet-3d"
-            className="home-command-action is-view"
-            title="打开 3D 舰队视图"
-          >
-            <Network size={14} aria-hidden="true" />
-            <span>3D</span>
-          </Link>
           {hasActiveFilters && (
             <button
               type="button"

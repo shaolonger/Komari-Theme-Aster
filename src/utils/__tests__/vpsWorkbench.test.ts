@@ -84,13 +84,12 @@ describe("getConfigCompleteness", () => {
     );
 
     expect(result.complete).toBe(1);
-    expect(result.total).toBe(7);
+    expect(result.total).toBe(6);
     expect(result.missing.map((item) => item.key)).toEqual([
       "group",
       "price",
       "billing",
       "expiry",
-      "traffic",
       "ping",
     ]);
     vi.useRealTimers();
@@ -107,7 +106,7 @@ describe("getConfigCompleteness", () => {
       { includeAgentVersion: true },
     );
 
-    expect(result.total).toBe(8);
+    expect(result.total).toBe(7);
     expect(result.missing.map((item) => item.key)).toEqual(["agent"]);
     vi.useRealTimers();
   });
@@ -216,6 +215,10 @@ describe("workbench node sorting and summary", () => {
     });
 
     expect(sortWorkbenchNodes([full, incomplete], "completeness").map((item) => item.uuid)).toEqual([
+      "miss",
+      "full",
+    ]);
+    expect(sortWorkbenchNodes([full, incomplete], "bandwidth").map((item) => item.uuid)).toEqual([
       "miss",
       "full",
     ]);

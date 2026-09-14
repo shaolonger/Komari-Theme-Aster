@@ -11,9 +11,6 @@ const Instance = lazy(() =>
 const Compare = lazy(() =>
   import("@/pages/Compare").then((m) => ({ default: m.Compare })),
 );
-const Fleet3D = lazy(() =>
-  import("@/pages/Fleet3D").then((m) => ({ default: m.Fleet3D })),
-);
 const NotFound = lazy(() =>
   import("@/pages/NotFound").then((m) => ({ default: m.NotFound })),
 );
@@ -45,14 +42,6 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Compare />
-          </Suspense>
-        ),
-      },
-      {
-        path: "fleet-3d",
-        element: (
-          <Suspense fallback={<Loading />}>
-            <Fleet3D />
           </Suspense>
         ),
       },

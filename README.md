@@ -1,6 +1,6 @@
 # Aster · 星枢
 
-面向 Komari 的服务器监控与资产管理主题，由 shaolonger 独立维护。围绕节点总览、VPS 工作台、多目标 Ping 分析、节点比较和 3D 舰队视图，重构界面与交互体验。
+面向 Komari 的服务器监控与资产管理主题，由 shaolonger 独立维护。围绕节点总览、VPS 工作台、多目标 Ping 分析和节点比较，重构界面与交互体验。
 
 ## 安装与迁移
 
@@ -47,14 +47,6 @@
 
 <p align="center">
   <img src="docs/images/current/compare.png" alt="Aster VPS 对比工作台" width="90%">
-</p>
-
-### VPS 3D 星图
-
-3D 舰队视图将节点状态、风险、资源、流量和地理分布放在同一可交互场景中。
-
-<p align="center">
-  <img src="docs/images/current/fleet-3d.png" alt="Aster VPS 3D 星图" width="90%">
 </p>
 
 ### 资产统计

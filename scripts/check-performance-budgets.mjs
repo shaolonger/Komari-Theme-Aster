@@ -30,7 +30,14 @@ const cssBytes = [...assets].filter((file) => file.endsWith(".css"))
 const fonts = readdirSync(new URL("assets/", DIST)).filter((file) => file.endsWith(".woff2"));
 const fontBytes = fonts.reduce((total, file) => total + readFileSync(join(new URL("assets/", DIST).pathname, file)).byteLength, 0);
 
-const iconAsset = [...assets].find((file) => file.includes("createLucideIcon") && file.endsWith(".js"));
+// Vite/Rolldown may split or minify the Lucide factory symbol. Identify the
+// small icon chunk by its emitted icon export instead of depending on a
+// development-only function name.
+const iconAsset = [...assets].find((file) => {
+  if (!file.endsWith(".js")) return false;
+  const source = readFileSync(new URL(file, DIST), "utf8");
+  return source.includes("createLucideIcon") || source.includes("CircleDollarSign");
+});
 const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
 const limits = { js: 160 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
@@ -42,7 +49,7 @@ if (fonts.length !== 1 || fontBytes > limits.font) {
 if (!iconAsset || iconBytes > limits.icon) failures.push(`icon Brotli ${iconBytes} > ${limits.icon}`);
 
 const html = readFileSync(new URL("index.html", DIST), "utf8");
-const forbiddenPreloads = ["Fleet3D", "Compare", "Instance", "ThemeManage"];
+const forbiddenPreloads = ["Compare", "Instance", "ThemeManage"];
 for (const token of forbiddenPreloads) {
   if (html.includes(token)) failures.push(`index.html preloads non-Home route ${token}`);
 }

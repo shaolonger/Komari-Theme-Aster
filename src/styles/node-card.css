@@ -749,24 +749,12 @@
   min-width: 0;
 }
 
-.traffic-dot-strip {
+.traffic-sparkline {
   display: block;
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  height: 10px;
-}
-
-.traffic-dot {
-  width: 4px;
-  height: 4px;
-  justify-self: center;
-  border-radius: 999px;
-  transition:
-    transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
-    background-color 0.3s ease,
-    opacity 0.3s ease,
-    box-shadow 0.3s ease;
+  height: 28px;
 }
 
 .traffic-stat-live {

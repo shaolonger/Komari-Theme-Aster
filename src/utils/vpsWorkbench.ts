@@ -9,6 +9,7 @@ export type WorkbenchSortKey =
   | "name"
   | "expiry"
   | "traffic"
+  | "bandwidth"
   | "completeness"
   | "risk";
 
@@ -67,6 +68,7 @@ export interface VpsWorkbenchNode {
   region: string;
   weight: number;
   online: boolean | null;
+  bandwidth: number;
   expireDays: number | null;
   expiryBucket: ExpiryBucket;
   completeness: CompletenessResult;
@@ -95,7 +97,6 @@ export function getConfigCompleteness(
     { key: "price", label: "价格", complete: hasRenewalInfo(meta) },
     { key: "billing", label: "周期", complete: hasText(meta.billing_cycle) },
     { key: "expiry", label: "到期", complete: getExpireDaysRemaining(meta.expired_at) != null },
-    { key: "traffic", label: "流量额度", complete: meta.traffic_limit > 0 },
     { key: "ping", label: "Ping 绑定", complete: hasPingBinding },
   ];
   if (options.includeAgentVersion) {
@@ -236,6 +237,7 @@ export function buildVpsWorkbenchNode(input: VpsWorkbenchNodeInput): VpsWorkbenc
     region: String(meta.region || "").trim(),
     weight: meta.weight,
     online: input.online,
+    bandwidth: Math.max(0, input.netUp) + Math.max(0, input.netDown),
     expireDays,
     expiryBucket: getExpiryBucket(expireDays),
     completeness: getConfigCompleteness(meta, input.hasPingBinding, {
@@ -296,6 +298,8 @@ export function sortWorkbenchNodes(nodes: VpsWorkbenchNode[], sortKey: Workbench
         return expirySortValue(left) - expirySortValue(right) || left.weight - right.weight;
       case "traffic":
         return right.traffic.fraction - left.traffic.fraction || left.weight - right.weight;
+      case "bandwidth":
+        return right.bandwidth - left.bandwidth || left.weight - right.weight;
       case "completeness":
         return left.completeness.ratio - right.completeness.ratio || left.weight - right.weight;
       case "risk":

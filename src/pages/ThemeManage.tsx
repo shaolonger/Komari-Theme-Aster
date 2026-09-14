@@ -114,6 +114,7 @@ const HOME_VIEW_SORT_OPTIONS = [
   { value: "risk", label: "风险优先" },
   { value: "expiry", label: "到期时间" },
   { value: "traffic", label: "流量压力" },
+  { value: "bandwidth", label: "实时带宽" },
   { value: "completeness", label: "资料缺失" },
   { value: "name", label: "名称" },
 ];

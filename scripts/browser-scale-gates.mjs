@@ -918,8 +918,8 @@ try {
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('巡检与指标')).click()`);
   await cdp.value(`(() => { const toggle = document.querySelector('.studio-rating-editor > .studio-setting-switch input'); if (!toggle.checked) toggle.click(); })()`);
   await waitUntil(cdp, `!document.querySelector('.studio-rating-editor fieldset').disabled`, 2_000);
-  await cdp.value(`(() => { const input = document.querySelector('input[aria-label="累计流量 第 2 级名称"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '日常负载'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await waitUntil(cdp, `document.querySelector('input[aria-label="累计流量 第 2 级名称"]').value === '日常负载'`, 2_000);
+  await cdp.value(`(() => { const input = document.querySelector('input[aria-label="今日流量 第 2 级名称"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '日常负载'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await waitUntil(cdp, `document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '日常负载'`, 2_000);
   failGate(await cdp.value(`document.querySelector('.studio-change-summary').textContent.includes('保存视图')`), 'change summary omits edited views');
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('网络观测')).click()`);
   await waitUntil(cdp, `document.querySelector('input[aria-label="搜索要配置的 VPS"]').getClientRects().length > 0`, 2_000);
@@ -935,18 +935,18 @@ try {
   rejectNextStudioSave = true;
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '保存设置').click()`);
   await waitUntil(cdp, `document.body.innerText.includes('草稿已保留')`, 4_000);
-  failGate(await cdp.value(`document.querySelector('.aster-studio') !== null && document.querySelector('input[aria-label="累计流量 第 2 级名称"]').value === '日常负载'`), 'permission failure discarded the draft');
+  failGate(await cdp.value(`document.querySelector('.aster-studio') !== null && document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '日常负载'`), 'permission failure discarded the draft');
   let releaseStudioSave;
   studioSaveBarrier = new Promise(resolve => { releaseStudioSave = resolve; });
 
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '保存设置').click()`);
   await waitUntil(cdp, `document.body.innerText.includes('保存中')`, 2_000);
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('巡检与指标')).click()`);
-  await cdp.value(`(() => { const input = document.querySelector('input[aria-label="累计流量 第 2 级名称"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '保存中继续编辑'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await cdp.value(`(() => { const input = document.querySelector('input[aria-label="今日流量 第 2 级名称"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '保存中继续编辑'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   releaseStudioSave();
   studioSaveBarrier = null;
   await waitUntil(cdp, `document.body.innerText.includes('新修改仍在草稿中')`, 4_000);
-  failGate(await cdp.value(`document.querySelector('input[aria-label="累计流量 第 2 级名称"]').value === '保存中继续编辑'`), 'inflight edit was overwritten');
+  failGate(await cdp.value(`document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '保存中继续编辑'`), 'inflight edit was overwritten');
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('网络观测')).click()`);
   await waitUntil(cdp, `document.body.innerText.includes('保存成功') || document.body.innerText.includes('已保存')`, 6_000);
   failGate(Object.values(savedUiSettings?.homepagePingTaskOrder ?? {}).filter(ids => ids.length === 6).length === 3, "batch VPS task configuration was not saved");
@@ -964,13 +964,13 @@ try {
   failGate(savedUiSettings.homeNodeFacets['node-0'].provider.includes('Aster Test'), 'tag edit was not saved');
   failGate(savedUiSettings.trafficRatingLabels.split(',').length === 4 && savedUiSettings.trafficRatingLabels.split(',')[1] === '日常负载', 'rating levels were lost on save');
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '撤销修改').click()`);
-  await waitUntil(cdp, `document.querySelector('input[aria-label="累计流量 第 2 级名称"]').value === '日常负载' && !document.querySelector('.studio-change-summary')`, 2_000);
+  await waitUntil(cdp, `document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '日常负载' && !document.querySelector('.studio-change-summary')`, 2_000);
 
   await cdp.call("Page.reload");
   await waitUntil(cdp, `document.querySelector('.aster-studio-nav button') !== null`, 6_000);
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('网络观测')).click()`);
   await waitUntil(cdp, `document.querySelector('input[aria-label="搜索要配置的 VPS"]') !== null && document.body.innerText.includes('Task 4 → Task 6 → Task 5')`, 6_000);
-  failGate(await cdp.value(`document.querySelector('input[aria-label="累计流量 第 2 级名称"]').value === '日常负载'`), 'rating label did not survive reload');
+  failGate(await cdp.value(`document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '日常负载'`), 'rating label did not survive reload');
   failGate(await cdp.value(`document.querySelector('.studio-saved-view summary').textContent.includes('日常巡检') && document.querySelector('.studio-saved-view summary').textContent.includes('1 台指定节点')`), 'saved view summary did not recover');
 
   failGate(await cdp.value(`document.querySelector('select[aria-label="设置 Scale Node 0 的首页 Ping 主任务"]').value === '6' && document.querySelector('input[aria-label="设置 Task 6 的展示分组"]').value === '国际线路' && document.querySelectorAll('.studio-network-strategy input')[1].checked`), 'network presentation settings did not reload');
@@ -1057,6 +1057,17 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8 && document.title === 'Aster 演示站'`, 6_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-light.png`);
 
+    await cdp.value(`document.querySelector('[data-home-overview-trigger="bandwidth"]').click()`);
+    await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('实时带宽') && document.querySelectorAll('.home-overview-row').length === 8`, 6_000);
+    await cdp.value(`document.querySelector('[data-home-overview-trigger="traffic"]').click()`);
+    await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('流量排行') && document.querySelectorAll('.home-overview-tabs [role="tab"]').length === 3`, 6_000);
+    await cdp.value(`Array.from(document.querySelectorAll('.home-overview-tabs [role="tab"]')).find(button => button.textContent.includes('本月流量')).click()`);
+    failGate(await cdp.value(`document.querySelector('.home-overview-tabs [role="tab"][aria-selected="true"]').textContent.includes('本月流量')`), 'traffic overview month tab did not activate');
+    await cdp.value(`document.querySelector('[data-home-overview-trigger="expiry"]').click()`);
+    await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('7 天到期')`, 6_000);
+    await cdp.value(`document.querySelector('.home-overview-close').click()`);
+    await waitUntil(cdp, `document.querySelector('.home-overview-panel.show') === null`, 2_000);
+
     await cdp.value(`document.querySelector('button[title="打开资产统计"]').click()`);
     await waitUntil(cdp, `document.querySelector('.cost-summary-panel.show') !== null`, 6_000);
     await captureScreenshot(cdp, `${screenshotBase}-asset-summary.png`, { waitForImages: false });
@@ -1080,10 +1091,6 @@ try {
     });
     await waitUntil(cdp, `document.querySelector('.compare-page') !== null && document.querySelectorAll('.compare-selected-pill').length === 3 && document.querySelector('.compare-chart-wrap canvas') !== null`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-compare.png`);
-
-    await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/fleet-3d?demo=1` });
-    await waitUntil(cdp, `document.querySelector('.fleet3d-page canvas') !== null`, 8_000);
-    await captureScreenshot(cdp, `${screenshotBase}-fleet-3d.png`);
 
     await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?view=theme-manage` });
     await waitUntil(cdp, `document.body.innerText.includes('Aster 工作室')`, 8_000);

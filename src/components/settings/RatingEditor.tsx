@@ -1,6 +1,6 @@
 import { SettingSwitch } from './SettingSwitch';
 import { getDefaultOverviewRatingLabelText, OVERVIEW_RATING_STYLES, type OverviewRatingKind, type OverviewRatingStyle } from '@/utils/overviewRating';
-const kinds = [{ key: 'traffic', title: '累计流量' }, { key: 'bandwidth', title: '实时带宽' }, { key: 'asset', title: '资产概览' }] as const;
+const kinds = [{ key: 'traffic', title: '今日流量' }, { key: 'bandwidth', title: '实时带宽' }, { key: 'asset', title: '资产概览' }] as const;
 export function RatingEditor({ enabled, onEnabledChange, style, onStyleChange, visible, onVisibleChange, labels, onLabelsChange }: {
   enabled: boolean; onEnabledChange: (value: boolean) => void; style: OverviewRatingStyle; onStyleChange: (value: OverviewRatingStyle) => void;
   visible: Record<OverviewRatingKind, boolean>; onVisibleChange: (kind: OverviewRatingKind, value: boolean) => void;

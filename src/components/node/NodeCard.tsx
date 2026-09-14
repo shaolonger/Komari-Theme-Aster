@@ -545,7 +545,7 @@ function TrafficStat({
         </span>
       </div>
       <div className="traffic-stat-trend" aria-hidden>
-        <TrafficDotStrip samples={samples} color={speedColor} redrawKey={redrawKey} />
+        <TrafficSparkline samples={samples} color={speedColor} redrawKey={redrawKey} />
         <span
           className="traffic-stat-live"
           data-live={live ? "true" : "false"}
@@ -572,7 +572,7 @@ function TrafficStat({
   );
 }
 
-function TrafficDotStrip({
+function TrafficSparkline({
   samples,
   color,
   redrawKey,
@@ -586,28 +586,56 @@ function TrafficDotStrip({
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, width: number, height: number) => {
       if (samples.length === 0) return;
-      const slotWidth = width / samples.length;
-      // 一次性归一化:safeCanvasColor 解析 var() 并把 hsl() 转成 rgb(),所以
-      // baseColor/inactiveColor 对 canvas 安全,mixSrgbTowardWhite 的 hex 输出也是 ——
-      // 下面循环里不需要再逐点归一化颜色。
       const baseColor = safeCanvasColor(color);
       const inactiveColor = safeCanvasColor("var(--progress-bg)");
+      const top = 3;
+      const bottom = height - 3;
+      const usableHeight = Math.max(1, bottom - top);
+      const step = samples.length > 1 ? width / (samples.length - 1) : width;
+      const points = samples.map((sample, index) => ({
+        x: samples.length > 1 ? index * step : width / 2,
+        y: bottom - Math.max(0.08, Math.min(1, sample.level || 0.08)) * usableHeight,
+        active: sample.value > 0,
+      }));
 
-      samples.forEach((sample, index) => {
-        const hasTraffic = sample.value > 0;
-        const scale = hasTraffic ? 0.72 + sample.level * 0.82 : 0.46;
-        const radius = 2 * scale;
-        // 用 JS 做 sRGB 混色(不用 canvas 的 color-mix() 字符串,老 WebKit 不认)。
-        const tone = hasTraffic
-          ? mixSrgbTowardWhite(baseColor, (68 + sample.level * 20) / 100)
-          : inactiveColor;
-        const x = index * slotWidth + slotWidth / 2;
-        const y = height / 2;
+      ctx.strokeStyle = inactiveColor;
+      ctx.globalAlpha = 0.56;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, bottom);
+      ctx.lineTo(width, bottom);
+      ctx.stroke();
 
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.lineTo(points.at(-1)?.x ?? width, bottom);
+      ctx.lineTo(points[0]?.x ?? 0, bottom);
+      ctx.closePath();
+      ctx.fillStyle = mixSrgbTowardWhite(baseColor, 0.78);
+      ctx.globalAlpha = 0.2;
+      ctx.fill();
+
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.globalAlpha = 0.92;
+      ctx.stroke();
+
+      points.forEach((point) => {
+        if (!point.active) return;
         ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = tone;
-        ctx.globalAlpha = hasTraffic ? Math.min(1, sample.opacity + 0.05) : 0.46;
+        ctx.arc(point.x, point.y, 1.35, 0, Math.PI * 2);
+        ctx.fillStyle = baseColor;
+        ctx.globalAlpha = 0.86;
         ctx.fill();
       });
 
@@ -618,8 +646,8 @@ function TrafficDotStrip({
 
   return (
     <CanvasStrip
-      className="traffic-dot-strip"
-      height={10}
+      className="traffic-sparkline"
+      height={28}
       ariaHidden
       redrawKey={redrawKey}
       draw={draw}

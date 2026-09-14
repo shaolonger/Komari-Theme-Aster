@@ -6,7 +6,7 @@ export function OverviewEditor({ overview, groupsVisible, offlineLast, onOvervie
   groups: string[]; loading: boolean; onMove: (index: number, direction: -1 | 1) => void;
 }) {
   return <div className="studio-overview-editor"><div className="studio-setting-group">
-    <SettingSwitch title="顶部总览" detail="集中展示在线节点、地区分布、累计流量与实时带宽。" checked={overview} onChange={onOverviewChange}/>
+    <SettingSwitch title="顶部总览" detail="集中展示在线节点、今日流量、实时带宽与 7 天到期情况。" checked={overview} onChange={onOverviewChange}/>
     <SettingSwitch title="分组导航" detail="显示按分组切换节点的入口，顺序可在下方调整。" checked={groupsVisible} onChange={onGroupsChange}/>
     <SettingSwitch title="优先显示在线节点" detail="将当前分组中的离线节点排在后面。" checked={offlineLast} onChange={onOfflineChange}/>
   </div><section className="studio-group-order"><h3>分组导航顺序</h3><p>{groupsVisible ? '从上到下对应首页分组的显示顺序。' : '分组导航已隐藏；你仍可提前调整启用后的顺序。'}</p>

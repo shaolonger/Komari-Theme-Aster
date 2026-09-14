@@ -9,7 +9,7 @@ npm run build
 BROWSER_GATE_SCREENSHOT="$PWD/docs/images/current/aster.png" node scripts/browser-scale-gates.mjs
 ```
 
-脚本生成的 `aster-*.png` 分别对应首页浅色与深色模式、移动端首页、实例 Ping、VPS 对比、3D 星图、资产统计和主题设置。确认图片后，将其按 README 使用的文件名保存到 `current/`，并用 `overview-light.png` 同步更新 `theme-preview.png` 与仓库根目录的 `preview.png`。
+脚本生成的 `aster-*.png` 分别对应首页浅色与深色模式、移动端首页、实例 Ping、VPS 对比、资产统计和主题设置。确认图片后，将其按 README 使用的文件名保存到 `current/`，并用 `overview-light.png` 同步更新 `theme-preview.png` 与仓库根目录的 `preview.png`。
 
 最近更新：2026-09-12。包含新配置工作室的桌面和移动端截图；所有展示图均由实际浏览器渲染，未使用概念图。首页截图同时作为主题包预览。
 
