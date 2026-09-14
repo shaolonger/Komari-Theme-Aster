@@ -1,0 +1,125 @@
+name: Build theme package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pin the source surfaces that the official-adapter contract was audited
+      # against. The theme only talks to the server, but its node status is
+      # projected from the agent v2 report protocol, so validate both sides.
+      - name: Checkout audited official Komari source surface
+        uses: actions/checkout@v4
+        with:
+          repository: komari-monitor/komari
+          ref: b11ffd3aa7cca03502a75eb64ecbe827d6831d3a
+          path: .upstream/komari
+          fetch-depth: 1
+          persist-credentials: false
+          lfs: false
+          submodules: false
+          sparse-checkout: |
+            web/rpc/jsonrpc
+            web/router
+            web/public
+            web/api/admin
+            web/api/client
+            database/models
+            internal/metricstore
+            pkg/rpc
+            protocol/v2
+
+      - name: Checkout audited official Komari agent source surface
+        uses: actions/checkout@v4
+        with:
+          repository: komari-monitor/komari-agent
+          ref: f7c16a94ba7dd3ce57fbe86c6131d995f645d8d8
+          path: .upstream/komari-agent
+          fetch-depth: 1
+          persist-credentials: false
+          lfs: false
+          submodules: false
+          sparse-checkout: |
+            protocol/v2
+            server
+            monitoring
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A tag is a release candidate, not merely a packaging trigger.  Keep
+      # every release artifact behind the same full gate used locally.
+      - name: Run release gates
+        run: npm run test:release-gates
+
+      - name: Verify official upstream compatibility surface
+        env:
+          KOMARI_UPSTREAM_DIR: ${{ github.workspace }}/.upstream/komari
+          KOMARI_AGENT_UPSTREAM_DIR: ${{ github.workspace }}/.upstream/komari-agent
+        run: npm run test:upstream-contract
+
+      - name: Build package
+        run: npm run package
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Komari-Theme-Aster-package
+          path: |
+            Komari-Theme-Aster-v*.zip
+            preview.png
+
+      - name: Resolve release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release-notes
+        shell: bash
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [[ -f "$notes" ]]; then
+            echo "path=$notes" >> "$GITHUB_OUTPUT"
+            echo "source=curated" >> "$GITHUB_OUTPUT"
+          else
+            # Never publish a new tag with notes copied from an unrelated old
+            # release. GitHub-generated notes accurately describe this tag.
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "source=generated" >> "$GITHUB_OUTPUT"
+            echo "::notice::No curated release note found for ${GITHUB_REF_NAME}; generating notes from this release."
+          fi
+
+      - name: Publish GitHub release with curated notes
+        if: startsWith(github.ref, 'refs/tags/') && steps.release-notes.outputs.source == 'curated'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            Komari-Theme-Aster-v*.zip
+            preview.png
+          body_path: ${{ steps.release-notes.outputs.path }}
+
+      - name: Publish GitHub release with generated notes
+        if: startsWith(github.ref, 'refs/tags/') && steps.release-notes.outputs.source == 'generated'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            Komari-Theme-Aster-v*.zip
+            preview.png
+          generate_release_notes: true

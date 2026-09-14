@@ -1,0 +1,255 @@
+const UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
+const TRAFFIC_RATE_THRESHOLDS: Array<{ unit: Exclude<TrafficRateUnit, "bps">; divisor: number }> = [
+  { unit: "Tbps", divisor: 1_000_000_000_000 },
+  { unit: "Gbps", divisor: 1_000_000_000 },
+  { unit: "Mbps", divisor: 1_000_000 },
+  { unit: "Kbps", divisor: 1_000 },
+];
+export const LONG_TERM_EXPIRE_DAYS = 36500;
+
+type ExpireTone = "ok" | "warn" | "critical" | "long" | "none";
+export type TrafficRateUnit = "bps" | "Kbps" | "Mbps" | "Gbps" | "Tbps";
+
+export interface TrafficRateDisplay {
+  value: string;
+  unit: TrafficRateUnit;
+  bitsPerSec: number;
+}
+
+export interface MetricFormatOptions {
+  digits?: number;
+  fallback?: string;
+  unit?: string;
+  requirePositive?: boolean;
+}
+
+export function trimFixed(value: number, digits: number): string {
+  return value
+    .toFixed(digits)
+    .replace(/\.0+$/, "")
+    .replace(/(\.\d*?[1-9])0+$/, "$1");
+}
+
+export function isFiniteMetric(value: number | undefined | null): value is number {
+  return value != null && Number.isFinite(value);
+}
+
+function roundMetricValue(value: number, digits: number) {
+  const factor = 10 ** digits;
+  const sign = Math.sign(value) || 1;
+  return (sign * Math.round((Math.abs(value) + Number.EPSILON) * factor)) / factor;
+}
+
+export function formatMetricNumber(
+  value: number | undefined | null,
+  {
+    digits = 2,
+    fallback = "—",
+    unit = "",
+    requirePositive = false,
+  }: MetricFormatOptions = {},
+) {
+  if (!isFiniteMetric(value) || (requirePositive && value <= 0)) return fallback;
+  const metricValue = value;
+  const formatted = roundMetricValue(metricValue, digits).toFixed(digits);
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+export function formatMetricPercent(
+  value: number | undefined | null,
+  options: Omit<MetricFormatOptions, "unit"> = {},
+) {
+  return formatMetricNumber(value, { ...options, unit: "%" }).replace(" %", "%");
+}
+
+export function formatLatency(
+  value: number | undefined | null,
+  options: Omit<MetricFormatOptions, "unit" | "requirePositive"> = {},
+) {
+  return formatMetricNumber(value, { ...options, unit: "ms", requirePositive: true });
+}
+
+export function formatLatencyValue(
+  value: number | undefined | null,
+  options: Omit<MetricFormatOptions, "unit" | "requirePositive"> = {},
+) {
+  return formatMetricNumber(value, { ...options, requirePositive: true });
+}
+
+export function formatPacketLoss(
+  value: number | undefined | null,
+  options: Omit<MetricFormatOptions, "unit"> = {},
+) {
+  return formatMetricPercent(value, options);
+}
+
+export function formatLoadValue(
+  value: number | undefined | null,
+  options: MetricFormatOptions = {},
+) {
+  return formatMetricNumber(value, options);
+}
+
+export function joinDisplayParts(parts: Array<string | null | undefined>) {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
+export function formatBytes(n: number | undefined | null, decimals = 2): string {
+  if (!n || n < 0 || !Number.isFinite(n)) return "0 B";
+  let idx = 0;
+  let v = n;
+  while (v >= 1024 && idx < UNITS.length - 1) {
+    v /= 1024;
+    idx += 1;
+  }
+  if (idx === 0) return `${Math.round(v)} ${UNITS[idx]}`;
+  const dec = v >= 100 ? 0 : v >= 10 ? 1 : decimals;
+  return `${v.toFixed(dec)} ${UNITS[idx]}`;
+}
+
+function formatRateValue(value: number): string {
+  if (value >= 100) return Math.round(value).toString();
+  if (value >= 10) return trimFixed(value, 1);
+  // 只会以 bitsPerSec / divisor 的形式调用,且 bitsPerSec >= divisor,所以 value 恒 >= 1,
+  // 不存在小于 1 的分支。
+  return trimFixed(value, 2);
+}
+
+export function formatTrafficRate(bytesPerSec: number | undefined | null): TrafficRateDisplay {
+  if (!bytesPerSec || !Number.isFinite(bytesPerSec) || bytesPerSec <= 0) {
+    return {
+      value: "0",
+      unit: "bps",
+      bitsPerSec: 0,
+    };
+  }
+
+  const bitsPerSec = bytesPerSec * 8;
+  for (const { unit, divisor } of TRAFFIC_RATE_THRESHOLDS) {
+    if (bitsPerSec >= divisor) {
+      return {
+        value: formatRateValue(bitsPerSec / divisor),
+        unit,
+        bitsPerSec,
+      };
+    }
+  }
+
+  return {
+    value: bitsPerSec >= 100 ? Math.round(bitsPerSec).toString() : trimFixed(bitsPerSec, 1),
+    unit: "bps",
+    bitsPerSec,
+  };
+}
+
+export function formatTrafficRateLabel(bytesPerSec: number | undefined | null): string {
+  const rate = formatTrafficRate(bytesPerSec);
+  return `${rate.value} ${rate.unit}`;
+}
+
+export interface ByteRateDisplay {
+  value: string;
+  unit: string;
+}
+
+// 按字节算的速率(KB/s · MB/s · GB/s · TB/s)——和 formatBytes 同一套 1024 进制,只是加了 "/s" 后缀。
+// 用在传输速度按字节比按比特更自然的地方(如首页实时带宽和节点卡速度),而不是 bps/Kbps/Mbps。
+export function formatByteRate(bytesPerSec: number | undefined | null): ByteRateDisplay {
+  const [value, unit = "B"] = formatBytes(bytesPerSec).split(" ");
+  return { value, unit: `${unit}/s` };
+}
+
+export function formatByteRateLabel(bytesPerSec: number | undefined | null): string {
+  const { value, unit } = formatByteRate(bytesPerSec);
+  return `${value} ${unit}`;
+}
+
+export function formatUptimeDays(seconds: number): { value: string; unit: string } {
+  if (!seconds || seconds <= 0) return { value: "—", unit: "" };
+  const days = seconds / 86400;
+  if (days >= 1) return { value: Math.floor(days).toString(), unit: "天" };
+  const hours = seconds / 3600;
+  if (hours >= 1) return { value: Math.floor(hours).toString(), unit: "小时" };
+  const minutes = seconds / 60;
+  return { value: Math.floor(minutes).toString(), unit: "分钟" };
+}
+
+// 把节点的 `expired_at` 解析成绝对毫秒时间戳,没有真实到期时返回 null。Komari 按后端/agent 版本会用
+// 几种方式编码"无到期":JSON null(经我们的 zod 转换变成 "")、Go 零时 "0001-01-01T00:00:00Z"
+// (会被解析成公元 1 年,即 ≤0 的 epoch),或数字哨兵 0 / -1。这些都不是真实的过去日期——任由 Date.parse
+// 把它们变成 1/2000/2001 年,正是让永不过期的节点渲染成"已过期"并从成本汇总里掉出去的原因。裸正数则
+// 当作 unix 时间戳。
+export function resolveExpireTimestamp(
+  iso: string | number | null | undefined,
+): number | null {
+  if (iso == null) return null;
+  const raw = String(iso).trim();
+  if (raw === "") return null;
+  if (/^-?\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (n <= 0) return null; // 0 / -1 "无到期" 哨兵值
+    return n < 1e12 ? n * 1000 : n; // unix 秒 vs. 毫秒
+  }
+  const ts = Date.parse(raw);
+  if (Number.isNaN(ts) || ts <= 0) return null; // 无法解析或 Go 零时
+  return ts;
+}
+
+export function getExpireDaysRemaining(
+  iso: string | number | null | undefined,
+  now = Date.now(),
+): number | null {
+  const ts = resolveExpireTimestamp(iso);
+  if (ts == null) return null;
+  return Math.floor((ts - now) / 86400000);
+}
+
+function resolveExpireTone(days: number | null | undefined): ExpireTone {
+  if (days == null || !Number.isFinite(days)) return "none";
+  if (days > LONG_TERM_EXPIRE_DAYS) return "long";
+  if (days > 30) return "ok";
+  if (days > 7) return "warn";
+  return "critical";
+}
+
+export function formatExpireDays(iso: string | null | undefined): { value: string; unit: string; tone: ExpireTone } {
+  const days = getExpireDaysRemaining(iso);
+  const tone = resolveExpireTone(days);
+  if (days == null) return { value: "—", unit: "", tone };
+  if (tone === "long") return { value: "长期", unit: "", tone };
+  if (tone === "ok" || tone === "warn") return { value: days.toString(), unit: "天", tone };
+  if (days > 0) return { value: days.toString(), unit: "天", tone };
+  if (days === 0) return { value: "今日", unit: "", tone };
+  return { value: "已过期", unit: "", tone };
+}
+
+function inferPlainTagColor(label: string): string {
+  const normalized = label.trim().toLowerCase();
+
+  if (/(cn2gia|9929|cmin2)/i.test(normalized)) {
+    return "blue";
+  }
+
+  if (/(163pp|163|4837|cmi)/i.test(normalized)) {
+    return "green";
+  }
+
+  return "violet";
+}
+
+/** 把 `tag1<color>;tag2<color2>` 解析成 [{ label, color }]。 */
+export function parseTags(raw: string | undefined | null): Array<{ label: string; color: string }> {
+  if (!raw) return [];
+  return raw
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const m = item.match(/^(.*?)<([a-zA-Z]+)>$/);
+      if (m) return { label: m[1].trim(), color: m[2].toLowerCase() };
+      return { label: item, color: inferPlainTagColor(item) };
+    });
+}

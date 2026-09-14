@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "official-v1.4",
+  "label": "Official Komari 1.4.3",
+  "source": {
+    "repository": "https://github.com/komari-monitor/komari",
+    "release": "v1.4.3",
+    "audited_main": {
+      "ref": "main",
+      "commit": "b11ffd3aa7cca03502a75eb64ecbe827d6831d3a",
+      "checked_at": "2026-09-08"
+    }
+  },
+  "agent": {
+    "repository": "https://github.com/komari-monitor/komari-agent",
+    "release": "v1.2.60",
+    "audited_main": {
+      "ref": "main",
+      "commit": "f7c16a94ba7dd3ce57fbe86c6131d995f645d8d8",
+      "checked_at": "2026-09-08"
+    }
+  },
+  "discovery": {
+    "method": "rpc.methods",
+    "params": {
+      "internal": true
+    },
+    "response": {
+      "type": "string[]"
+    }
+  },
+  "required_methods": [
+    "rpc.methods",
+    "common:getNodesLatestStatus",
+    "public:getPublicPingTasks",
+    "public:queryMetrics",
+    "public:getPingMetricStats"
+  ]
+}
