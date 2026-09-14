@@ -227,6 +227,7 @@ export function Instance() {
               uuid={uuid}
               hours={customPing ? (Date.parse(appliedRange.end) - Date.parse(appliedRange.start)) / 3_600_000 : pingHours}
               range={customPing ? appliedRange : undefined}
+              retentionHours={config?.ping_record_preserve_time}
               active={chartType === "ping"}
             />
           ) : null}

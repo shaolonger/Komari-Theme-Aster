@@ -231,22 +231,22 @@ export function getChartTooltipPosition({
 
 // LoadChart 和 PingChart 共享的光标/tooltip 流程。两者接的是同一套 uPlot hook——mouseleave 时隐藏，
 // 光标移动时读取悬停的 x 时间戳，用 getChartTooltipPosition 定位并提交 tooltip——所以只有每行的
-// 格式化 (buildRows) 和 tooltip 预估宽度不同。`dataRef` 指向实时的 AlignedData (chart 把自己的数据
-// 存在 ref 里，免得 hook 闭包拿到过期数据)。
+// 格式化 (buildRows) 和 tooltip 预估宽度不同。时间和值都直接读取触发 hook 的 uPlot 实例数据，
+// 避免范围切换后 React ref 与新图实例短暂错位，造成不同位置显示同一个旧时刻。
 export function buildChartTooltipHooks({
-  dataRef,
   rangeHours,
   displayTimeZone,
   estimatedWidth,
+  maxSnapDistancePx,
   setTooltip,
   buildRows,
 }: {
-  dataRef: { readonly current: uPlot.AlignedData };
   rangeHours: number;
   displayTimeZone?: DisplayTimeZone;
   estimatedWidth: number;
+  maxSnapDistancePx?: number;
   setTooltip: Dispatch<SetStateAction<ChartTooltipState>>;
-  buildRows: (idx: number) => ChartTooltipState["rows"];
+  buildRows: (idx: number, data: uPlot.AlignedData) => ChartTooltipState["rows"];
 }): { onInit: (u: uPlot) => void; onSetCursor: (u: uPlot) => void } {
   const hide = () => setTooltip((prev) => ({ ...prev, show: false }));
   return {
@@ -259,15 +259,23 @@ export function buildChartTooltipHooks({
         hide();
         return;
       }
-      const timestamp = dataRef.current[0]?.[idx];
+      const timestamp = u.data[0]?.[idx];
       if (typeof timestamp !== "number") {
         hide();
         return;
       }
       const bbox = u.root.getBoundingClientRect();
       const anchorX = u.valToPos(timestamp, "x");
+      if (
+        maxSnapDistancePx != null &&
+        typeof u.cursor.left === "number" &&
+        Math.abs(anchorX - u.cursor.left) > maxSnapDistancePx
+      ) {
+        hide();
+        return;
+      }
       const anchorY = typeof u.cursor.top === "number" ? u.cursor.top : bbox.height * 0.5;
-      const rows = buildRows(idx);
+      const rows = buildRows(idx, u.data);
       const position = getChartTooltipPosition({
         containerWidth: bbox.width,
         containerHeight: bbox.height,

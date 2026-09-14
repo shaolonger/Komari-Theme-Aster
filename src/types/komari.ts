@@ -387,6 +387,9 @@ export interface PingRecordsResponse {
   count: number;
   records: PingRecord[];
   tasks: PingTask[];
+  /** Exact query window returned by Komari; record coverage can be shorter. */
+  from?: string | number;
+  to?: string | number;
 }
 
 export const PingBasicInfoSchema = z

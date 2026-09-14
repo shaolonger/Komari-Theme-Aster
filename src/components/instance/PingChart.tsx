@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
@@ -8,6 +8,7 @@ import {
   buildChartTooltipHooks,
   colorForSeries,
   createTimeAxisFormatter,
+  formatChartCoverageTime,
   getAxisColors,
   toChartSeconds,
   useResponsiveChartSize,
@@ -22,7 +23,11 @@ import {
   smoothByCount,
 } from "./chartData";
 import { latencyHeatColor, lossHeatColor } from "@/utils/metricTone";
-import { getPingHistoryPointLimit } from "@/utils/pingHistoryResolution";
+import {
+  getPingHistoryPointLimit,
+  getPingHistoryQueryHours,
+  getPingHistoryWindow,
+} from "@/utils/pingHistoryResolution";
 import { getPingRecordSampleCounts, isValidPingLatency } from "@/utils/pingSamples";
 import { formatLatency, formatMetricNumber, formatPacketLoss } from "@/utils/format";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -52,13 +57,21 @@ export function PingChart({
   hours,
   active = true,
   range,
+  retentionHours,
 }: {
   uuid: string;
   hours: number;
   active?: boolean;
   range?: PingTimeRange;
+  retentionHours?: number | null;
 }) {
-  const { data, isLoading, error, refetch, dataUpdatedAt } = usePingRecords(uuid, hours, active, range);
+  const queryHours = getPingHistoryQueryHours(hours, retentionHours, Boolean(range));
+  const { data, isLoading, error, refetch, dataUpdatedAt } = usePingRecords(
+    uuid,
+    queryHours,
+    active,
+    range,
+  );
   const { resolvedAppearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
@@ -66,7 +79,6 @@ export function PingChart({
   const [hiddenTasks, setHiddenTasks] = useState<Set<number>>(new Set());
   const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
-  const chartRef = useRef<uPlot.AlignedData>([[]]);
   const [tooltip, setTooltip] = useState<ChartTooltipState>({
     show: false,
     left: 0,
@@ -108,6 +120,12 @@ export function PingChart({
     () => new Set(visibleTasks.map((task) => task.id)),
     [visibleTasks],
   );
+  const retentionLimited = !range &&
+    retentionHours != null &&
+    Number.isFinite(retentionHours) &&
+    retentionHours > 0 &&
+    hours > retentionHours;
+  const displayHours = retentionLimited ? queryHours : hours;
 
   useEffect(() => {
     setHiddenTasks(new Set());
@@ -175,7 +193,7 @@ export function PingChart({
       chartPoints.map((point) => point[taskKey]),
     );
 
-    const reduced = downsamplePingAligned(times, perTask, getPingHistoryPointLimit(hours));
+    const reduced = downsamplePingAligned(times, perTask, getPingHistoryPointLimit(queryHours));
     // 平滑只覆盖有限真实时间；7 天和 1 月降采样后的单点已代表数小时，不应再跨桶平均。
     const smoothed = smoothByCount(
       reduced.perTask,
@@ -183,10 +201,28 @@ export function PingChart({
     );
 
     return [reduced.times, ...smoothed] as uPlot.AlignedData;
-  }, [cutPeak, data, hours, taskKeySet, taskKeys, tasks]);
+  }, [cutPeak, data, queryHours, taskKeySet, taskKeys, tasks]);
 
-  useEffect(() => {
-    if (chart) chartRef.current = chart;
+  const chartWindow = useMemo(() => {
+    const timestamps = chart?.[0] ?? [];
+    const latestSample = timestamps.length > 0
+      ? timestamps[timestamps.length - 1]
+      : null;
+    return getPingHistoryWindow({
+      requestedHours: displayHours,
+      explicitStart: range ? toChartSeconds(range.start) : null,
+      explicitEnd: range ? toChartSeconds(range.end) : null,
+      responseEnd: data?.to != null ? toChartSeconds(data.to) : null,
+      latestSample: typeof latestSample === "number" ? latestSample : null,
+    });
+  }, [chart, data?.to, displayHours, range]);
+
+  const retainedCoverage = useMemo(() => {
+    if (!chart || chart[0].length === 0) return null;
+    const first = chart[0][0];
+    const last = chart[0][chart[0].length - 1];
+    if (typeof first !== "number" || typeof last !== "number") return null;
+    return { first, last };
   }, [chart]);
 
   const yRange = useMemo<[number | null, number | null]>(() => {
@@ -222,16 +258,18 @@ export function PingChart({
     if (!chart) return null;
     const { grid, text } = getAxisColors(isDark);
     const tooltipHooks = buildChartTooltipHooks({
-      dataRef: chartRef,
-      rangeHours: hours,
+      rangeHours: displayHours,
       displayTimeZone,
       estimatedWidth: 196,
+      // Refuse long-distance snapping after drag-zooming or when a custom
+      // range contains an empty section.
+      maxSnapDistancePx: 28,
       setTooltip,
-      buildRows: (idx) =>
+      buildRows: (idx, currentData) =>
         visibleTasks
           .map((task) => {
             const taskIndex = taskIndexById.get(task.id) ?? 0;
-            const raw = chartRef.current[taskIndex + 1]?.[idx] as number | null | undefined;
+            const raw = currentData[taskIndex + 1]?.[idx] as number | null | undefined;
             return {
               label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
               raw: typeof raw === "number" && Number.isFinite(raw) ? raw : null,
@@ -255,7 +293,10 @@ export function PingChart({
       cursor: { drag: { x: true, y: false } },
       legend: { show: false },
       scales: {
-        x: { time: true },
+        x: {
+          time: true,
+          ...(chartWindow ? { auto: false, range: chartWindow } : {}),
+        },
         y: { auto: false, range: yRange },
       },
       axes: [
@@ -264,7 +305,7 @@ export function PingChart({
           grid: { stroke: grid, width: 1 },
           ticks: { stroke: grid },
           size: 36,
-          values: createTimeAxisFormatter(hours, displayTimeZone),
+          values: createTimeAxisFormatter(displayHours, displayTimeZone),
         },
         {
           stroke: text,
@@ -292,10 +333,11 @@ export function PingChart({
     };
   }, [
     chart,
+    chartWindow,
     connectNulls,
     displayTimeZone,
+    displayHours,
     hiddenTasks,
-    hours,
     isDark,
     taskColors,
     taskIndexById,
@@ -400,6 +442,17 @@ export function PingChart({
   return (
     <InstancePanel title="Ping 图表">
       {error && <div role="alert" className="surface-inset p-3 text-sm">Ping 数据加载失败：{error.message}。请重试或调整查询范围。</div>}
+      {retentionLimited && (
+        <div className="instance-ping-retention-notice" role="status">
+          <strong>历史保留不足</strong>
+          <span>
+            当前服务端只保留 {retentionHours} 小时 Ping 数据，无法还原所选{hours === 168 ? "7 天" : hours === 720 ? "1 月" : `${hours} 小时`}的更早记录。
+            图表已按真实密度放大显示当前可用历史
+            {retainedCoverage ? `（${formatChartCoverageTime(retainedCoverage.first, displayTimeZone)} – ${formatChartCoverageTime(retainedCoverage.last, displayTimeZone)}）` : ""}。
+            将 Komari 的 Ping 记录保留时长调整到至少 {hours} 小时后，新历史会逐步积累。
+          </span>
+        </div>
+      )}
       <div className="instance-ping-toolbar">
         <button
           type="button"
@@ -481,7 +534,14 @@ export function PingChart({
         })}
       </div>
 
-      <div ref={chartSizeRef} className="instance-uplot-wrap is-large">
+      <div
+        ref={chartSizeRef}
+        className="instance-uplot-wrap is-large"
+        data-query-hours={queryHours}
+        data-window-start={chartWindow?.[0]}
+        data-window-end={chartWindow?.[1]}
+        data-retention-limited={retentionLimited ? "true" : "false"}
+      >
         {chart && options && visibleTasks.length > 0 ? (
           <>
             <UplotReact

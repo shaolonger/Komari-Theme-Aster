@@ -599,6 +599,8 @@ export async function getOfficialComparisonPingRecords({
     count: records.length,
     records,
     tasks: scopedOfficialPingTasks(tasks, entityIds, observedTaskIds),
+    from: response.start ?? window.start.toISOString(),
+    to: response.end ?? window.end.toISOString(),
   };
 }
 

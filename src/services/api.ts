@@ -34,6 +34,8 @@ const ApiEnvelope = <T extends z.ZodTypeAny>(inner: T) =>
 const RpcRecordsSchema = z
   .object({
     count: z.number().default(0),
+    from: z.union([z.string(), z.number()]).optional(),
+    to: z.union([z.string(), z.number()]).optional(),
     records: z.unknown().optional(),
     tasks: z.unknown().optional(),
     basic_info: z.unknown().optional(),
@@ -51,6 +53,8 @@ const DEFAULT_API_TIMEOUT_MS = 12_000;
 
 interface RpcRecordsPayload {
   count?: number;
+  from?: string | number;
+  to?: string | number;
   records?: unknown;
   tasks?: unknown;
   basic_info?: unknown;
@@ -296,6 +300,8 @@ function normalizeRpcPingRecords(
     count: payload.count || records.length,
     records,
     tasks,
+    from: payload.from,
+    to: payload.to,
   };
 }
 
@@ -563,6 +569,8 @@ async function getLegacyPingRecords(uuid: string, hours: number): Promise<PingRe
     `/api/records/ping?${new URLSearchParams({ uuid, hours: String(hours) })}`,
     z.object({
       count: z.number().default(0),
+      from: z.union([z.string(), z.number()]).optional(),
+      to: z.union([z.string(), z.number()]).optional(),
       records: z.array(PingRecordSchema).default([]),
       tasks: z.array(PingTaskSchema).default([]),
     }),

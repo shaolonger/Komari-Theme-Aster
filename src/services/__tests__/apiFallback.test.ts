@@ -328,6 +328,8 @@ describe("RPC compatibility fallback", () => {
           });
         }
         return Promise.resolve({
+          start: "2025-12-31T23:00:00.000Z",
+          end: "2026-01-01T00:00:00.000Z",
           series: [{
             metric_key: "ping.latency_ms",
             entity_id: "node-a",
@@ -347,6 +349,10 @@ describe("RPC compatibility fallback", () => {
     expect(load.records[0]).toMatchObject({ client: "node-a", cpu: 12 });
     expect(ping.records[0]).toMatchObject({ client: "node-a", task_id: 8, value: 25 });
     expect(ping.tasks).toEqual([expect.objectContaining({ id: 8, name: "Edge" })]);
+    expect(ping).toMatchObject({
+      from: "2025-12-31T23:00:00.000Z",
+      to: "2026-01-01T00:00:00.000Z",
+    });
     expect(rpcCall.mock.calls.map(([method]) => method)).not.toContain("common:getRecords");
   });
 

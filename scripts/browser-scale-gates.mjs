@@ -325,6 +325,7 @@ const server = createServer(async (request, response) => {
     const publicConfig = {
       sitename: fixture.docs ? "Aster 演示站" : "Komari Scale Gate",
       theme: "Aster",
+      ...(fixture.ui ? { ping_record_preserve_time: 24 } : {}),
       theme_settings: {
         showHomeOverview: Boolean(fixture.docs),
         showGroupTabs: Boolean(fixture.docs),
@@ -803,6 +804,20 @@ try {
       await waitUntil(cdp, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === ${JSON.stringify(label)} && b.dataset.active === 'true')`, 6_000);
     }
     await waitUntil(cdp, `document.querySelector('.instance-chart-view:not([hidden]) .uplot canvas') !== null`, 6_000);
+    if (label === "7 天" || label === "1 月") {
+      await waitUntil(cdp, `(() => {
+        const chart = document.querySelector('.instance-chart-view:not([hidden]) .instance-uplot-wrap');
+        const start = Number(chart?.dataset.windowStart);
+        const end = Number(chart?.dataset.windowEnd);
+        return chart?.dataset.queryHours === '24' &&
+          chart?.dataset.retentionLimited === 'true' &&
+          Math.abs((end - start) - ${24 * 3_600}) < 2;
+      })()`, 6_000);
+      failGate(
+        await cdp.value(`document.querySelector('.instance-ping-retention-notice')?.textContent.includes('只保留 24 小时') === true`),
+        `${label} Ping range did not explain the 24-hour server retention limit`,
+      );
+    }
     if (label === "1 月" && process.env.BROWSER_GATE_SCREENSHOT) {
       await new Promise((resolve) => setTimeout(resolve, 350));
       const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
@@ -810,12 +825,12 @@ try {
     }
   }
   failGate(
-    rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Number(params.max_points) === 2_016),
-    "7-day Ping range did not request five-minute history resolution",
-  );
-  failGate(
-    rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Number(params.max_points) === 4_320),
-    "monthly Ping range did not request ten-minute history resolution",
+    rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => {
+      const start = Date.parse(String(params.start));
+      const end = Date.parse(String(params.end));
+      return Number(params.max_points) === 160 && Math.abs(end - start - 24 * 3_600_000) < 2_000;
+    }),
+    "retention-limited Ping history did not request the available 24-hour slice at full density",
   );
   await waitUntil(cdp, `document.querySelectorAll('input[type="datetime-local"]').length === 2`, 2_000);
   await cdp.value(`(() => {

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
@@ -273,7 +273,6 @@ const ChartCard = memo(function ChartCard({
   axisKind?: "default" | "percent" | "network" | "count";
   axisSize?: number;
 }) {
-  const dataRef = useRef<uPlot.AlignedData>([[]]);
   const [tooltip, setTooltip] = useState<ChartTooltipState>({
     show: false,
     left: 0,
@@ -282,9 +281,6 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -316,17 +312,16 @@ const ChartCard = memo(function ChartCard({
   // 不含尺寸的增强配置 (base + 交互 hook)。resize 时保持稳定，最终对象上只有 width/height 变。
   const enhancedOptions = useMemo<Omit<uPlot.Options, "width" | "height">>(() => {
     const tooltip = buildChartTooltipHooks({
-      dataRef,
       rangeHours,
       displayTimeZone,
       estimatedWidth: 176,
       setTooltip,
-      buildRows: (idx) =>
+      buildRows: (idx, currentData) =>
         keys.map((key, keyIndex) => ({
           label: getSeriesLabel(key),
           value: formatTooltipValue(
             key,
-            dataRef.current[keyIndex + 1]?.[idx] as number | null | undefined,
+            currentData[keyIndex + 1]?.[idx] as number | null | undefined,
             unit,
           ),
           color: colors[keyIndex] ?? colors[0],

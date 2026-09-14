@@ -317,7 +317,6 @@ function ComparisonTrendChart({
 }) {
   const { resolvedAppearance } = usePreferences();
   const { w, h, ref } = useResponsiveChartSize("wide");
-  const dataRef = useRef<uPlot.AlignedData>([[]]);
   const [tooltip, setTooltip] = useState<ChartTooltipState>({
     show: false,
     left: 0,
@@ -335,7 +334,6 @@ function ComparisonTrendChart({
     () => [trend.times, ...trend.valuesBySeries] as uPlot.AlignedData,
     [trend],
   );
-  dataRef.current = data;
   const hasRenderableData = trend.valuesBySeries.some((values) =>
     values.some((value) => typeof value === "number" && Number.isFinite(value)),
   );
@@ -347,17 +345,16 @@ function ComparisonTrendChart({
     const isDark = resolvedAppearance === "dark";
     const { grid, text } = getAxisColors(isDark);
     const tooltipHooks = buildChartTooltipHooks({
-      dataRef,
       rangeHours: hours,
       displayTimeZone,
       estimatedWidth: 220,
       setTooltip,
-      buildRows: (idx) =>
+      buildRows: (idx, currentData) =>
         visualSeries.map((item, index) => ({
           label: item.name,
           value: formatComparisonValue(
             metricKey,
-            dataRef.current[index + 1]?.[idx] as number | null | undefined,
+            currentData[index + 1]?.[idx] as number | null | undefined,
           ),
           color: colors[index],
         })),

@@ -1095,6 +1095,26 @@ body::after {
   margin-bottom: 12px;
 }
 
+.instance-ping-retention-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--status-warning) 38%, var(--hairline));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--status-warning) 8%, var(--surface));
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.instance-ping-retention-notice strong {
+  flex: 0 0 auto;
+  color: var(--status-warning);
+  font-weight: 700;
+}
+
 .instance-ping-tasks {
   display: flex;
   flex-wrap: wrap;
