@@ -793,10 +793,13 @@ try {
   await waitUntil(cdp, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === 'Ping')`, 6_000);
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Ping').click()`);
   await waitUntil(cdp, `document.querySelector('.instance-ping-task') !== null`, 6_000);
-  for (const label of ["6 小时", "1 天", "自定义"]) {
+  for (const label of ["6 小时", "1 天", "7 天", "1 月", "自定义"]) {
     await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
+    if (label !== "自定义") {
+      await waitUntil(cdp, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === ${JSON.stringify(label)} && b.dataset.active === 'true')`, 6_000);
+    }
     await waitUntil(cdp, `document.querySelector('.instance-chart-view:not([hidden]) .uplot canvas') !== null`, 6_000);
-    if (label === "1 天" && process.env.BROWSER_GATE_SCREENSHOT) {
+    if (label === "1 月" && process.env.BROWSER_GATE_SCREENSHOT) {
       await new Promise((resolve) => setTimeout(resolve, 350));
       const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
       writeFileSync(`${process.env.BROWSER_GATE_SCREENSHOT}.ping.png`, Buffer.from(screenshot.data, "base64"));

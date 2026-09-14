@@ -14,6 +14,7 @@ import {
   type ChartTooltipState,
 } from "./chartShared";
 import {
+  choosePingSmoothingWindow,
   cutPeakValues,
   detectTypicalIntervalSeconds,
   downsamplePingAligned,
@@ -45,11 +46,9 @@ function weightedPercentileFromSorted(
   return sorted[sorted.length - 1]?.value ?? null;
 }
 
-// 渲染前先按时间分桶降采样到这么多点（避免 uPlot 抽稀尖刺），再做按点数的滑动平均磨平。
-// 降采样后各时段点数一致，用固定点窗能让 1h/4h/1d 平滑度统一。点窗调大 → 更平滑。
+// 渲染前先按时间分桶降采样到这么多点，避免 uPlot 自身抽稀尖刺。后续平滑窗口会按
+// 实际桶间隔折算为有限时间，而非固定点数，确保长周期仍能呈现真实波动。
 const MAX_RENDER_POINTS = 160;
-const SMOOTH_WINDOW_POINTS = 7; // 默认轻度平滑
-const SMOOTH_WINDOW_POINTS_PEAK = 13; // “削峰平滑”开启时更强
 
 export function PingChart({
   uuid,
@@ -180,10 +179,10 @@ export function PingChart({
     );
 
     const reduced = downsamplePingAligned(times, perTask, MAX_RENDER_POINTS);
-    // 始终做轻度按点滑动平均消抖（各时段一致）；“削峰平滑”开启时点窗加大（并已在前面叠加 cutPeakValues 削峰）。
+    // 平滑只覆盖有限真实时间；7 天和 1 月降采样后的单点已代表数小时，不应再跨桶平均。
     const smoothed = smoothByCount(
       reduced.perTask,
-      cutPeak ? SMOOTH_WINDOW_POINTS_PEAK : SMOOTH_WINDOW_POINTS,
+      choosePingSmoothingWindow(reduced.times, cutPeak),
     );
 
     return [reduced.times, ...smoothed] as uPlot.AlignedData;

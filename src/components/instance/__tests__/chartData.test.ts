@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  choosePingSmoothingWindow,
   cutPeakValues,
   downsampleAligned,
   downsamplePingAligned,
@@ -7,6 +8,23 @@ import {
   insertMetricGapSentinels,
   type TimedMetricPoint,
 } from "@/components/instance/chartData";
+
+describe("Ping smoothing window", () => {
+  it("does not average across long-range buckets", () => {
+    const sevenDayBuckets = Array.from({ length: 160 }, (_, index) => index * 3_780);
+    const monthBuckets = Array.from({ length: 160 }, (_, index) => index * 16_200);
+
+    expect(choosePingSmoothingWindow(sevenDayBuckets)).toBe(1);
+    expect(choosePingSmoothingWindow(monthBuckets)).toBe(1);
+    expect(choosePingSmoothingWindow(monthBuckets, true)).toBe(1);
+  });
+
+  it("keeps a small smoothing window for dense short-range samples", () => {
+    const oneHourBuckets = Array.from({ length: 160 }, (_, index) => index * 23);
+
+    expect(choosePingSmoothingWindow(oneHourBuckets)).toBe(7);
+  });
+});
 
 describe("fillMissingMetricPoints", () => {
   it("does not erase every day-scale bucket when losses are distributed throughout the day", () => {

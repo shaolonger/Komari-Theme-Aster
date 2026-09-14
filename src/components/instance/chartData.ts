@@ -471,8 +471,28 @@ export function downsampleAligned(
   return { times: outTimes, perTask: outPerTask };
 }
 
-// 按点数的滑动平均：每个数值点取前后各 floor(window/2) 个点取均值。降采样后各时段点数一致，
-// 用固定点窗能让 1h/4h/1d 获得一致的平滑度（按时间窗会因每点时间跨度不同而力度不均）。
+/**
+ * Keep Ping smoothing bounded in elapsed time instead of chart points. A fixed
+ * seven-point window becomes a many-hour (or day-scale) average after a 7-day
+ * or 30-day chart has been downsampled, which hides the real trend.
+ */
+export function choosePingSmoothingWindow(
+  times: number[],
+  peakMode = false,
+) {
+  if (times.length < 2) return 1;
+  const intervalSeconds = detectTypicalIntervalSeconds(times, Number.MAX_SAFE_INTEGER);
+  if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return 1;
+
+  const maxWindowPoints = peakMode ? 13 : 7;
+  const maxSmoothingSeconds = peakMode ? 30 * 60 : 15 * 60;
+  const candidate = Math.min(maxWindowPoints, Math.floor(maxSmoothingSeconds / intervalSeconds));
+  if (candidate < 3) return 1;
+  return candidate % 2 === 0 ? candidate - 1 : candidate;
+}
+
+// 按点数的滑动平均：每个数值点取前后各 floor(window/2) 个点取均值。窗口由
+// choosePingSmoothingWindow 按实际采样间隔换算，因此长周期不会被额外平滑失真。
 // null/undefined（断点/off-phase）原样保留。
 export function smoothByCount(
   perTask: Array<Array<number | null | undefined>>,

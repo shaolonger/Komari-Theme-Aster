@@ -1582,8 +1582,6 @@
 
 .home-fleet-metric {
   cursor: pointer;
-  border-color: transparent;
-  background: transparent;
 }
 
 .home-fleet-metric > span {
@@ -1602,7 +1600,7 @@
 }
 
 .home-fleet-metric:not(:disabled):hover {
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--status-success) 30%, var(--border-strong));
   background: color-mix(in srgb, var(--status-success) 7%, var(--surface-elev-a));
 }
 
