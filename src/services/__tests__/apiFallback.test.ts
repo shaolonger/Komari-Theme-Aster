@@ -429,6 +429,32 @@ describe("RPC compatibility fallback", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("sends an explicit custom time window for a load-history query", async () => {
+    rpcCall
+      .mockResolvedValueOnce({
+        jsonrpc_version: "2.0",
+        contract: "komari.rpc.v2.4",
+        methods: ["common:getRecords"],
+        capabilities: {},
+      })
+      .mockResolvedValueOnce({ count: 0, records: [] });
+
+    await getLoadRecords("node-a", 6, undefined, {
+      start: "2026-08-01T10:00:00.000Z",
+      end: "2026-08-01T16:00:00.000Z",
+    });
+
+    expect(rpcCall.mock.calls.at(-1)?.[0]).toBe("common:getRecords");
+    expect(rpcCall.mock.calls.at(-1)?.[1]).toEqual(
+      expect.objectContaining({
+        uuid: "node-a",
+        type: "load",
+        start: "2026-08-01T10:00:00.000Z",
+        end: "2026-08-01T16:00:00.000Z",
+      }),
+    );
+  });
+
   it("queries a comparison client set once for all load metrics", async () => {
     rpcCall
       .mockResolvedValueOnce({

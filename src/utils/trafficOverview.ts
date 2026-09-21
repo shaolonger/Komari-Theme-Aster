@@ -8,6 +8,7 @@ export interface HomeOverviewNode {
   group: string;
   region: string;
   online: boolean | null;
+  updatedAt: number;
   netUp: number;
   netDown: number;
   trafficUp: number;
@@ -107,6 +108,7 @@ export function buildHomeTrafficOverview(
 
 export function buildHomeOverviewNode(meta: NodeInfo, realtime: {
   online: boolean | null;
+  updatedAt: number;
   netUp: number;
   netDown: number;
   trafficUp: number;
@@ -118,6 +120,7 @@ export function buildHomeOverviewNode(meta: NodeInfo, realtime: {
     group: String(meta.group ?? "").trim(),
     region: String(meta.region ?? "").trim(),
     online: realtime.online,
+    updatedAt: Number.isFinite(realtime.updatedAt) ? realtime.updatedAt : 0,
     netUp: safeCounter(realtime.netUp),
     netDown: safeCounter(realtime.netDown),
     trafficUp: safeCounter(realtime.trafficUp),

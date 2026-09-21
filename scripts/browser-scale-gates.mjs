@@ -162,8 +162,9 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
+  const docsOffline = activeFixture.docs && index === 0;
   return {
-    online: true,
+    online: !docsOffline,
     cpu: (index + sequence) % 100,
     ram: 536_870_912 + ((index + sequence) % 100) * 1_048_576,
     ram_total: 2_147_483_648,
@@ -182,7 +183,7 @@ function officialLatestStatus(index, sequence) {
     connections_udp: 2,
     uptime: sequence,
     process: 20,
-    time: 1_700_000_000 + sequence,
+    time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : 1_700_000_000 + sequence,
   };
 }
 
@@ -325,7 +326,7 @@ const server = createServer(async (request, response) => {
     const publicConfig = {
       sitename: fixture.docs ? "Aster 演示站" : "Komari Scale Gate",
       theme: "Aster",
-      ...(fixture.ui ? { ping_record_preserve_time: 24 } : {}),
+      ...(fixture.ui ? { record_preserve_time: 744, ping_record_preserve_time: 24 } : {}),
       theme_settings: {
         showHomeOverview: Boolean(fixture.docs),
         showGroupTabs: Boolean(fixture.docs),
@@ -796,6 +797,24 @@ try {
   await cdp.call("Emulation.setFocusEmulationEnabled", { enabled: true });
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/instance/node-0` });
   await waitUntil(cdp, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === 'Ping')`, 6_000);
+  const loadRangeLabels = await cdp.value(`Array.from(document.querySelectorAll('.instance-chart-controls .instance-segmented.is-scrollable button')).map(button => button.textContent.trim())`);
+  failGate(loadRangeLabels.filter((label) => label === "1 月").length === 1, "load chart did not expose exactly one 1-month range");
+  failGate(!loadRangeLabels.includes("30 天") && !loadRangeLabels.includes("31 天"), "load chart still exposes duplicate 30/31-day ranges");
+  failGate(loadRangeLabels.includes("自定义"), "load chart custom range control is missing");
+  await cdp.value(`Array.from(document.querySelectorAll('.instance-chart-controls .instance-segmented.is-scrollable button')).find(button => button.textContent.trim() === '自定义').click()`);
+  await waitUntil(cdp, `document.querySelectorAll('input[type="datetime-local"]').length === 2`, 2_000);
+  await cdp.value(`(() => {
+    const inputs = document.querySelectorAll('input[type="datetime-local"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(inputs[0], '2026-08-01T18:00'); inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+    setter.call(inputs[1], '2026-08-02T00:00'); inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await cdp.value(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === '应用时间范围').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  failGate(rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Array.isArray(params.metric_keys) && params.metric_keys.includes("cpu.usage") && params.start === "2026-08-01T10:00:00.000Z" && params.end === "2026-08-01T16:00:00.000Z"), "custom load range was not sent in Beijing time");
+  if (process.env.BROWSER_GATE_SCREENSHOT) {
+    await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.load-custom.png`);
+  }
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Ping').click()`);
   await waitUntil(cdp, `document.querySelector('.instance-ping-task') !== null`, 6_000);
   for (const label of ["6 小时", "1 天", "7 天", "1 月", "自定义"]) {
@@ -912,6 +931,7 @@ try {
   await waitUntil(cdp, `document.activeElement === document.querySelector('.aster-studio-heading h1')`, 2_000);
   failGate(await cdp.value(`document.querySelector('.aster-studio-heading h1').getBoundingClientRect().top >= 0`), 'section heading is outside viewport after navigation');
   const initialDimensionCount = await cdp.value(`document.querySelectorAll('.studio-dimensions ol > li').length`);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.studio-dimensions ol > li')).every(row => row.querySelector('.studio-drag-handle')?.draggable)`), 'dimension ordering is missing draggable handles');
   await cdp.value(`Array.from(document.querySelectorAll('.studio-dimensions button')).find(b => b.textContent.includes('新增维度')).click()`);
   await waitUntil(cdp, `document.querySelectorAll('.studio-dimensions ol > li').length === ${initialDimensionCount + 1}`, 2_000);
   await cdp.value(`(() => { const select = document.querySelector('.studio-dimension-default select'); select.value = select.options[select.options.length - 1].value; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
@@ -931,6 +951,7 @@ try {
   await cdp.value(`Array.from(document.querySelectorAll('.studio-sort-editor header button')).find(b => b.textContent.includes('添加条件')).click()`);
   await waitUntil(cdp, `document.querySelectorAll('.studio-sort-editor li').length === 2`, 2_000);
   const initialSortOrder = await cdp.value(`Array.from(document.querySelectorAll('.studio-sort-editor li select:first-of-type')).map(s => s.value)`);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.studio-sort-editor li')).every(row => row.querySelector('.studio-drag-handle')?.draggable)`), 'saved-view ordering is missing draggable handles');
   await cdp.value(`document.querySelectorAll('.studio-sort-actions')[1].querySelector('button').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-sort-editor [role="status"]').textContent.includes('第 1 优先级')`, 2_000);
   failGate(await cdp.value(`document.querySelector('.studio-sort-editor li select').value`) !== initialSortOrder[0], 'sort priority did not change');
@@ -946,6 +967,7 @@ try {
   await cdp.call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   await waitUntil(cdp, `document.querySelector('.studio-tag-values').parentElement.parentElement.innerText.includes('Aster Test')`, 2_000);
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('巡检与指标')).click()`);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.studio-group-order li')).every(row => row.querySelector('.studio-drag-handle')?.draggable)`), 'group ordering is missing draggable handles');
   await cdp.value(`(() => { const toggle = document.querySelector('.studio-rating-editor > .studio-setting-switch input'); if (!toggle.checked) toggle.click(); })()`);
   await waitUntil(cdp, `!document.querySelector('.studio-rating-editor fieldset').disabled`, 2_000);
   await cdp.value(`(() => { const input = document.querySelector('input[aria-label="今日流量 第 2 级名称"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '日常负载'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -956,6 +978,11 @@ try {
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '选择当前结果').click()`);
   await waitUntil(cdp, `document.body.innerText.includes('批量配置 3 台 VPS')`, 2_000);
   await cdp.value(`(() => { const title = Array.from(document.querySelectorAll('strong')).find(e => e.textContent === '批量配置 3 台 VPS'); title.parentElement.querySelectorAll('input[type="checkbox"]').forEach(e => e.click()); })()`);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.studio-binding-batch [data-reorder-id]')).every(row => row.querySelector('.studio-drag-handle')?.draggable)`), 'batch task ordering is missing draggable handles');
+  if (process.env.BROWSER_GATE_SCREENSHOT) {
+    await cdp.value(`document.querySelector('.studio-binding-batch').scrollIntoView({ block: 'start' })`);
+    await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.drag-ordering.png`, { waitForImages: false });
+  }
   await cdp.value(`document.querySelector('button[aria-label="上移 Task 6"]').click()`);
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '替换所选 VPS 的任务').click()`);
   await cdp.value(`Array.from(document.querySelectorAll('summary')).find(e => e.textContent.includes('汇总策略')).click()`);
@@ -1087,6 +1114,10 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8 && document.title === 'Aster 演示站'`, 6_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-light.png`);
 
+    await cdp.value(`document.querySelector('[data-home-overview-trigger="status"]').click()`);
+    await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('在线状态') && document.querySelectorAll('.home-overview-row').length === 8`, 6_000);
+    failGate(await cdp.value(`document.querySelector('.home-overview-row:first-child').dataset.online === 'false' && document.querySelector('.home-overview-row:first-child').textContent.includes('离线于') && document.querySelector('.home-overview-row:first-child').textContent.includes('小时')`), 'online summary did not prioritize and describe the offline VPS');
+    await captureScreenshot(cdp, `${screenshotBase}-online-summary.png`, { waitForImages: false });
     await cdp.value(`document.querySelector('[data-home-overview-trigger="bandwidth"]').click()`);
     await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('实时带宽') && document.querySelectorAll('.home-overview-row').length === 8`, 6_000);
     await cdp.value(`document.querySelector('[data-home-overview-trigger="traffic"]').click()`);
@@ -1165,7 +1196,7 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-mobile.png`);
   }
-  results.push({ uiRegressions: "Ping ranges, VPS task save/reload, cross-category filtering, keyboard VPS search" });
+  results.push({ uiRegressions: "load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

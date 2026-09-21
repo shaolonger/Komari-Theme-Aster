@@ -288,6 +288,7 @@ export function ThemeManage() {
     [next[index], next[target]] = [next[target], next[index]];
     setDraftHomeGroupOrder(next);
   };
+  const reorderGroups = (groups: string[]) => setDraftHomeGroupOrder(groups);
 
   const visibleFacetClients = useMemo(() => {
     const keyword = facetSearch.trim().toLowerCase();
@@ -602,6 +603,17 @@ export function ThemeManage() {
       return next.map((dimension, orderIndex) => ({ ...dimension, order: (orderIndex + 1) * 10 }));
     });
   };
+  const reorderFacetDimensions = (dimensionIds: string[]) => {
+    setDraftFacetDimensions((prev) => {
+      const byId = new Map(normalizeHomeFacetDimensions(prev).map((dimension) => [dimension.id, dimension]));
+      return dimensionIds
+        .map((id, index) => {
+          const dimension = byId.get(id);
+          return dimension ? { ...dimension, order: (index + 1) * 10 } : null;
+        })
+        .filter((dimension): dimension is HomeFacetDimension => Boolean(dimension));
+    });
+  };
   const addFacetDimension = () => {
     setDraftFacetDimensions((prev) => {
       const normalized = normalizeHomeFacetDimensions(prev);
@@ -845,7 +857,7 @@ export function ThemeManage() {
         description="控制首页顶部总览、分组筛选和节点排序方式；适合节点较多时快速查看状态。"
         aside={<ListFilter size={16} />}
       >
-        <OverviewEditor overview={draftShowHomeOverview} groupsVisible={draftShowGroupTabs} offlineLast={draftMoveOfflineNodesBack} onOverviewChange={setDraftShowHomeOverview} onGroupsChange={setDraftShowGroupTabs} onOfflineChange={setDraftMoveOfflineNodesBack} groups={orderedDraftGroups} loading={clientsLoading} onMove={moveGroup}/>
+        <OverviewEditor overview={draftShowHomeOverview} groupsVisible={draftShowGroupTabs} offlineLast={draftMoveOfflineNodesBack} onOverviewChange={setDraftShowHomeOverview} onGroupsChange={setDraftShowGroupTabs} onOfflineChange={setDraftMoveOfflineNodesBack} groups={orderedDraftGroups} loading={clientsLoading} onMove={moveGroup} onReorder={reorderGroups}/>
 
         <RatingEditor enabled={draftShowOverviewRatings} onEnabledChange={setDraftShowOverviewRatings} style={draftOverviewRatingStyle} onStyleChange={setDraftOverviewRatingStyle} visible={{ traffic: draftShowTrafficRating, bandwidth: draftShowBandwidthRating, asset: draftShowAssetRating }} onVisibleChange={(kind, value) => ({ traffic: setDraftShowTrafficRating, bandwidth: setDraftShowBandwidthRating, asset: setDraftShowAssetRating })[kind](value)} labels={draftRatingLabels} onLabelsChange={setRatingLabelDraft}/>
 	      </StudioPanel>
@@ -856,7 +868,7 @@ export function ThemeManage() {
 	        aside={<Tags size={16} />}
 	      >
 	        <div className="flex flex-col gap-4">
-            <DimensionEditor dimensions={normalizedDraftFacetDimensions} defaultId={normalizedDraftHomeDefaultFacetDimension} builtIn={DEFAULT_HOME_FACET_IDS} onDefaultChange={setDraftHomeDefaultFacetDimension} onAdd={addFacetDimension} onUpdate={updateFacetDimension} onMove={moveFacetDimension} onRemove={removeFacetDimension}/>
+            <DimensionEditor dimensions={normalizedDraftFacetDimensions} defaultId={normalizedDraftHomeDefaultFacetDimension} builtIn={DEFAULT_HOME_FACET_IDS} onDefaultChange={setDraftHomeDefaultFacetDimension} onAdd={addFacetDimension} onUpdate={updateFacetDimension} onMove={moveFacetDimension} onReorder={reorderFacetDimensions} onRemove={removeFacetDimension}/>
 
 
 	          <section className="surface-inset px-4 py-4">
@@ -1078,7 +1090,7 @@ export function ThemeManage() {
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
-            <p className="text-xs text-[var(--text-secondary)]">按 VPS 勾选需要展示的任务，使用上下箭头调整卡片顺序。修改后点击页面顶部保存设置。</p>
+            <p className="text-xs text-[var(--text-secondary)]">按 VPS 勾选需要展示的任务，拖拽任务可直接调整卡片顺序，也可使用箭头微调。修改后点击页面顶部保存设置。</p>
             <div className="surface-inset flex items-center justify-between gap-3 px-3 py-2 text-[12px] text-[var(--text-secondary)]">
               <span>首页绑定</span>
               <strong className="text-[var(--text-primary)]">

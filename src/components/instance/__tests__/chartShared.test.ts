@@ -2,11 +2,33 @@ import { describe, expect, it, vi } from "vitest";
 import type uPlot from "uplot";
 import {
   buildChartTooltipHooks,
+  buildLoadTimeRangeOptions,
   buildPingTimeRangeOptions,
   type ChartTooltipState,
 } from "@/components/instance/chartShared";
 
 describe("Ping time range options", () => {
+  it("normalizes 30-day and 31-day retention into one 1-month load option", () => {
+    expect(buildLoadTimeRangeOptions(744).map((option) => option.label)).toEqual([
+      "实时",
+      "1 小时",
+      "6 小时",
+      "1 天",
+      "7 天",
+      "1 月",
+    ]);
+  });
+
+  it("does not append a duplicate 31-day Ping option", () => {
+    expect(buildPingTimeRangeOptions(744).map((option) => option.label)).toEqual([
+      "1 小时",
+      "6 小时",
+      "1 天",
+      "7 天",
+      "1 月",
+    ]);
+  });
+
   it("keeps the 7-day and 1-month controls visible with short advertised retention", () => {
     expect(buildPingTimeRangeOptions(24).map((option) => option.label)).toEqual([
       "1 小时",

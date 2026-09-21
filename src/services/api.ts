@@ -413,6 +413,7 @@ export async function getLoadRecords(
    * without adding a second per-chart HTTP request.
    */
   node?: NodeInfo,
+  range?: ComparisonTimeRange,
 ): Promise<LoadRecordsResponse> {
   let backend: Awaited<ReturnType<typeof getBackendProfile>> | undefined;
   try {
@@ -430,6 +431,7 @@ export async function getLoadRecords(
       hours,
       loadType: "all",
       nodes: node ? [node] : undefined,
+      range,
       maxPoints: getRecordsMaxCount(hours, LOAD_RECORDS_PER_HOUR),
     });
     const normalized = records[uuid] ?? [];
@@ -444,6 +446,10 @@ export async function getLoadRecords(
         uuid,
         hours,
         type: "load",
+        ...(range ? {
+          start: range.start,
+          end: range.end,
+        } : {}),
         maxCount,
       },
       RpcRecordsSchema,

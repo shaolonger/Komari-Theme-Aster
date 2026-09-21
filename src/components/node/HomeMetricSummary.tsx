@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDown, ArrowUp, CalendarClock, Gauge, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, CalendarClock, Gauge, WifiOff, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Flag } from "@/components/ui/Flag";
 import { formatByteRateLabel, formatBytes, getExpireDaysRemaining } from "@/utils/format";
 import type { HomeOverviewNode, HomeTrafficOverviewRow } from "@/utils/trafficOverview";
+import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { formatDisplayDateTime, type DisplayTimeZone } from "@/utils/timeDisplay";
 
-export type HomeMetricPanel = "bandwidth" | "traffic" | "expiry";
+export type HomeMetricPanel = "status" | "bandwidth" | "traffic" | "expiry";
 export type HomeTrafficTab = "today" | "month" | "total";
 
 interface HomeMetricSummaryProps {
@@ -20,9 +22,32 @@ interface HomeMetricSummaryProps {
 }
 
 function panelTitle(panel: HomeMetricPanel) {
+  if (panel === "status") return "VPS 在线状态";
   if (panel === "bandwidth") return "实时带宽排行";
   if (panel === "traffic") return "流量排行";
   return "7 天到期排行";
+}
+
+function formatOfflineDuration(updatedAt: number, now: number) {
+  if (!updatedAt || updatedAt > now) return "时长未知";
+  const minutes = Math.floor((now - updatedAt) / 60_000);
+  if (minutes < 1) return "不足 1 分钟";
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时 ${minutes % 60} 分钟`;
+  const days = Math.floor(hours / 24);
+  return `${days} 天 ${hours % 24} 小时`;
+}
+
+function formatOfflineAt(updatedAt: number, displayTimeZone: DisplayTimeZone) {
+  if (!updatedAt) return "离线时刻未知";
+  return `离线于 ${formatDisplayDateTime(updatedAt, displayTimeZone, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })}`;
 }
 
 function statusLabel(online: boolean | null) {
@@ -39,7 +64,7 @@ function expiryLabel(expiredAt: HomeOverviewNode["expiredAt"]) {
   return { label: `${days} 天后到期`, days };
 }
 
-function OverviewRow({ node, panel, trafficTab }: { node: HomeTrafficOverviewRow; panel: HomeMetricPanel; trafficTab: HomeTrafficTab }) {
+function OverviewRow({ node, panel, trafficTab, now, displayTimeZone }: { node: HomeTrafficOverviewRow; panel: HomeMetricPanel; trafficTab: HomeTrafficTab; now: number; displayTimeZone: DisplayTimeZone }) {
   const metadata = [node.group, node.region].filter(Boolean).join(" · ");
   const expiry = expiryLabel(node.expiredAt);
   const traffic = node[trafficTab === "total" ? "total" : trafficTab];
@@ -56,6 +81,12 @@ function OverviewRow({ node, panel, trafficTab }: { node: HomeTrafficOverviewRow
         <div className="home-overview-row-value is-bandwidth">
           <strong>{formatByteRateLabel(node.netUp + node.netDown)}</strong>
           <small><ArrowUp size={10} />{formatByteRateLabel(node.netUp)} <ArrowDown size={10} />{formatByteRateLabel(node.netDown)}</small>
+        </div>
+      )}
+      {panel === "status" && (
+        <div className="home-overview-row-value is-status">
+          <strong>{statusLabel(node.online)}{node.online === false ? ` · ${formatOfflineDuration(node.updatedAt, now)}` : ""}</strong>
+          <small>{node.online === false ? formatOfflineAt(node.updatedAt, displayTimeZone) : node.online === true ? "状态正常" : "等待首次上报"}</small>
         </div>
       )}
       {panel === "traffic" && (
@@ -86,9 +117,20 @@ export function HomeMetricSummary({
 }: HomeMetricSummaryProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const [hiddenTabIndex, setHiddenTabIndex] = useState(-1);
+  const [clock, setClock] = useState(() => Date.now());
+  const { displayTimeZone } = useThemeSettings();
   const rows = useMemo(() => {
     if (!panel) return [];
     return [...nodes].sort((left, right) => {
+      if (panel === "status") {
+        const rank = (online: boolean | null) => online === false ? 0 : online == null ? 1 : 2;
+        const statusDelta = rank(left.online) - rank(right.online);
+        if (statusDelta !== 0) return statusDelta;
+        if (left.online === false && right.online === false) {
+          return (left.updatedAt || Number.POSITIVE_INFINITY) - (right.updatedAt || Number.POSITIVE_INFINITY) || left.name.localeCompare(right.name, "zh-CN");
+        }
+        return left.name.localeCompare(right.name, "zh-CN");
+      }
       if (panel === "bandwidth") return right.netUp + right.netDown - left.netUp - left.netDown || left.name.localeCompare(right.name, "zh-CN");
       if (panel === "traffic") return right[trafficTab === "total" ? "total" : trafficTab].total - left[trafficTab === "total" ? "total" : trafficTab].total || left.name.localeCompare(right.name, "zh-CN");
       const leftDays = expiryLabel(left.expiredAt).days;
@@ -96,6 +138,13 @@ export function HomeMetricSummary({
       return leftDays - rightDays || left.name.localeCompare(right.name, "zh-CN");
     });
   }, [nodes, panel, trafficTab]);
+
+  useEffect(() => {
+    if (!open || panel !== "status") return;
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [open, panel]);
 
   useEffect(() => {
     setHiddenTabIndex(open ? 0 : -1);
@@ -123,7 +172,7 @@ export function HomeMetricSummary({
     <section ref={panelRef} className={`home-overview-panel${open ? " show" : ""}`} aria-label={panelTitle(panel)} aria-hidden={!open}>
       <header className="home-overview-header">
         <div className="home-overview-title">
-          {panel === "bandwidth" ? <Gauge size={16} /> : panel === "traffic" ? <Activity size={16} /> : <CalendarClock size={16} />}
+          {panel === "status" ? <WifiOff size={16} /> : panel === "bandwidth" ? <Gauge size={16} /> : panel === "traffic" ? <Activity size={16} /> : <CalendarClock size={16} />}
           <h3>{panelTitle(panel)}</h3>
         </div>
         <button type="button" className="home-overview-close" onClick={() => onOpenChange(false)} aria-label="关闭总览明细" tabIndex={hiddenTabIndex}><X size={18} /></button>
@@ -140,7 +189,7 @@ export function HomeMetricSummary({
       <div className="home-overview-content">
         {panel === "traffic" && trafficLoading && <div className="home-overview-empty">正在加载历史流量…</div>}
         {panel === "traffic" && trafficError && <div className="home-overview-empty">历史流量暂时不可用，当前仍显示实时累计值。</div>}
-        {rows.length > 0 ? rows.map((node) => <OverviewRow key={node.uuid} node={node} panel={panel} trafficTab={trafficTab} />) : !trafficLoading && <div className="home-overview-empty">暂无可用数据</div>}
+        {rows.length > 0 ? rows.map((node) => <OverviewRow key={node.uuid} node={node} panel={panel} trafficTab={trafficTab} now={clock} displayTimeZone={displayTimeZone} />) : !trafficLoading && <div className="home-overview-empty">暂无可用数据</div>}
       </div>
     </section>
   );

@@ -30,6 +30,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import type { NodeMetrics } from "@/types/komari";
 import type { DisplayTimeZone } from "@/utils/timeDisplay";
+import type { PingTimeRange } from "@/utils/pingTimeRange";
 
 const LOAD_HISTORY_SAMPLE_LIMIT = 360;
 const LOAD_HISTORY_RENDER_LIMIT = 720;
@@ -167,6 +168,7 @@ function buildBaseOptions({
   unit,
   resolvedAppearance,
   rangeHours,
+  xRange,
   displayTimeZone,
   spanGaps,
   axisKind = "default",
@@ -178,6 +180,7 @@ function buildBaseOptions({
   unit: string;
   resolvedAppearance: "light" | "dark";
   rangeHours: number;
+  xRange?: [number, number];
   displayTimeZone: DisplayTimeZone;
   spanGaps?: boolean;
   axisKind?: "default" | "percent" | "network" | "count";
@@ -190,7 +193,10 @@ function buildBaseOptions({
     padding: [8, 12, 10, 2],
     cursor: { drag: { x: true, y: false } },
     legend: { show: false },
-    scales: { x: { time: true }, y: { auto: true } },
+    scales: {
+      x: { time: true, ...(xRange ? { auto: false, range: xRange } : {}) },
+      y: { auto: true },
+    },
     axes: [
       {
         stroke: text,
@@ -249,6 +255,7 @@ const ChartCard = memo(function ChartCard({
   height,
   resolvedAppearance,
   rangeHours,
+  xRange,
   displayTimeZone,
   unit = "",
   spanGaps,
@@ -267,6 +274,7 @@ const ChartCard = memo(function ChartCard({
   height: number;
   resolvedAppearance: "light" | "dark";
   rangeHours: number;
+  xRange?: [number, number];
   displayTimeZone: DisplayTimeZone;
   unit?: string;
   spanGaps?: boolean;
@@ -290,6 +298,7 @@ const ChartCard = memo(function ChartCard({
         unit,
         resolvedAppearance,
         rangeHours,
+        xRange,
         displayTimeZone,
         spanGaps,
         axisKind,
@@ -306,6 +315,7 @@ const ChartCard = memo(function ChartCard({
       spanGaps,
       title,
       unit,
+      xRange,
     ],
   );
 
@@ -360,7 +370,7 @@ const ChartCard = memo(function ChartCard({
       </header>
       <div className="instance-uplot-wrap">
         <UplotReact
-          key={`${uuid}-${rangeHours}`}
+          key={`${uuid}-${rangeHours}-${xRange?.[0] ?? "auto"}-${xRange?.[1] ?? "auto"}`}
           options={chartOptions}
           data={data}
           resetScales={false}
@@ -388,15 +398,17 @@ const ChartCard = memo(function ChartCard({
 export function LoadChart({
   uuid,
   hours,
+  range,
   active = true,
 }: {
   uuid: string;
   hours: number;
+  range?: PingTimeRange;
   active?: boolean;
 }) {
   const queryHours = hours === 0 ? 1 : hours;
   const nodeMeta = useNodeMeta(uuid, active);
-  const { data, isLoading, refetch } = useLoadRecords(uuid, queryHours, active, nodeMeta);
+  const { data, isLoading, refetch } = useLoadRecords(uuid, queryHours, active, nodeMeta, range);
   const isRealtime = hours === 0;
   const node = useNodeMetrics(uuid, isRealtime && active);
   const { resolvedAppearance } = usePreferences();
@@ -418,7 +430,14 @@ export function LoadChart({
 
   useEffect(() => {
     setRealtimePoints([]);
-  }, [hours, uuid]);
+  }, [hours, range?.end, range?.start, uuid]);
+
+  const chartWindow = useMemo<[number, number] | undefined>(() => {
+    if (!range) return undefined;
+    const start = toChartSeconds(range.start);
+    const end = toChartSeconds(range.end);
+    return start > 0 && end > start ? [start, end] : undefined;
+  }, [range]);
 
   const historyPoints = useMemo<ChartPoint[]>(() => {
     const records = [...(data?.records ?? [])];
@@ -459,7 +478,7 @@ export function LoadChart({
     return historyPoints;
   }, [historyPoints, isRealtime, realtimePoints]);
 
-  const rangeSummary = formatRangeSummary(hours);
+  const rangeSummary = range ? "自定义" : formatRangeSummary(hours);
   const sourceRecordCount = data?.records.length ?? 0;
   const wasDownsampled = !isRealtime && sourceRecordCount > getHistoryRenderLimit(hours);
   const sampleSummary = isRealtime
@@ -538,6 +557,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           unit="%"
           spanGaps={connectNulls}
@@ -570,6 +590,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           unit="%"
           spanGaps={connectNulls}
@@ -594,6 +615,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           unit="%"
           spanGaps={connectNulls}
@@ -623,6 +645,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           spanGaps={connectNulls}
           axisKind="network"
@@ -647,6 +670,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           spanGaps={connectNulls}
           axisKind="count"
@@ -676,6 +700,7 @@ export function LoadChart({
           height={h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
+          xRange={chartWindow}
           displayTimeZone={displayTimeZone}
           spanGaps={connectNulls}
           axisKind="count"

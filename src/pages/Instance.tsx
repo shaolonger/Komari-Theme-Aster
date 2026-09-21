@@ -29,6 +29,7 @@ export function Instance() {
   const [chartType, setChartType] = useState<"load" | "ping">("load");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
+  const [customLoad, setCustomLoad] = useState(false);
   const [customPing, setCustomPing] = useState(false);
   const [rangeDraft, setRangeDraft] = useState(previousBeijingEvening);
   const [appliedRange, setAppliedRange] = useState<PingTimeRange>(() => resolveBeijingRange(previousBeijingEvening())!);
@@ -62,6 +63,8 @@ export function Instance() {
     [config?.ping_record_preserve_time],
   );
   const showPingChart = themeSettings.isReady && themeSettings.showPingChart;
+  const customRangeActive = chartType === "load" ? customLoad : customPing;
+  const appliedRangeHours = (Date.parse(appliedRange.end) - Date.parse(appliedRange.start)) / 3_600_000;
 
   // 身份稳定:只读 ref,所以空依赖是安全的。它作为 onNodeReady 传给
   // InstanceDetails 的 effect;若身份不稳定,父组件每次重渲染都会取消挂起的 rAF
@@ -156,17 +159,19 @@ export function Instance() {
               <button
                 key={range.value}
                 type="button"
-                data-active={loadHours === range.value ? "true" : "false"}
-                aria-pressed={loadHours === range.value}
+                data-active={!customLoad && loadHours === range.value ? "true" : "false"}
+                aria-pressed={!customLoad && loadHours === range.value}
                 onClick={() => {
                   startTransition(() => {
                     setLoadHours(range.value);
+                    setCustomLoad(false);
                   });
                 }}
               >
                 {range.label}
               </button>
             ))}
+            <button type="button" data-active={customLoad ? "true" : "false"} aria-pressed={customLoad} onClick={() => setCustomLoad(true)}>自定义</button>
           </div>
         )}
         {chartType === "ping" && showPingChart && (
@@ -194,7 +199,7 @@ export function Instance() {
           </div>
         )}
       </div>
-      {chartType === "ping" && customPing && (
+      {customRangeActive && (
         <form className="surface-inset flex flex-wrap items-end gap-3 p-3" onSubmit={(event) => {
           event.preventDefault();
           if (parsedRange) setAppliedRange(parsedRange);
@@ -215,7 +220,12 @@ export function Instance() {
           hidden={chartType !== "load"}
           aria-hidden={chartType !== "load"}
         >
-          <LoadChart uuid={uuid} hours={loadHours} active={chartType === "load"} />
+          <LoadChart
+            uuid={uuid}
+            hours={customLoad ? appliedRangeHours : loadHours}
+            range={customLoad ? appliedRange : undefined}
+            active={chartType === "load"}
+          />
         </div>
         <div
           className="instance-chart-view"
@@ -225,7 +235,7 @@ export function Instance() {
           {showPingChart ? (
             <PingChart
               uuid={uuid}
-              hours={customPing ? (Date.parse(appliedRange.end) - Date.parse(appliedRange.start)) / 3_600_000 : pingHours}
+              hours={customPing ? appliedRangeHours : pingHours}
               range={customPing ? appliedRange : undefined}
               retentionHours={config?.ping_record_preserve_time}
               active={chartType === "ping"}

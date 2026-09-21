@@ -85,7 +85,7 @@ const TIME_RANGE_OPTIONS: TimeRangeOption[] = [
   { label: "6 小时", value: 6 },
   { label: "1 天", value: 24 },
   { label: "7 天", value: 168 },
-  { label: "30 天", value: 720 },
+  { label: "1 月", value: 720 },
 ];
 
 const PING_TIME_RANGE_OPTIONS: TimeRangeOption[] = [
@@ -118,8 +118,13 @@ function buildHistoryRangeOptions(
   const safeMaxHours = Math.floor(maxHours);
   const resolved = presets.filter((option) => option.value <= safeMaxHours);
   const hasExactMatch = resolved.some((option) => option.value === safeMaxHours);
+  // Komari commonly stores a "month" as either 30 days (720 h) or 31 days
+  // (744 h). Treat both as one semantic preset instead of rendering duplicate
+  // "1 月" / "31 天" controls for the same retention tier.
+  const isMonthAlias = safeMaxHours > 720 && safeMaxHours <= 744 &&
+    resolved.some((option) => option.value === 720);
 
-  if (safeMaxHours > 0 && !hasExactMatch) {
+  if (safeMaxHours > 0 && !hasExactMatch && !isMonthAlias) {
     resolved.push({
       label: formatRangeLabel(safeMaxHours),
       value: safeMaxHours,

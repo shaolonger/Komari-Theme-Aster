@@ -251,10 +251,16 @@ function HomeWorkbenchPanel({
     <section className="home-workbench" aria-label="VPS 管理工作台" data-expanded={expanded ? "true" : "false"}>
       <div className="home-fleet-strip">
         <div className="home-fleet-metrics" aria-label="舰队状态摘要">
-          <span>
-            在线
+          <button
+            type="button"
+            className="home-fleet-metric"
+            data-home-overview-trigger="status"
+            onClick={() => onOpenMetric("status")}
+            title="查看全部 VPS 在线状态，离线节点优先"
+          >
+            <span>在线</span>
             <strong>{overview.onlineNodes}/{overview.totalNodes}</strong>
-          </span>
+          </button>
           {showOverview && (
             <>
               <button
@@ -926,6 +932,7 @@ export function NodeGrid() {
           ? [
               buildHomeOverviewNode(meta, {
                 online: node.online,
+                updatedAt: node.updatedAt,
                 netUp: node.netUp,
                 netDown: node.netDown,
                 trafficUp: node.trafficUp,

@@ -1476,6 +1476,12 @@
   transform: translateY(-1px);
 }
 
+.home-overview-row[data-online="false"] {
+  border-color: color-mix(in srgb, var(--status-offline) 38%, var(--hairline));
+  background: color-mix(in srgb, var(--status-offline) 7%, var(--surface-elev));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--status-offline) 76%, transparent);
+}
+
 .home-overview-row-main,
 .home-overview-row-value small {
   display: inline-flex;
@@ -1530,6 +1536,18 @@
 
 .home-overview-row-value.is-bandwidth strong {
   color: var(--progress-network);
+}
+
+.home-overview-row[data-online="false"] .home-overview-row-value.is-status strong {
+  color: var(--status-offline);
+}
+
+.home-overview-row[data-online="pending"] .home-overview-row-value.is-status strong {
+  color: var(--status-warning);
+}
+
+.home-overview-row[data-online="true"] .home-overview-row-value.is-status strong {
+  color: var(--status-online);
 }
 
 .home-overview-row-value[data-expiry-days="expired"] strong {
