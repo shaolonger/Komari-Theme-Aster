@@ -628,6 +628,24 @@ function failGate(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function removeBrowserProfile(path) {
+  let lastError;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!["ENOTEMPTY", "EBUSY", "EPERM"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  // Chrome helper processes can briefly recreate profile files after the main
+  // process exits. A leftover directory in the OS temp area must not turn an
+  // otherwise successful release gate into a product failure.
+  console.warn(`browser-scale-gates: could not remove temporary profile ${path}: ${lastError?.message ?? lastError}`);
+}
+
 function rpcRequests(run, method) {
   return (requestPayloads.get(run) ?? []).filter((entry) => entry.method === method);
 }
@@ -1213,5 +1231,5 @@ try {
     });
   }
   server.close();
-  rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await removeBrowserProfile(profile);
 }
