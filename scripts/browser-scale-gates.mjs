@@ -628,6 +628,32 @@ function failGate(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function resolveDateTimeLocalInZone(value, timeZone) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const target = match.slice(1).map(Number);
+  const targetAsUtc = Date.UTC(target[0], target[1] - 1, target[2], target[3], target[4]);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  let guess = targetAsUtc;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(guess)).map((part) => [part.type, part.value]));
+    const actualAsUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+    const diff = targetAsUtc - actualAsUtc;
+    if (diff === 0) break;
+    guess += diff;
+  }
+  return new Date(guess).toISOString();
+}
+
 async function removeBrowserProfile(path) {
   let lastError;
   for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -813,6 +839,18 @@ try {
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, soak: false, run: "ui-regressions", ui: true };
   await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await cdp.call("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
+  await waitUntil(cdp, `document.querySelector('.home-ops-panel .home-ops-item') !== null`, 6_000);
+  const compactOperations = await cdp.value(`(() => ({ compact: document.querySelector('.home-ops-panel')?.dataset.compact, href: document.querySelector('.home-ops-panel .home-ops-item')?.getAttribute('href'), text: document.querySelector('.home-ops-panel .home-ops-item')?.textContent }))()`);
+  failGate(
+    compactOperations.compact === "true" && /\?focus=(status|ping|traffic|expiry|cpu|ram|disk)$/.test(compactOperations.href ?? ""),
+    `compact operations summary did not remain visible or link to Ping evidence: ${JSON.stringify(compactOperations)}`,
+  );
+  await cdp.value(`document.querySelector('.home-ops-show-all')?.click()`);
+  await waitUntil(cdp, `document.querySelectorAll('.home-ops-panel .home-ops-item').length > 1`, 2_000);
+  await cdp.value(`document.querySelector('.home-ops-panel .home-ops-item')?.click()`);
+  await waitUntil(cdp, `location.pathname === '/instance/node-0' && new URLSearchParams(location.search).has('focus')`, 4_000);
+  await waitUntil(cdp, `document.querySelector('#instance-summary') !== null`, 4_000);
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/instance/node-0` });
   await waitUntil(cdp, `Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === 'Ping')`, 6_000);
   const loadRangeLabels = await cdp.value(`Array.from(document.querySelectorAll('.instance-chart-controls .instance-segmented.is-scrollable button')).map(button => button.textContent.trim())`);
@@ -827,9 +865,16 @@ try {
     setter.call(inputs[0], '2026-08-01T18:00'); inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
     setter.call(inputs[1], '2026-08-02T00:00'); inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  const customRangeZone = await cdp.value(`(() => {
+    const label = Array.from(document.querySelectorAll('label')).find(item => item.textContent.includes('开始时间'))?.textContent ?? '';
+    const selectedZone = label.match(/开始时间（([^）]+)）/)?.[1] ?? '';
+    return selectedZone.includes('跟随浏览器') ? Intl.DateTimeFormat().resolvedOptions().timeZone : selectedZone.match(/\(([^)]+)\)/)?.[1] ?? selectedZone;
+  })()`);
+  const expectedCustomStart = resolveDateTimeLocalInZone("2026-08-01T18:00", customRangeZone);
+  const expectedCustomEnd = resolveDateTimeLocalInZone("2026-08-02T00:00", customRangeZone);
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === '应用时间范围').click()`);
   await new Promise((resolve) => setTimeout(resolve, 300));
-  failGate(rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Array.isArray(params.metric_keys) && params.metric_keys.includes("cpu.usage") && params.start === "2026-08-01T10:00:00.000Z" && params.end === "2026-08-01T16:00:00.000Z"), "custom load range was not sent in Beijing time");
+  failGate(rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => Array.isArray(params.metric_keys) && params.metric_keys.includes("cpu.usage") && params.start === expectedCustomStart && params.end === expectedCustomEnd), "custom load range was not sent in the selected display time zone");
   if (process.env.BROWSER_GATE_SCREENSHOT) {
     await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.load-custom.png`);
   }
@@ -876,9 +921,16 @@ try {
     setter.call(inputs[0], '2026-08-01T18:00'); inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
     setter.call(inputs[1], '2026-08-02T00:00'); inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  const pingRangeZone = await cdp.value(`(() => {
+    const label = Array.from(document.querySelectorAll('label')).find(item => item.textContent.includes('开始时间'))?.textContent ?? '';
+    const selectedZone = label.match(/开始时间（([^）]+)）/)?.[1] ?? '';
+    return selectedZone.includes('跟随浏览器') ? Intl.DateTimeFormat().resolvedOptions().timeZone : selectedZone.match(/\(([^)]+)\)/)?.[1] ?? selectedZone;
+  })()`);
+  const expectedPingStart = resolveDateTimeLocalInZone("2026-08-01T18:00", pingRangeZone);
+  const expectedPingEnd = resolveDateTimeLocalInZone("2026-08-02T00:00", pingRangeZone);
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '应用时间范围').click()`);
   await new Promise((resolve) => setTimeout(resolve, 300));
-  failGate(rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => params.start === "2026-08-01T10:00:00.000Z" && params.end === "2026-08-01T16:00:00.000Z"), "custom Ping range was not sent in Beijing time");
+  failGate(rpcRequests("ui-regressions", "public:queryMetrics").some(({ params }) => params.start === expectedPingStart && params.end === expectedPingEnd), "custom Ping range was not sent in the selected display time zone");
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?view=theme-manage` });
   await waitUntil(cdp, `document.querySelector('input[aria-label="搜索要配置的 VPS"]') !== null`, 6_000);
   await cdp.value(`(() => { const input = document.querySelector('.studio-time-editor input[type="search"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '上海'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -1214,7 +1266,7 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-mobile.png`);
   }
-  results.push({ uiRegressions: "load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
+  results.push({ uiRegressions: "persistent operations summary, evidence deep links, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

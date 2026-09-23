@@ -1,7 +1,7 @@
 import { formatBytes, getExpireDaysRemaining } from "@/utils/format";
 import { resolveTrafficUsage } from "@/utils/traffic";
 
-export type VpsRiskKind = "status" | "expiry" | "traffic" | "ping";
+export type VpsRiskKind = "status" | "expiry" | "traffic" | "ping" | "resource";
 export type VpsRiskSeverity = "critical" | "warning";
 
 export interface VpsRiskInput {
@@ -15,6 +15,12 @@ export interface VpsRiskInput {
   expiredAt: string | number | null | undefined;
   capabilityPing: boolean | null;
   hasPingBinding: boolean;
+  cpuPct?: number;
+  ramPct?: number;
+  diskPct?: number;
+  pingLoss?: number | null;
+  pingLatency?: number | null;
+  pingUpdatedAt?: number | null;
   now?: number;
 }
 
@@ -24,6 +30,7 @@ export interface VpsRisk {
   severity: VpsRiskSeverity;
   title: string;
   detail: string;
+  evidenceTarget?: "status" | "expiry" | "traffic" | "ping" | "cpu" | "ram" | "disk";
 }
 
 export const STALE_REPORT_MS = 3 * 60 * 1000;
@@ -54,6 +61,7 @@ export function getVpsOperationalRisks(input: VpsRiskInput): VpsRisk[] {
       severity: "critical",
       title: "节点离线",
       detail: "当前没有实时上报",
+      evidenceTarget: "status",
     });
   } else if (
     input.online === true &&
@@ -67,6 +75,7 @@ export function getVpsOperationalRisks(input: VpsRiskInput): VpsRisk[] {
       severity: "warning",
       title: "上报延迟",
       detail: `${minutes} 分钟未收到新数据`,
+      evidenceTarget: "status",
     });
   }
 
@@ -78,6 +87,7 @@ export function getVpsOperationalRisks(input: VpsRiskInput): VpsRisk[] {
       severity: expireDays <= 3 ? "critical" : "warning",
       title: expireDays < 0 ? "节点已过期" : "节点即将到期",
       detail: formatExpiryDetail(expireDays),
+      evidenceTarget: "expiry",
     });
   }
 
@@ -94,6 +104,7 @@ export function getVpsOperationalRisks(input: VpsRiskInput): VpsRisk[] {
       severity: traffic.fraction >= TRAFFIC_CRITICAL_FRACTION ? "critical" : "warning",
       title: trafficRiskTitle(traffic.fraction),
       detail: `${formatBytes(traffic.used)} / ${formatBytes(traffic.limit)}`,
+      evidenceTarget: "traffic",
     });
   }
 
@@ -104,6 +115,49 @@ export function getVpsOperationalRisks(input: VpsRiskInput): VpsRisk[] {
       severity: "warning",
       title: "Ping 任务不可用",
       detail: "首页已绑定 Ping，但 agent 未启用 Ping 能力",
+      evidenceTarget: "ping",
+    });
+  }
+
+  const resourceAge = now - input.updatedAt;
+  const resourceFresh = input.online === true && input.updatedAt > 0 && resourceAge >= 0 && resourceAge <= STALE_REPORT_MS;
+  const resourceMetrics = resourceFresh ? [
+    { target: "cpu" as const, label: "CPU", value: input.cpuPct },
+    { target: "ram" as const, label: "内存", value: input.ramPct },
+    { target: "disk" as const, label: "磁盘", value: input.diskPct },
+  ] : [];
+  for (const metric of resourceMetrics) {
+    if (typeof metric.value !== "number" || !Number.isFinite(metric.value) || metric.value < 90) continue;
+    risks.push({
+      uuid: input.uuid,
+      kind: "resource",
+      severity: metric.value >= 97 ? "critical" : "warning",
+      title: `${metric.label}使用率高`,
+      detail: `最新采样 ${Math.round(metric.value)}% · 尚未确认持续时间`,
+      evidenceTarget: metric.target,
+    });
+  }
+
+  const pingAge = input.pingUpdatedAt == null ? Number.POSITIVE_INFINITY : now - input.pingUpdatedAt;
+  const pingFresh = pingAge >= 0 && pingAge <= 5 * 60_000;
+  if (input.hasPingBinding && pingFresh && input.pingLoss != null && Number.isFinite(input.pingLoss) && input.pingLoss >= 5) {
+    risks.push({
+      uuid: input.uuid,
+      kind: "ping",
+      severity: input.pingLoss >= 20 ? "critical" : "warning",
+      title: input.pingLoss >= 20 ? "Ping 丢包严重" : "Ping 丢包偏高",
+      detail: `当前任务聚合丢包 ${input.pingLoss.toFixed(2)}%`,
+      evidenceTarget: "ping",
+    });
+  }
+  if (input.hasPingBinding && pingFresh && input.pingLatency != null && Number.isFinite(input.pingLatency) && input.pingLatency >= 300) {
+    risks.push({
+      uuid: input.uuid,
+      kind: "ping",
+      severity: input.pingLatency >= 1_000 ? "critical" : "warning",
+      title: input.pingLatency >= 1_000 ? "Ping 延迟严重" : "Ping 延迟偏高",
+      detail: `最新任务聚合延迟 ${Math.round(input.pingLatency)} ms`,
+      evidenceTarget: "ping",
     });
   }
 

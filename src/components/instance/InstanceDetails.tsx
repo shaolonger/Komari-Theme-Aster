@@ -65,18 +65,20 @@ function decisionToneFromTraffic(status: VpsWorkbenchNode["traffic"]["status"]) 
 }
 
 function DecisionSummaryItem({
+  id,
   label,
   value,
   detail,
   tone,
 }: {
+  id?: string;
   label: string;
   value: string;
   detail: string;
   tone: "ok" | "warning" | "critical";
 }) {
   return (
-    <div className="instance-decision-item" data-tone={tone}>
+    <div id={id} className="instance-decision-item" data-tone={tone}>
       <span>{label}</span>
       <strong>{value}</strong>
       <p>{detail}</p>
@@ -195,6 +197,7 @@ export function InstanceDetails({
 
   return (
     <InstancePanel
+      id="instance-summary"
       title={panelTitle}
       description={
         isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
@@ -208,18 +211,21 @@ export function InstanceDetails({
           tone={workbenchNode.completeness.ratio < 1 ? "warning" : "ok"}
         />
         <DecisionSummaryItem
+          id="instance-expiry"
           label="续费压力"
           value={formatExpirePressure(workbenchNode)}
           detail={`续费 ${renewalPrice}`}
           tone={decisionToneFromExpiry(workbenchNode.expiryBucket)}
         />
         <DecisionSummaryItem
+          id="instance-traffic"
           label="流量预估"
           value={trafficDecisionValue}
           detail={trafficDecisionDetail}
           tone={decisionToneFromTraffic(workbenchNode.traffic.status)}
         />
         <DecisionSummaryItem
+          id="instance-ping"
           label="Ping 状态"
           value={workbenchNode.ping.label}
           detail={workbenchNode.ping.detail}

@@ -3,12 +3,14 @@ import { clsx } from "clsx";
 import { Spinner } from "@/components/ui/Spinner";
 
 export function InstancePanel({
+  id,
   title,
   description,
   aside,
   children,
   className,
 }: {
+  id?: string;
   title: string;
   description?: ReactNode;
   aside?: ReactNode;
@@ -16,7 +18,7 @@ export function InstancePanel({
   className?: string;
 }) {
   return (
-    <section className={clsx("instance-panel", className)}>
+    <section id={id} className={clsx("instance-panel", className)}>
       <header className="instance-panel-header">
         <div className="instance-panel-headings">
           <h2 className="instance-panel-title">{title}</h2>

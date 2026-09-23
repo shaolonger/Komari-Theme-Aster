@@ -29,6 +29,9 @@ export interface VpsWorkbenchNodeInput {
   hasPingBinding: boolean;
   includeAgentVersion?: boolean;
   ping?: PingOverviewItem;
+  cpuPct?: number;
+  ramPct?: number;
+  diskPct?: number;
   now?: number;
 }
 
@@ -160,9 +163,10 @@ export function getTrafficForecast({
   }
 
   const burnRate = computeTrafficUsed(trafficLimitType, netUp, netDown);
+  const reportAge = updatedAt == null ? Number.POSITIVE_INFINITY : now - updatedAt;
   const fresh = online === undefined && updatedAt === undefined
     ? true
-    : online === true && updatedAt != null && updatedAt > 0 && now - updatedAt <= 5 * 60_000;
+    : online === true && updatedAt != null && updatedAt > 0 && reportAge >= 0 && reportAge <= 5 * 60_000;
   const forecastState: TrafficForecastState = online === false
     ? "offline"
     : online !== true && (online !== undefined || updatedAt !== undefined)
@@ -275,6 +279,12 @@ export function buildVpsWorkbenchNode(input: VpsWorkbenchNodeInput): VpsWorkbenc
     expiredAt: meta.expired_at,
     capabilityPing: meta.capability_ping,
     hasPingBinding: input.hasPingBinding,
+    cpuPct: input.cpuPct,
+    ramPct: input.ramPct,
+    diskPct: input.diskPct,
+    pingLoss: input.ping?.values.length ? input.ping.loss : null,
+    pingLatency: input.ping?.values.length ? input.ping.lastValue : null,
+    pingUpdatedAt: input.ping?.samples.length ? Math.max(...input.ping.samples.map((sample) => sample.time)) : null,
     now: input.now,
   });
 

@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import "uplot/dist/uPlot.min.css";
 import { InstanceDetails } from "@/components/instance/InstanceDetails";
@@ -23,11 +23,13 @@ const DEFAULT_PING_HOURS = 6;
 export function Instance() {
   const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focus = searchParams.get("focus");
   const { data: config } = usePublicConfig();
   const themeSettings = useThemeSettings();
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
-  const [chartType, setChartType] = useState<"load" | "ping">("load");
+  const [chartType, setChartType] = useState<"load" | "ping">(focus === "ping" ? "ping" : "load");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
   const [customLoad, setCustomLoad] = useState(false);
@@ -48,6 +50,23 @@ export function Instance() {
     setAppliedRange(resolved);
   }, [themeSettings.displayTimeZone]);
   const chartControlsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!focus) return;
+    if (focus === "ping") setChartType("ping");
+    else if (["cpu", "ram", "disk"].includes(focus)) setChartType("load");
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(
+          focus === "traffic" ? "instance-traffic" :
+            focus === "expiry" ? "instance-expiry" :
+              focus === "status" ? "instance-summary" :
+                focus === "ping" ? "instance-chart-controls" :
+                  "instance-chart-controls",
+      ) ?? chartControlsRef.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focus, uuid]);
 
   const nodeOptions = useMemo(() => {
     const nodeByUuid = new Map(allNodes.map((node) => [node.uuid, node]));
@@ -138,7 +157,7 @@ export function Instance() {
         }} />
       </div>
       <InstanceDetails uuid={uuid} onNodeReady={alignCharts} />
-      <div ref={chartControlsRef} className="instance-chart-controls">
+      <div ref={chartControlsRef} id="instance-chart-controls" className="instance-chart-controls">
         <div className="instance-segmented">
           <button
             type="button"

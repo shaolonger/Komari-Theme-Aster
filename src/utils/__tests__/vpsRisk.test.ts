@@ -121,4 +121,52 @@ describe("getVpsOperationalRisks", () => {
       }),
     ]);
   });
+
+  it("surfaces latest high resource pressure with a direct chart target", () => {
+    const risks = getVpsOperationalRisks({
+      ...baseInput(),
+      cpuPct: 98.4,
+      ramPct: 92,
+      diskPct: 89,
+    });
+
+    expect(risks).toEqual([
+      expect.objectContaining({ kind: "resource", severity: "critical", evidenceTarget: "cpu", detail: "最新采样 98% · 尚未确认持续时间" }),
+      expect.objectContaining({ kind: "resource", severity: "warning", evidenceTarget: "ram" }),
+    ]);
+  });
+
+  it("includes only measured Ping quality problems in the action queue", () => {
+    expect(getVpsOperationalRisks({
+      ...baseInput(),
+      hasPingBinding: true,
+      pingLoss: null,
+      pingLatency: null,
+      pingUpdatedAt: NOW,
+    })).toEqual([]);
+
+    expect(getVpsOperationalRisks({
+      ...baseInput(),
+      hasPingBinding: true,
+      pingLoss: 8.35,
+      pingLatency: 340,
+      pingUpdatedAt: NOW,
+    })).toEqual([
+      expect.objectContaining({ kind: "ping", title: "Ping 丢包偏高", evidenceTarget: "ping" }),
+      expect.objectContaining({ kind: "ping", title: "Ping 延迟偏高", evidenceTarget: "ping" }),
+    ]);
+  });
+
+  it("does not treat stale or future-dated cached resource values as current pressure", () => {
+    expect(getVpsOperationalRisks({
+      ...baseInput(),
+      updatedAt: NOW + 60_000,
+      cpuPct: 99,
+    })).toEqual([]);
+    expect(getVpsOperationalRisks({
+      ...baseInput(),
+      online: false,
+      cpuPct: 99,
+    }).some((risk) => risk.kind === "resource")).toBe(false);
+  });
 });

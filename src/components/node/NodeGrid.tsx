@@ -122,6 +122,7 @@ const HOME_RISK_FILTERS: Array<{ value: HomeRiskFilter; label: string }> = [
   { value: "expiry", label: "到期" },
   { value: "traffic", label: "流量" },
   { value: "ping", label: "Ping" },
+  { value: "resource", label: "资源" },
 ];
 
 function countRiskNodes(risks: HomeRiskItem[], filter: HomeRiskFilter) {
@@ -314,9 +315,9 @@ function HomeWorkbenchPanel({
           <span>{expanded ? "收起" : "展开"}</span>
         </button>
       </div>
+      <HomeOperationsQueue risks={risks} expanded={expanded} />
       {expanded && (
         <div className="home-workbench-details">
-          <HomeOperationsQueue risks={risks} />
           <div className="home-workbench-grid">
             <WorkbenchCard
               label="资料完整度"
@@ -405,26 +406,34 @@ function WorkbenchList({
 
 function HomeOperationsQueue({
   risks,
+  expanded,
 }: {
   risks: HomeRiskItem[];
+  expanded: boolean;
 }) {
-  const topRisks = risks.slice(0, 6);
+  const [showAll, setShowAll] = useState(false);
+  const topRisks = showAll || expanded ? risks : risks.slice(0, 1);
   const riskNodes = countRiskNodes(risks, "attention");
 
   return (
-    <section className="home-ops-panel" aria-label="VPS 运维事项">
+    <section className="home-ops-panel" aria-label="VPS 运维事项" data-compact={expanded ? "false" : "true"}>
       <div className="home-ops-head">
         <div>
           <h2>运维事项</h2>
-          <p>{riskNodes > 0 ? `${riskNodes} 台 VPS 需要关注` : "当前没有高优先级事项"}</p>
+          <p>{riskNodes > 0 ? `${riskNodes} 台节点 · ${risks.length} 项待处理` : "最近检查未发现待处理事项"}</p>
         </div>
+        {!expanded && risks.length > 1 && (
+          <button type="button" className="home-ops-show-all" onClick={() => setShowAll((value) => !value)}>
+            {showAll ? "收起" : `查看全部 ${risks.length} 项`}
+          </button>
+        )}
       </div>
       <div className="home-ops-list">
         {topRisks.length > 0 ? (
           topRisks.map((risk) => (
             <Link
               key={`${risk.uuid}-${risk.kind}-${risk.title}`}
-              to={`/instance/${risk.uuid}`}
+              to={`/instance/${risk.uuid}?focus=${risk.evidenceTarget ?? risk.kind}`}
               className="home-ops-item"
               data-severity={risk.severity}
               title={`${risk.name}: ${risk.detail}`}
@@ -897,6 +906,9 @@ export function NodeGrid() {
           meta,
           online: node.online,
           updatedAt: node.updatedAt,
+          cpuPct: node.cpuPct,
+          ramPct: node.ramPct,
+          diskPct: node.diskPct,
           trafficUp: node.trafficUp,
           trafficDown: node.trafficDown,
           netUp: node.netUp,
