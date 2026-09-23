@@ -28,8 +28,16 @@
 .aster-studio-fields{padding:0 26px 26px}
 .aster-studio :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--accent-500);outline-offset:3px}
 .aster-studio-empty{padding:28px;border:1px dashed var(--hairline);border-radius:12px;color:var(--text-secondary)}
+.studio-quick-start{display:grid;gap:16px;padding:20px;border:1px solid color-mix(in srgb,var(--accent-500) 28%,var(--hairline));border-radius:14px;background:color-mix(in srgb,var(--accent-500) 4%,var(--surface))}
+.studio-quick-start h2{font-size:15px;font-weight:650;color:var(--text-primary)}
+.studio-quick-start p{margin-top:6px;font-size:12px;line-height:1.7;color:var(--text-tertiary)}
+.studio-quick-start-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.studio-quick-start-actions button{display:grid;gap:6px;min-height:64px;padding:12px 14px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);text-align:left;font-size:13px;font-weight:650;color:var(--text-primary);cursor:pointer}
+.studio-quick-start-actions button:hover{border-color:color-mix(in srgb,var(--accent-500) 55%,var(--hairline))}
+.studio-quick-start-actions small{font-size:11px;font-weight:450;line-height:1.6;color:var(--text-tertiary)}
 @media(max-width:900px){.aster-studio{grid-template-columns:190px minmax(0,1fr);gap:20px}.aster-studio-panel>header{padding:20px}.aster-studio-fields{padding:0 20px 20px}}
 @media(max-width:640px){.aster-studio{grid-template-columns:minmax(0,1fr);gap:24px;padding-top:12px}.aster-studio-nav{position:static;gap:14px}.aster-studio-nav nav{display:flex;overflow-x:auto;padding-bottom:4px}.aster-studio-nav nav button{flex-shrink:0;min-height:44px;gap:8px}.aster-studio-brand span,.aster-studio-note{display:none}.aster-studio-heading h1{font-size:25px}.aster-studio-panel>header{padding:18px 16px}.aster-studio-fields{padding:0 16px 18px}.aster-studio-panel-aside{display:none}}
+@media(max-width:640px){.studio-quick-start{padding:16px}.studio-quick-start-actions{grid-template-columns:1fr}.studio-quick-start-actions button{min-height:72px}}
 .studio-scope{min-width:0;border:1px solid var(--hairline);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .studio-scope legend{font-size:13px;font-weight:600;padding:0 5px;color:var(--text-primary)}
 .studio-scope p{font-size:12px;line-height:1.7;color:var(--text-tertiary)}

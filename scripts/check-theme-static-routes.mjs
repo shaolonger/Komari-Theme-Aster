@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = join(root, "dist");
 const indexPath = join(distDir, "index.html");
+const themeManifestPath = join(root, "komari-theme.json");
 
 function fail(message) {
   throw new Error(`theme static-route check failed: ${message}`);
@@ -34,6 +35,16 @@ function localAssetPath(url, source) {
 }
 
 assert(existsSync(indexPath), "missing dist/index.html; run npm run build first");
+const themeManifest = JSON.parse(readFileSync(themeManifestPath, "utf8"));
+const configuration = themeManifest.configuration;
+assert(configuration?.type === "redirect", "theme manifest must expose the Aster Studio redirect entry");
+const studioTarget = new URL(configuration.data, "https://komari.invalid/");
+assert(
+  studioTarget.origin === "https://komari.invalid" &&
+    studioTarget.pathname === "/" &&
+    studioTarget.searchParams.get("view") === "theme-manage",
+  "theme configuration redirect must stay on the site root and open Aster Studio",
+);
 const indexHtml = readFileSync(indexPath, "utf8");
 const htmlAssetUrls = [
   ...indexHtml.matchAll(/\b(?:src|href)="([^"?#]+(?:\?[^"#]*)?(?:#[^"]*)?)"/g),

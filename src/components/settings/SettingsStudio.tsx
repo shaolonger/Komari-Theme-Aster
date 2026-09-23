@@ -13,7 +13,7 @@ function matchesSection(section: (typeof sections)[number], query: string) {
   return `${section.title} ${section.keywords} ${section.panels.join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
 }
 
-const StudioContext = createContext({ active: 'appearance', query: '' });
+const StudioContext = createContext({ active: 'appearance', query: '', navigate: (_section: string) => {} });
 
 export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty: boolean }) {
   const [active, setActive] = useState('appearance');
@@ -28,12 +28,18 @@ export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty
   const section = sections.find(item => item.id === active)!;
   const searchId = useId();
   const matches = sections.filter(item => matchesSection(item, query)).flatMap(item => item.panels);
-  return <StudioContext.Provider value={{ active, query: query.trim() }}>
+  const navigate = (sectionId: string) => {
+    if (!sections.some(item => item.id === sectionId)) return;
+    setActive(sectionId);
+    setQuery('');
+    setNavigation(value => value + 1);
+  };
+  return <StudioContext.Provider value={{ active, query: query.trim(), navigate }}>
     <div className="aster-studio">
       <aside className="aster-studio-nav">
         <div className="aster-studio-brand"><SlidersHorizontal size={22} /><div><strong>Aster 工作室</strong><span>让监控适应你的工作方式</span></div></div>
         <label className="aster-studio-search" htmlFor={searchId}><Search size={16} /><input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="查找设置分区" /></label>
-        <nav aria-label="设置分区">{sections.map((item, index) => <button key={item.id} type="button" aria-current={active === item.id && !query ? 'page' : undefined} onClick={() => { setActive(item.id); setQuery(''); setNavigation(value => value + 1); }}><span className="aster-studio-index">0{index + 1}</span><span>{item.title}</span></button>)}</nav>
+        <nav aria-label="设置分区">{sections.map((item, index) => <button key={item.id} type="button" aria-current={active === item.id && !query ? 'page' : undefined} onClick={() => navigate(item.id)}><span className="aster-studio-index">0{index + 1}</span><span>{item.title}</span></button>)}</nav>
         <p className="aster-studio-state" role="status"><span data-dirty={dirty} />{dirty ? '草稿有未保存的修改' : '设置已与站点同步'}</p>
         <p className="aster-studio-note">切换分区会保留草稿。保存后，设置将应用到整个站点。</p>
       </aside>
@@ -44,6 +50,10 @@ export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty
       </div>
     </div>
   </StudioContext.Provider>;
+}
+
+export function useStudioNavigation() {
+  return useContext(StudioContext).navigate;
 }
 
 export function StudioPanel({ title, description, aside, children }: { title: string; description?: ReactNode; aside?: ReactNode; children: ReactNode }) {

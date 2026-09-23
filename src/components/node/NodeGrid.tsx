@@ -90,7 +90,6 @@ import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey,
 // ([0-9a-f-]),永远不含逗号。
 const UUID_KEY_SEPARATOR = ",";
 const WORKBENCH_OPEN_STORAGE_KEY = "aster-home-workbench-open";
-const HOME_COMPARE_SEED_COUNT = 3;
 
 interface HomeOverview {
   totalNodes: number;
@@ -1392,8 +1391,8 @@ export function NodeGrid() {
   const compareHref = useMemo(() => {
     const seed =
       selectedNodeUuids.length >= 2
-        ? selectedNodeUuids.slice(0, HOME_COMPARE_SEED_COUNT)
-        : filteredNodes.slice(0, HOME_COMPARE_SEED_COUNT).map((node) => node.uuid);
+        ? selectedNodeUuids
+        : filteredNodes.slice(0, 3).map((node) => node.uuid);
     if (seed.length < 2) return "/compare";
     return `/compare?${new URLSearchParams({ nodes: seed.join(",") }).toString()}`;
   }, [filteredNodes, selectedNodeUuids]);
@@ -1650,10 +1649,10 @@ export function NodeGrid() {
             <Link
               to={compareHref}
               className="home-command-action home-command-compare is-contextual"
-              title="对比已指定的 VPS（最多带入 3 台）"
+              title={`对比已指定的 ${selectedNodeUuids.length} 台 VPS`}
             >
               <BarChart3 size={14} aria-hidden="true" />
-              <span>对比 {Math.min(selectedNodeUuids.length, HOME_COMPARE_SEED_COUNT)}</span>
+              <span>对比 {selectedNodeUuids.length}</span>
             </Link>
           )}
           {hasActiveFilters && (

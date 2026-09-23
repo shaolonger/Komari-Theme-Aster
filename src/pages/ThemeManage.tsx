@@ -38,7 +38,7 @@ import {
 	  Trash2,
 	  Wallpaper,
 	} from "lucide-react";
-import { SettingsStudio, StudioPanel } from "@/components/settings/SettingsStudio";
+import { SettingsStudio, StudioPanel, useStudioNavigation } from "@/components/settings/SettingsStudio";
 import { Spinner } from "@/components/ui/Spinner";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
 import { queryClient } from "@/services/queryClient";
@@ -133,6 +133,34 @@ function sortClients(clients: AdminClient[]) {
     if (left.weight !== right.weight) return left.weight - right.weight;
     return left.name.localeCompare(right.name);
   });
+}
+
+function StudioQuickStart({
+  onApplyInspection,
+  onApplyShowcase,
+}: {
+  onApplyInspection: () => void;
+  onApplyShowcase: () => void;
+}) {
+  const navigate = useStudioNavigation();
+  return (
+    <section className="studio-quick-start" aria-labelledby="studio-quick-start-title">
+      <div>
+        <h2 id="studio-quick-start-title">按场景开始配置</h2>
+        <p>选择一个起点，再按需调整。应用后会修改未保存草稿，可在顶部撤销或保存。</p>
+      </div>
+      <div className="studio-quick-start-actions">
+        <button type="button" onClick={() => { onApplyInspection(); navigate("overview"); }}>
+          日常巡检
+          <small>首屏显示总览和分组，异常节点置前</small>
+        </button>
+        <button type="button" onClick={() => { onApplyShowcase(); navigate("overview"); }}>
+          公开展示
+          <small>保留清晰总览，离线节点排后，减少筛选入口</small>
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function pruneBindings(bindings: HomepagePingTaskBindings) {
@@ -718,6 +746,20 @@ export function ThemeManage() {
     setError(null);
   };
 
+  const applyInspectionPreset = () => {
+    setDraftShowHomeOverview(true);
+    setDraftShowGroupTabs(true);
+    setDraftMoveOfflineNodesBack(false);
+    setDraftShowOverviewRatings(true);
+  };
+
+  const applyShowcasePreset = () => {
+    setDraftShowHomeOverview(true);
+    setDraftShowGroupTabs(false);
+    setDraftMoveOfflineNodesBack(true);
+    setDraftShowOverviewRatings(true);
+  };
+
   if (configLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -818,6 +860,11 @@ export function ThemeManage() {
           )}
         </div>
       </div>}
+
+      <StudioQuickStart
+        onApplyInspection={applyInspectionPreset}
+        onApplyShowcase={applyShowcasePreset}
+      />
 
       <StudioPanel
         title="默认外观"

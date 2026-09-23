@@ -1247,9 +1247,27 @@ try {
     });
     await waitUntil(cdp, `document.querySelector('.compare-page') !== null && document.querySelectorAll('.compare-selected-pill').length === 3 && document.querySelector('.compare-chart-wrap canvas') !== null`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-compare.png`);
+    await cdp.value(`Array.from(document.querySelectorAll('.compare-task-presets button')).find(button => button.textContent.includes('资源压力')).click()`);
+    await waitUntil(cdp, `document.querySelector('.compare-matrix') !== null && new URLSearchParams(location.search).get('metrics') === 'cpu,ram,disk'`, 8_000);
+    failGate(await cdp.value(`document.querySelectorAll('.compare-selected-pill').length === 3 && new URLSearchParams(location.search).get('hours') === '24'`), 'resource preset did not preserve selected VPS and apply its 24-hour range');
+    await cdp.value(`Array.from(document.querySelectorAll('.compare-task-presets button')).find(button => button.textContent.includes('线路稳定性')).click()`);
+    await waitUntil(cdp, `document.querySelector('.compare-matrix') !== null && new URLSearchParams(location.search).get('metrics') === 'ping_latency,ping_loss'`, 8_000);
+    await cdp.value(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.__copiedAnalysisUrl = value; } } }); Array.from(document.querySelectorAll('.compare-stage-actions button')).find(button => button.textContent.includes('复制分析链接')).click()`);
+    await waitUntil(cdp, `document.querySelector('.compare-export-status')?.textContent.includes('分析链接已复制')`, 4_000);
+    failGate(await cdp.value(`window.__copiedAnalysisUrl.includes('metrics=ping_latency%2Cping_loss') && window.__copiedAnalysisUrl.includes('nodes=node-0%2Cnode-1%2Cnode-2')`), 'copied comparison link did not preserve the current analysis context');
 
     await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?view=theme-manage` });
     await waitUntil(cdp, `document.body.innerText.includes('Aster 工作室')`, 8_000);
+    await cdp.value(`Array.from(document.querySelectorAll('.studio-quick-start-actions button')).find(button => button.textContent.includes('日常巡检')).click()`);
+    await waitUntil(cdp, `document.querySelector('.aster-studio-heading h1').textContent.includes('巡检') && document.querySelector('.aster-studio-state span').dataset.dirty === 'true'`, 2_000);
+    failGate(await cdp.value(`(() => { const switches = Array.from(document.querySelectorAll('.studio-overview-editor input[role="switch"]')); return switches[0]?.checked === true && switches[1]?.checked === true && switches[2]?.checked === false; })()`), 'inspection starter preset did not apply its stated homepage defaults');
+    await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-savebar button')).find(button => button.textContent.includes('撤销修改')).click()`);
+    await waitUntil(cdp, `document.querySelector('.aster-studio-state span').dataset.dirty === 'false'`, 2_000);
+    await cdp.value(`Array.from(document.querySelectorAll('.studio-quick-start-actions button')).find(button => button.textContent.includes('公开展示')).click()`);
+    await waitUntil(cdp, `document.querySelector('.aster-studio-state span').dataset.dirty === 'true'`, 2_000);
+    failGate(await cdp.value(`(() => { const switches = Array.from(document.querySelectorAll('.studio-overview-editor input[role="switch"]')); return switches[0]?.checked === true && switches[1]?.checked === false && switches[2]?.checked === true; })()`), 'showcase starter preset did not apply its stated homepage defaults');
+    await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-savebar button')).find(button => button.textContent.includes('撤销修改')).click()`);
+    await waitUntil(cdp, `document.querySelector('.aster-studio-state span').dataset.dirty === 'false'`, 2_000);
     await cdp.value(`scrollTo(0, 0)`);
     await captureScreenshot(cdp, `${screenshotBase}-theme-settings.png`);
     await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
@@ -1291,7 +1309,7 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-mobile.png`);
   }
-  results.push({ uiRegressions: "persistent operations summary, evidence deep links, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
+  results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

@@ -15,6 +15,7 @@ import {
   Copy,
   Download,
   LineChart,
+  Link2,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -1509,6 +1510,43 @@ export function Compare() {
     commitMetricSelection([metricKey]);
   };
 
+  const applyTaskPreset = (preset: "resource" | "network") => {
+    const nextMetrics: ComparisonMetricKey[] =
+      preset === "resource" ? ["cpu", "ram", "disk"] : ["ping_latency", "ping_loss"];
+    const nextRanges = preset === "resource" ? loadRanges : pingRanges;
+    const nextHours = nextRanges.some((range) => range.value === 24)
+      ? 24
+      : nextRanges.find((range) => range.value >= 24)?.value ?? nextRanges[0]?.value ?? DEFAULT_HOURS;
+    const nextView: CompareView = "matrix";
+    const nextTaskId = preset === "network" ? selectedPingTaskId ?? pingTaskOptions[0]?.id ?? null : null;
+    const boundUuids = nextTaskId == null
+      ? []
+      : getPingTaskBoundNodeUuids(themeSettings.homepagePingBindings, nextTaskId, visibleNodeUuids);
+    const nextUuids = preset === "network" && boundUuids.length > 0 ? boundUuids : selectedUuids;
+
+    setSelectedMetricKeys(nextMetrics);
+    setHours(nextHours);
+    setRangeMode("preset");
+    setView(nextView);
+    setSelectedPingTaskId(nextTaskId);
+    setSelectedPingTaskIds([]);
+    if (nextUuids !== selectedUuids) {
+      setSelectedUuids(nextUuids);
+    }
+    setSearchParams(
+      updateParams(searchParams, {
+        nodes: nextUuids,
+        metrics: nextMetrics,
+        hours: nextHours,
+        view: nextView,
+        rangeMode: "preset",
+        pingTask: nextTaskId,
+        pingTasks: null,
+      }),
+      { replace: true },
+    );
+  };
+
   const commitPingTask = (taskId: number | null) => {
     const normalizedTaskId = normalizeComparisonPingTaskId(taskId);
     const boundUuids =
@@ -1613,6 +1651,17 @@ export function Compare() {
     setExportStatus("Markdown 已复制");
   };
 
+  const copyAnalysisLink = async () => {
+    const url = new URL(window.location.href);
+    url.search = searchParams.toString();
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setExportStatus("可恢复的分析链接已复制");
+    } catch {
+      setExportStatus("复制失败，请从地址栏复制链接");
+    }
+  };
+
   const exportCsv = () => {
     const csv = multiMetricMode
       ? buildMultiMetricComparisonCsv(multiAnalysis)
@@ -1699,6 +1748,15 @@ export function Compare() {
       </section>
 
       <section className="compare-toolbar">
+        <div className="compare-task-presets" aria-label="对比任务预设">
+          <span>快速开始</span>
+          <button type="button" onClick={() => applyTaskPreset("resource")}>
+            资源压力 · 24 小时
+          </button>
+          <button type="button" onClick={() => applyTaskPreset("network")}>
+            线路稳定性 · 同一任务
+          </button>
+        </div>
         <div className="compare-segmented" aria-label="选择指标模式">
           <button
             type="button"
@@ -1943,6 +2001,10 @@ export function Compare() {
             </p>
           </div>
           <div className="compare-stage-actions">
+            <button type="button" className="compare-action-button" onClick={() => void copyAnalysisLink()}>
+              <Link2 size={14} />
+              复制分析链接
+            </button>
             <button type="button" className="compare-action-button" onClick={refresh} disabled={!canFetch}>
               <RefreshCw size={14} />
               刷新

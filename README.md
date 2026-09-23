@@ -7,11 +7,13 @@
 - 主题仓库：<https://github.com/shaolonger/Komari-Theme-Aster>
 - 在 [Releases](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载 `Komari-Theme-Aster-v*.zip`，通过 Komari 后台上传并启用。
 - 从旧主题迁移时，先记录原主题配置，再添加新仓库或上传 Aster 包；后端可能按主题名称分别存储配置，启用后请检查并恢复设置。
-- v1.26.0 起使用 Aster 品牌并延续原版本序列。工作台展开偏好使用 Aster 独立存储。
+- Aster 延续仓库已有的语义化版本序列。工作台展开偏好使用 Aster 独立存储。
 
 ## 后端兼容性
 
 主题会自动识别官方 Komari 与既有二次修改版的 RPC 能力，并将两者归一化为同一套页面数据模型。有关适配范围、迁移注意事项、指标与 Ping 的处理方式，以及完整的验证命令，请见 [兼容性说明](COMPATIBILITY.md)。
+
+后台主题菜单可直达 Aster 工作室；Komari 官方文档注明 `redirect` 配置入口需要服务端高于 1.2.0。较旧版本仍可从首页右上角打开工作室。
 
 ## 效果预览
 

@@ -237,6 +237,38 @@
   padding: 8px;
 }
 
+.compare-task-presets {
+  display: flex;
+  min-width: 0;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.compare-task-presets > span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.compare-task-presets > button {
+  min-height: 36px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 36%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-a) 68%, transparent);
+  color: var(--text-secondary);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.compare-task-presets > button:hover {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border-strong));
+  color: var(--text-primary);
+}
+
 .compare-segmented {
   display: inline-flex;
   min-width: 0;
@@ -1243,6 +1275,16 @@
 
   .compare-toolbar {
     align-items: stretch;
+  }
+
+  .compare-task-presets {
+    flex-basis: 100%;
+  }
+
+  .compare-task-presets > button {
+    flex: 1 1 100%;
+    min-height: 44px;
+    text-align: left;
   }
 
   .compare-ping-task-head {

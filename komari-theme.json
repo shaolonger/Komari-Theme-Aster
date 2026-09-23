@@ -2,8 +2,17 @@
   "name": "Komari-Theme-Aster",
   "short": "Aster",
   "description": "Aster — 面向 Komari 的服务器监控与资产管理主题",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "author": "shaolonger",
   "url": "https://github.com/shaolonger/Komari-Theme-Aster",
-  "preview": "preview.png"
+  "preview": "preview.png",
+  "configuration": {
+    "type": "redirect",
+    "icon": "Settings",
+    "name": {
+      "zh-CN": "Aster 工作室",
+      "en": "Aster Studio"
+    },
+    "data": "./?view=theme-manage"
+  }
 }
