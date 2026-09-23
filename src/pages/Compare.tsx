@@ -601,7 +601,7 @@ function MultiMetricInsightCards({
   if (analysis.insights.length === 0) {
     return (
       <div className="compare-multi-empty">
-        选择 VPS 和多个指标后，会在这里生成综合风险、最佳/最差对象和数据质量洞察。
+        选择 VPS 和多个指标后，会在这里生成压力证据、差异判断和数据质量洞察。
       </div>
     );
   }
@@ -675,7 +675,7 @@ function MultiMetricMatrix({
               >
                 <span>{row.name}</span>
                 <small>
-                  综合 {row.overallScore != null ? Math.round(row.overallScore) : "--"} · 异常 {row.alertCount}
+                  单项压力 {row.overallScore != null ? Math.round(row.overallScore) : "--"} · 异常 {row.alertCount}
                 </small>
               </button>
               {metricKeys.map((metricKey) => {
@@ -782,16 +782,25 @@ function MultiMetricInspector({
             <div key={row.uuid}>
               <span>{row.name}</span>
               <strong>{formatComparisonValue(metric.key, cell.primaryValue)}</strong>
-              <small>{riskToneLabel(cell.riskTone)} · {cell.stats.samples} 样本</small>
+              <small>
+                {cell.riskScore == null
+                  ? cell.stats.samples === 0
+                    ? "无样本"
+                    : cell.tags.includes("仅组内比较")
+                      ? "仅组内比较"
+                      : "暂不可评分"
+                  : riskToneLabel(cell.riskTone)}
+                {` · ${cell.stats.samples} 样本`}
+              </small>
             </div>
           ))}
         </div>
       )}
       {focusedRow?.worstCell && !metric && (
         <p>
-          主要风险来自 {focusedRow.worstCell.metric.shortLabel}，
-          风险分 {Math.round(focusedRow.worstCell.riskScore ?? 0)}，
-          当前综合分 {focusedRow.overallScore != null ? Math.round(focusedRow.overallScore) : "--"}。
+          最高单项压力来自 {focusedRow.worstCell.metric.shortLabel}，
+          压力分 {Math.round(focusedRow.worstCell.riskScore ?? 0)}，
+          当前最高单项压力分 {focusedRow.overallScore != null ? Math.round(focusedRow.overallScore) : "--"}。
         </p>
       )}
     </aside>
@@ -830,7 +839,7 @@ function compareMultiMetricSortValue(
   if (key === "alerts") return row.alertCount;
   if (key === "samples") return row.sampleCount;
   const metricKey = key.replace("metric:", "") as ComparisonMetricKey;
-  return row.cells[metricKey]?.riskScore ?? null;
+  return row.cells[metricKey]?.primaryValue ?? null;
 }
 
 function MultiMetricRankingTable({
@@ -874,7 +883,11 @@ function MultiMetricRankingTable({
             : "asc"
           : key === "name"
             ? "asc"
-            : "desc",
+            : key.startsWith("metric:")
+              ? getComparisonMetric(key.replace("metric:", "") as ComparisonMetricKey).higherIsRisk
+                ? "desc"
+                : "asc"
+              : "desc",
     }));
   };
 
@@ -916,7 +929,7 @@ function MultiMetricRankingTable({
                     className="compare-ranking-sort-button"
                     data-active={sort.key === key ? "true" : "false"}
                     onClick={() => toggleSort(key)}
-                    title={`按${metric.label}风险排序`}
+                    title={`按${metric.label}${metric.higherIsRisk ? "统计值降序" : "统计值升序"}排序`}
                   >
                     <span>{metric.shortLabel}</span>
                     {renderSortIcon(key)}
@@ -944,7 +957,7 @@ function MultiMetricRankingTable({
                   <td key={`${row.uuid}-${metricKey}`} data-tone={cell?.riskTone ?? "none"}>
                     <strong>{cell ? formatComparisonValue(metricKey, cell.primaryValue) : "--"}</strong>
                     <small>
-                      风险 {cell?.riskScore != null ? Math.round(cell.riskScore) : "--"}
+                      压力 {cell?.riskScore != null ? Math.round(cell.riskScore) : "--"}
                       {cell?.tags.length ? ` · ${cell.tags.join(" ")}` : ""}
                     </small>
                   </td>
@@ -1883,12 +1896,18 @@ export function Compare() {
           <small>{isFetching ? "刷新中" : multiMetricMode ? "多指标" : metric.shortLabel}</small>
         </div>
         <div className="compare-summary-card">
-          <span>压力最高</span>
-          <strong>{multiMetricMode ? multiAnalysis.rows[0]?.name ?? "--" : strongest?.name ?? "--"}</strong>
+          <span>{multiMetricMode ? "最高单项压力" : "压力最高"}</span>
+          <strong>
+            {multiMetricMode
+              ? multiAnalysis.rows[0]?.overallScore != null
+                ? multiAnalysis.rows[0].name
+                : "暂无可评估压力"
+              : strongest?.name ?? "--"}
+          </strong>
           <small>
             {multiMetricMode
               ? multiAnalysis.rows[0]?.worstCell
-                ? `${multiAnalysis.rows[0].worstCell.metric.shortLabel} 风险 ${Math.round(multiAnalysis.rows[0].worstCell.riskScore ?? 0)}`
+                ? `${multiAnalysis.rows[0].worstCell.metric.shortLabel} 压力 ${Math.round(multiAnalysis.rows[0].worstCell.riskScore ?? 0)}`
                 : "等待数据"
               : strongest
                 ? `P95 ${formatComparisonValue(metricKey, strongest.p95)}`
@@ -1983,10 +2002,10 @@ export function Compare() {
 
       <section className="compare-ranking-preview">
         <header>
-          <h2>{multiMetricMode ? "综合风险排行" : "区间排行"}</h2>
+          <h2>{multiMetricMode ? "最高单项压力排行" : "区间排行"}</h2>
           <p>
             {multiMetricMode
-              ? "按选中指标的综合风险排序，适合快速定位最需要处理的 VPS。"
+              ? "每台节点以有绝对阈值的指标中最高单项压力排序；无容量阈值的指标保留原始值供组内比较。"
               : taskScopedPingMode
               ? "按同一 Ping 任务内的 P95 和平均值排序。"
               : "按 P95 和平均值排序，适合快速定位压力最大的 VPS。"}
@@ -2005,7 +2024,7 @@ export function Compare() {
                 <strong>{row.name}</strong>
                 <small>
                   <ArrowUp size={11} />
-                  综合 {row.overallScore != null ? Math.round(row.overallScore) : "--"}
+                  单项压力 {row.overallScore != null ? Math.round(row.overallScore) : "--"}
                 </small>
                 <small>
                   <ArrowDown size={11} />

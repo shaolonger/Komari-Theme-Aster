@@ -46,6 +46,7 @@ export interface ComparisonNode {
   name: string;
   group?: string | null;
   region?: string | null;
+  cpuCores?: number | null;
 }
 
 export interface ComparisonPoint {
@@ -732,15 +733,6 @@ function primaryStatValue(stats: ComparisonStats) {
   return stats.p95 ?? stats.average ?? stats.latest ?? stats.max ?? null;
 }
 
-function relativePrimaryMax(rows: ComparisonRankingRow[]) {
-  return Math.max(
-    0,
-    ...rows
-      .map((row) => primaryStatValue(row))
-      .filter((value): value is number => value != null && Number.isFinite(value)),
-  );
-}
-
 function scoreLatencyRisk(value: number) {
   if (value <= 80) return clamp(value / 8);
   if (value <= 200) return clamp(10 + ((value - 80) / 120) * 25);
@@ -752,7 +744,7 @@ function scoreLatencyRisk(value: number) {
 function scoreMetricRisk(
   metricKey: ComparisonMetricKey,
   stats: ComparisonStats,
-  metricPrimaryMax: number,
+  cpuCores?: number | null,
 ) {
   const value = primaryStatValue(stats);
   if (value == null || !Number.isFinite(value)) return null;
@@ -767,11 +759,16 @@ function scoreMetricRisk(
     case "ping_latency":
       return scoreLatencyRisk(value);
     case "load":
-      return clamp(value * 25);
+      return typeof cpuCores === "number" && Number.isFinite(cpuCores) && cpuCores > 0
+        ? clamp((value / cpuCores) * 70)
+        : null;
     case "net_in":
     case "net_out":
     case "connections":
-      return metricPrimaryMax > 0 ? clamp((value / metricPrimaryMax) * 100) : null;
+      // Throughput and connection counts have no absolute risk threshold unless
+      // the server's capacity is configured. Keep the measurements comparable,
+      // but do not turn the busiest selected node into a false critical alert.
+      return null;
     default:
       return clamp(value);
   }
@@ -800,6 +797,8 @@ function cellTags({
   if (stats.samples === 0) return ["无样本"];
   if (maxSamples > 0 && stats.samples < Math.max(3, maxSamples * 0.45)) tags.push("样本少");
   if (metricKey === "ping_loss" && (stats.p95 ?? stats.average ?? 0) > 0) tags.push("丢包");
+  if (["net_in", "net_out", "connections"].includes(metricKey)) tags.push("仅组内比较");
+  if (metricKey === "load" && riskScore == null) tags.push("缺少核心数，无法评估压力");
 
   const averageValue = stats.average ?? 0;
   const maxValue = stats.max ?? 0;
@@ -822,7 +821,7 @@ function compareMultiRows(left: ComparisonMultiMetricRow, right: ComparisonMulti
 
 function strongestCell(row: ComparisonMultiMetricRow) {
   return Object.values(row.cells).reduce<ComparisonMultiMetricCell | null>((strongest, cell) => {
-    if (!cell) return strongest;
+    if (!cell || cell.riskScore == null) return strongest;
     if (!strongest) return cell;
     return (cell.riskScore ?? -1) > (strongest.riskScore ?? -1) ? cell : strongest;
   }, null);
@@ -830,8 +829,12 @@ function strongestCell(row: ComparisonMultiMetricRow) {
 
 function buildMultiMetricInsights(rows: ComparisonMultiMetricRow[]) {
   const rowsWithScore = rows.filter((row) => row.overallScore != null);
-  const worst = rowsWithScore[0];
-  const best = [...rowsWithScore].reverse()[0];
+  const highestScore = rowsWithScore[0]?.overallScore ?? null;
+  const lowestScore = rowsWithScore.at(-1)?.overallScore ?? null;
+  const spread = highestScore != null && lowestScore != null ? highestScore - lowestScore : null;
+  const canDistinguishExtremes = rowsWithScore.length >= 2 && spread != null && spread >= 5;
+  const worst = canDistinguishExtremes ? rowsWithScore[0] : undefined;
+  const best = canDistinguishExtremes ? rowsWithScore.at(-1) : undefined;
   const mostAlerts = [...rowsWithScore].sort((left, right) =>
     right.alertCount - left.alertCount || compareMultiRows(left, right),
   )[0];
@@ -840,6 +843,14 @@ function buildMultiMetricInsights(rows: ComparisonMultiMetricRow[]) {
   );
 
   const insights: ComparisonMultiMetricInsight[] = [];
+  if (rowsWithScore.length >= 2 && !canDistinguishExtremes) {
+    insights.push({
+      tone: "notice",
+      label: "差异不明显",
+      title: "当前指标不足以区分节点",
+      detail: `综合压力分差 ${Math.round(spread ?? 0)} 分；请查看原始数值和趋势，不据此评选最好或最差。`,
+    });
+  }
   if (worst?.worstCell) {
     insights.push({
       tone: worst.worstCell.riskTone,
@@ -939,11 +950,9 @@ export function analyzeMultiMetricComparisonSeries({
   }
 
   const maxSamplesByMetric = new Map<ComparisonMetricKey, number>();
-  const primaryMaxByMetric = new Map<ComparisonMetricKey, number>();
   for (const metricKey of normalizedMetricKeys) {
     const ranking = rankingByMetric.get(metricKey) ?? [];
     maxSamplesByMetric.set(metricKey, Math.max(0, ...ranking.map((row) => row.samples)));
-    primaryMaxByMetric.set(metricKey, relativePrimaryMax(ranking));
   }
 
   const rows = nodes.map<ComparisonMultiMetricRow>((node) => {
@@ -952,7 +961,7 @@ export function analyzeMultiMetricComparisonSeries({
       const metric = getComparisonMetric(metricKey);
       const series = (seriesByMetric[metricKey] ?? []).find((item) => item.uuid === node.uuid);
       const stats = getComparisonStats(series?.points ?? []);
-      const riskScore = scoreMetricRisk(metricKey, stats, primaryMaxByMetric.get(metricKey) ?? 0);
+      const riskScore = scoreMetricRisk(metricKey, stats, node.cpuCores);
       const cell: ComparisonMultiMetricCell = {
         metric,
         stats,
@@ -976,7 +985,7 @@ export function analyzeMultiMetricComparisonSeries({
     );
     const overallScore =
       scoredCells.length > 0
-        ? scoredCells.reduce((total, cell) => total + Number(cell.riskScore), 0) / scoredCells.length
+        ? Math.max(...scoredCells.map((cell) => Number(cell.riskScore)))
         : null;
     const row: ComparisonMultiMetricRow = {
       uuid: node.uuid,
@@ -1410,10 +1419,10 @@ export function buildMultiMetricComparisonCsv(analysis: ComparisonMultiMetricAna
     "uuid",
     "group",
     "region",
-    "overall_score",
+    "highest_single_metric_pressure_score",
     "alert_count",
     "samples",
-    "worst_metric",
+    "highest_pressure_metric",
     ...metricColumns,
   ];
   const lines = [
@@ -1454,12 +1463,14 @@ export function buildMultiMetricComparisonMarkdown(analysis: ComparisonMultiMetr
   const lines = [
     "## VPS 多指标对比",
     "",
+    "综合分为有绝对压力阈值的选中指标中的最高单项分；带宽和连接数仅作组内比较，不参与风险评分。",
+    "",
     [
       "| VPS",
-      "综合风险",
+      "最高单项压力分",
       "异常指标",
       "样本",
-      "最差指标",
+      "最高压力指标",
       ...metricHeaders,
     ].join(" | ") + " |",
     [
@@ -1496,5 +1507,6 @@ export function nodesToComparisonNodes(nodes: NodeInfo[]): ComparisonNode[] {
     name: node.name,
     group: node.group,
     region: node.region,
+    cpuCores: node.cpu_cores,
   }));
 }

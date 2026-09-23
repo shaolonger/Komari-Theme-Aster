@@ -224,6 +224,90 @@ describe("buildMultiMetricComparisonAnalysis", () => {
     expect(analysis.rows[0].cells.ping_loss?.stats.average).toBe(50);
   });
 
+  it("does not treat the busiest relative metric as an absolute risk", () => {
+    const input = {
+      metricKeys: ["net_in", "connections"] as ("net_in" | "connections")[],
+      nodes,
+      loadRecordsByMetric: {
+        net_in: {
+          a: [loadRecord({ client: "a", time: 1000, net_in: 10 })],
+          b: [loadRecord({ client: "b", time: 1000, net_in: 900 })],
+        },
+        connections: {
+          a: [loadRecord({ client: "a", time: 1000, connections: 20 })],
+          b: [loadRecord({ client: "b", time: 1000, connections: 1000 })],
+        },
+      },
+    };
+    const analysis = buildMultiMetricComparisonAnalysis(input);
+    const busiest = analysis.rows.find((row) => row.uuid === "b");
+
+    expect(busiest?.cells.net_in?.primaryValue).toBe(900);
+    expect(busiest?.cells.net_in?.riskScore).toBeNull();
+    expect(busiest?.cells.connections?.riskScore).toBeNull();
+    expect(busiest?.cells.net_in?.tags).toContain("仅组内比较");
+    expect(analysis.rows.every((row) => row.overallScore == null)).toBe(true);
+    expect(analysis.insights.some((insight) => insight.label === "综合最差")).toBe(false);
+  });
+
+  it("keeps absolute risk stable when the comparison set changes", () => {
+    const target = { uuid: "a", name: "alpha", cpuCores: 4 };
+    const records = {
+      cpu: { a: [loadRecord({ client: "a", time: 1000, cpu: 20 })] },
+      net_in: { a: [loadRecord({ client: "a", time: 1000, net_in: 100 })] },
+    };
+    const before = buildMultiMetricComparisonAnalysis({
+      metricKeys: ["cpu", "net_in"],
+      nodes: [target],
+      loadRecordsByMetric: records,
+    });
+    const after = buildMultiMetricComparisonAnalysis({
+      metricKeys: ["cpu", "net_in"],
+      nodes: [target, { uuid: "b", name: "beta", cpuCores: 2 }],
+      loadRecordsByMetric: {
+        ...records,
+        cpu: {
+          ...records.cpu,
+          b: [loadRecord({ client: "b", time: 1000, cpu: 99 })],
+        },
+        net_in: {
+          ...records.net_in,
+          b: [loadRecord({ client: "b", time: 1000, net_in: 9000 })],
+        },
+      },
+    });
+
+    expect(before.rows[0].cells.cpu?.riskScore).toBe(after.rows.find((row) => row.uuid === "a")?.cells.cpu?.riskScore);
+    expect(before.rows[0].cells.net_in?.riskScore).toBeNull();
+  });
+
+  it("uses the worst confirmed metric and avoids false winners on ties", () => {
+    const analysis = buildMultiMetricComparisonAnalysis({
+      metricKeys: ["cpu", "ram", "net_in"],
+      nodes: [nodes[0], nodes[1]],
+      loadRecordsByMetric: {
+        cpu: {
+          a: [loadRecord({ client: "a", time: 1000, cpu: 90 })],
+          b: [loadRecord({ client: "b", time: 1000, cpu: 90 })],
+        },
+        ram: {
+          a: [loadRecord({ client: "a", time: 1000, ram: 900, ram_total: 1024 })],
+          b: [loadRecord({ client: "b", time: 1000, ram: 0, ram_total: 1024 })],
+        },
+        net_in: {
+          a: [loadRecord({ client: "a", time: 1000, net_in: 100 })],
+          b: [loadRecord({ client: "b", time: 1000, net_in: 1000 })],
+        },
+      },
+    });
+
+    expect(analysis.rows.find((row) => row.uuid === "a")?.overallScore).toBe(90);
+    expect(analysis.rows.find((row) => row.uuid === "a")?.worstCell?.metric.key).toBe("cpu");
+    expect(analysis.insights.some((insight) => insight.label === "差异不明显")).toBe(true);
+    expect(analysis.insights.some((insight) => insight.label === "综合最佳")).toBe(false);
+    expect(analysis.insights.some((insight) => insight.label === "综合最差")).toBe(false);
+  });
+
   it("exports multi-metric ranking as csv and markdown", () => {
     const analysis = buildMultiMetricComparisonAnalysis({
       metricKeys: ["cpu", "ram"],
