@@ -1377,6 +1377,40 @@
   white-space: nowrap;
 }
 
+@media (max-width: 430px) {
+  .ping-source-lanes {
+    gap: 4px;
+  }
+
+  .ping-task-lane {
+    min-height: 34px;
+    grid-template-columns: minmax(56px, 0.8fr) auto minmax(72px, 1.2fr) auto;
+    gap: 5px;
+    border-radius: 8px;
+    padding: 4px 6px;
+  }
+
+  .ping-task-lane-name {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .ping-task-lane-latency,
+  .ping-task-lane-loss {
+    font-size: 10.5px;
+    line-height: 1.2;
+  }
+
+  .ping-task-lane-latency small,
+  .ping-task-lane-loss small {
+    font-size: 9px;
+  }
+
+  .ping-task-lane .ping-task-sparkline {
+    height: 20px;
+  }
+}
+
 .ping-source-matrix[data-density="compact"] .ping-task-sparkline-line {
   stroke-width: 1.6;
 }

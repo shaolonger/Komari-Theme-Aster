@@ -848,6 +848,31 @@ try {
   );
   await cdp.value(`document.querySelector('.home-ops-show-all')?.click()`);
   await waitUntil(cdp, `document.querySelectorAll('.home-ops-panel .home-ops-item').length > 1`, 2_000);
+  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
+  await waitUntil(cdp, `document.querySelector('.compact-node-card .compact-node-gauge-label') !== null`, 6_000);
+  const mobileInspection = await cdp.value(`(() => ({
+    width: document.documentElement.scrollWidth,
+    viewport: innerWidth,
+    riskFilter: getComputedStyle(document.querySelector('.home-risk-filter-strip')).display,
+    searchFont: getComputedStyle(document.querySelector('.home-workbench-search input')).fontSize,
+    metricFont: getComputedStyle(document.querySelector('.compact-node-gauge-label')).fontSize,
+    detailLinkHeight: document.querySelector('.compact-node-detail-link').getBoundingClientRect().height,
+    toggleHeight: document.querySelector('.home-mobile-filter-toggle').getBoundingClientRect().height,
+  }))()`);
+  failGate(
+    mobileInspection.width <= mobileInspection.viewport && mobileInspection.riskFilter === "none" && Number.parseFloat(mobileInspection.metricFont) >= 11 && mobileInspection.detailLinkHeight >= 44 && mobileInspection.toggleHeight >= 44,
+    `mobile inspection layout is not readable or compact: ${JSON.stringify(mobileInspection)}`,
+  );
+  await cdp.value(`document.querySelector('.home-mobile-filter-toggle').click()`);
+  await waitUntil(cdp, `getComputedStyle(document.querySelector('.home-risk-filter-strip')).display !== 'none'`, 2_000);
+  failGate(
+    await cdp.value(`Array.from(document.querySelectorAll('.home-risk-filter-strip button')).filter(button => button.getBoundingClientRect().height < 44).length === 0`),
+    "mobile risk filters have tap targets smaller than 44px",
+  );
+  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
+  await waitUntil(cdp, `document.querySelector('.home-ops-panel .home-ops-item') !== null`, 6_000);
   await cdp.value(`document.querySelector('.home-ops-panel .home-ops-item')?.click()`);
   await waitUntil(cdp, `location.pathname === '/instance/node-0' && new URLSearchParams(location.search).has('focus')`, 4_000);
   await waitUntil(cdp, `document.querySelector('#instance-summary') !== null`, 4_000);

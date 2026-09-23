@@ -808,6 +808,7 @@ export function NodeGrid() {
   const [activeSavedViewId, setActiveSavedViewId] = useState("");
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<HomeRiskFilter>("all");
   const [nodeSearch, setNodeSearch] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [workbenchSort, setWorkbenchSort] = useState<WorkbenchSortKey>("weight");
   const [listSorts, setListSorts] = useState<VpsListSortCondition[]>(() =>
     DEFAULT_VPS_LIST_SORTS.map((condition) => ({ ...condition })),
@@ -1452,6 +1453,11 @@ export function NodeGrid() {
     selectedNodeUuids.length > 0 ||
     activeFacetFilterCount > 0 ||
     activeSavedViewId.length > 0;
+  const mobileFilterCount =
+    activeFacetFilterCount +
+    (selectedRiskFilter !== "all" ? 1 : 0) +
+    (selectedNodeUuids.length > 0 ? 1 : 0) +
+    (activeSavedViewId ? 1 : 0);
   const openOverviewMetric = useCallback((metric: Exclude<HomeMetricPanel, "asset">) => {
     setCostSummaryOpen(false);
     setOverviewPanel(metric);
@@ -1540,7 +1546,7 @@ export function NodeGrid() {
         onOpenMetric={openOverviewMetric}
         onToggle={() => setWorkbenchOpen((value) => !value)}
       />
-      <section className="home-command-area" aria-label="VPS 搜索与筛选">
+      <section className="home-command-area" aria-label="VPS 搜索与筛选" data-mobile-filters-open={mobileFiltersOpen ? "true" : "false"}>
         <div className="home-command-bar">
           <label className="home-workbench-search">
             <Search size={15} aria-hidden="true" />
@@ -1552,6 +1558,16 @@ export function NodeGrid() {
               aria-label="搜索 VPS"
             />
           </label>
+          <button
+            type="button"
+            className="home-mobile-filter-toggle"
+            aria-expanded={mobileFiltersOpen}
+            onClick={() => setMobileFiltersOpen((value) => !value)}
+          >
+            <SlidersHorizontal size={16} aria-hidden="true" />
+            <span>筛选</span>
+            {mobileFilterCount > 0 && <strong>{mobileFilterCount}</strong>}
+          </button>
           <HomeRiskFilters
             risks={operationRisks}
             selectedFilter={selectedRiskFilter}
@@ -1588,7 +1604,7 @@ export function NodeGrid() {
           {mode === "list" ? (
             <button
               type="button"
-              className="home-command-action"
+              className="home-command-action home-list-sort-trigger"
               data-active={listSortPanelOpen ? "true" : "false"}
               aria-expanded={listSortPanelOpen}
               onClick={() => setListSortPanelOpen((value) => !value)}
@@ -1617,7 +1633,7 @@ export function NodeGrid() {
           )}
           <button
             type="button"
-            className="home-command-action"
+            className="home-command-action home-node-selection-trigger"
             data-active={selectedNodeUuids.length > 0 ? "true" : "false"}
             aria-expanded={nodeSelectorOpen}
             onClick={() => setNodeSelectorOpen((value) => !value)}
@@ -1633,7 +1649,7 @@ export function NodeGrid() {
           {selectedNodeUuids.length >= 2 && (
             <Link
               to={compareHref}
-              className="home-command-action is-contextual"
+              className="home-command-action home-command-compare is-contextual"
               title="对比已指定的 VPS（最多带入 3 台）"
             >
               <BarChart3 size={14} aria-hidden="true" />
