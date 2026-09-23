@@ -191,7 +191,7 @@ function HomeWorkbenchPanel({
   risks,
   expanded,
   showOverview,
-  todayTrafficTotal,
+  todayTrafficLabel,
   costSummary,
   costLoading,
   showCostDetailButton,
@@ -204,7 +204,7 @@ function HomeWorkbenchPanel({
   risks: HomeRiskItem[];
   expanded: boolean;
   showOverview: boolean;
-  todayTrafficTotal: number;
+  todayTrafficLabel: string;
   costSummary: { remainingCny: number } | null;
   costLoading: boolean;
   showCostDetailButton: boolean;
@@ -271,7 +271,7 @@ function HomeWorkbenchPanel({
                 title="查看今日、本月和累计流量排行"
               >
                 <span>今日流量</span>
-                <strong>{formatBytes(todayTrafficTotal)}</strong>
+                <strong>{todayTrafficLabel}</strong>
               </button>
               <button
                 type="button"
@@ -1046,10 +1046,15 @@ export function NodeGrid() {
     () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock),
     [overviewNodes, trafficHistoryQuery.data, trafficClock],
   );
-  const todayTrafficTotal = useMemo(
-    () => trafficOverviewRows.reduce((total, row) => total + row.today.total, 0),
-    [trafficOverviewRows],
-  );
+  const todayTrafficLabel = useMemo(() => {
+    if (trafficHistoryQuery.isError) return "读取失败";
+    const available = trafficOverviewRows.filter((row) => row.today.quality !== "unavailable");
+    if (available.length === 0) return trafficHistoryQuery.isLoading ? "加载中" : "待计算";
+    if (available.length !== trafficOverviewRows.length || available.some((row) => row.today.quality === "partial")) {
+      return "部分数据";
+    }
+    return formatBytes(available.reduce((total, row) => total + row.today.total, 0));
+  }, [trafficHistoryQuery.isError, trafficHistoryQuery.isLoading, trafficOverviewRows]);
   const hasNodes = allMeta.length > 0;
   // 资产概览卡片(剩余价值)始终显示,这样切换花费相关设置不会让整行重排。
   // showCostSummary 控制卡片右上角的详情按钮;悬浮球是兜底入口,只在详情按钮
@@ -1479,7 +1484,7 @@ export function NodeGrid() {
           risks={operationRisks}
           expanded={workbenchOpen}
           showOverview={showHomeOverview}
-          todayTrafficTotal={todayTrafficTotal}
+          todayTrafficLabel={todayTrafficLabel}
           costSummary={costSummary}
           costLoading={costLoading}
           showCostDetailButton={showCostDetailButton}
@@ -1526,7 +1531,7 @@ export function NodeGrid() {
         risks={operationRisks}
         expanded={workbenchOpen}
         showOverview={showHomeOverview}
-        todayTrafficTotal={todayTrafficTotal}
+        todayTrafficLabel={todayTrafficLabel}
         costSummary={costSummary}
         costLoading={costLoading}
         showCostDetailButton={showCostDetailButton}

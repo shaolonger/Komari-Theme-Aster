@@ -31,9 +31,9 @@ describe("home traffic overview", () => {
       NOW,
     );
 
-    expect(rows[0]?.today).toEqual({ up: 500, down: 500, total: 1_000 });
-    expect(rows[0]?.month).toEqual({ up: 1_200, down: 1_400, total: 2_600 });
-    expect(rows[0]?.total).toEqual({ up: 1_500, down: 2_000, total: 3_500 });
+    expect(rows[0]?.today).toEqual({ up: 500, down: 500, total: 1_000, quality: "measured", coverageStart: todayStart - 1_000 });
+    expect(rows[0]?.month).toEqual({ up: 1_200, down: 1_400, total: 2_600, quality: "measured", coverageStart: monthStart - 1_000 });
+    expect(rows[0]?.total).toEqual({ up: 1_500, down: 2_000, total: 3_500, quality: "measured", coverageStart: null });
   });
 
   it("treats a counter reset as usage since the reset", () => {
@@ -60,6 +60,61 @@ describe("home traffic overview", () => {
       NOW,
     );
 
-    expect(rows[0]?.today).toEqual({ up: 20, down: 8, total: 28 });
+    expect(rows[0]?.today).toMatchObject({ up: 20, down: 8, total: 28 });
+    expect(rows[0]?.today.quality).toBe("partial");
+  });
+
+  it("does not substitute cumulative counters for missing period history", () => {
+    const rows = buildHomeTrafficOverview(
+      [{
+        uuid: "node-a",
+        name: "Node A",
+        group: "",
+        region: "",
+        online: true,
+        updatedAt: NOW,
+        netUp: 10,
+        netDown: 5,
+        trafficUp: 5_000,
+        trafficDown: 8_000,
+        expiredAt: "",
+      }],
+      {},
+      NOW,
+    );
+
+    expect(rows[0]?.today.total).toBe(0);
+    expect(rows[0]?.today.quality).toBe("unavailable");
+    expect(rows[0]?.month.quality).toBe("unavailable");
+    expect(rows[0]?.total.total).toBe(13_000);
+  });
+
+  it("marks usage partial when the first sample starts after the period boundary", () => {
+    const todayStart = getHomeTrafficPeriodStart("today", NOW);
+    const rows = buildHomeTrafficOverview(
+      [{
+        uuid: "node-a",
+        name: "Node A",
+        group: "",
+        region: "",
+        online: true,
+        updatedAt: NOW,
+        netUp: 30,
+        netDown: 15,
+        trafficUp: 30,
+        trafficDown: 15,
+        expiredAt: "",
+      }],
+      {
+        "node-a": [
+          { time: todayStart + 30 * 60_000, net_total_up: 100, net_total_down: 50 } as never,
+        ],
+      },
+      NOW,
+    );
+
+    expect(rows[0]?.today.total).toBe(45);
+    expect(rows[0]?.today.quality).toBe("partial");
+    expect(rows[0]?.today.coverageStart).toBe(todayStart + 30 * 60_000);
   });
 });

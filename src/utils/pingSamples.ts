@@ -35,3 +35,14 @@ export function getPingRecordSampleCounts(
     valid: Math.max(0, total - lost),
   };
 }
+
+export function getPingLossPercent(records: Array<Pick<PingRecord, "value" | "sample_count" | "loss_count">>) {
+  const counts = records.reduce(
+    (total, record) => {
+      const sample = getPingRecordSampleCounts(record);
+      return { total: total.total + sample.total, lost: total.lost + sample.lost };
+    },
+    { total: 0, lost: 0 },
+  );
+  return counts.total > 0 ? (counts.lost / counts.total) * 100 : null;
+}

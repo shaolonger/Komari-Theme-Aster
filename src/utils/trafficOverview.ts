@@ -20,6 +20,8 @@ export interface HomeTrafficUsage {
   up: number;
   down: number;
   total: number;
+  quality: "measured" | "partial" | "unavailable";
+  coverageStart: number | null;
 }
 
 export interface HomeTrafficOverviewRow extends HomeOverviewNode {
@@ -58,22 +60,30 @@ function resolvePeriodCounter(
   current: number,
   start: number,
   now: number,
-) {
+): { value: number; quality: HomeTrafficUsage["quality"]; coverageStart: number | null } {
   const sorted = (records ?? [])
     .map((record) => ({ record, time: toTimestamp(record.time) }))
     .filter((item) => item.time > 0 && item.time <= now)
     .sort((left, right) => left.time - right.time);
   const inPeriod = sorted.filter((item) => item.time >= start);
   const beforePeriod = sorted.filter((item) => item.time < start).at(-1);
-  const baseline = beforePeriod ?? inPeriod[0];
-  const latest = inPeriod.at(-1) ?? sorted.at(-1);
-  if (!latest && !baseline) return safeCounter(current);
+  if (inPeriod.length === 0) {
+    return { value: 0, quality: "unavailable", coverageStart: null };
+  }
 
-  const latestValue = safeCounter(current) || getCounter(latest?.record ?? baseline!.record, direction);
-  const baselineValue = baseline ? getCounter(baseline.record, direction) : 0;
-  if (latestValue >= baselineValue) return latestValue - baselineValue;
-  // A restarted agent or a billing-cycle rollover resets the backend counter.
-  return latestValue;
+  const firstInPeriod = inPeriod[0];
+  const usableBoundary = beforePeriod && start - beforePeriod.time <= 15 * 60_000
+    ? beforePeriod
+    : null;
+  const baseline = usableBoundary ?? firstInPeriod;
+  const latest = inPeriod.at(-1)!;
+  const currentValue = safeCounter(current);
+  const latestValue = currentValue > 0 ? currentValue : getCounter(latest.record, direction);
+  const baselineValue = getCounter(baseline.record, direction);
+  const reset = latestValue < baselineValue;
+  const value = reset ? latestValue : latestValue - baselineValue;
+  const quality = reset || !usableBoundary ? "partial" : "measured";
+  return { value, quality, coverageStart: baseline.time };
 }
 
 export function getHomeTrafficUsage(
@@ -84,9 +94,23 @@ export function getHomeTrafficUsage(
   now = Date.now(),
 ): HomeTrafficUsage {
   const start = getHomeTrafficPeriodStart(period, now);
-  const up = resolvePeriodCounter(records, "up", currentUp, start, now);
-  const down = resolvePeriodCounter(records, "down", currentDown, start, now);
-  return { up, down, total: up + down };
+  const upResult = resolvePeriodCounter(records, "up", currentUp, start, now);
+  const downResult = resolvePeriodCounter(records, "down", currentDown, start, now);
+  const qualities = [upResult.quality, downResult.quality];
+  const quality = qualities.includes("unavailable")
+    ? "unavailable"
+    : qualities.includes("partial")
+      ? "partial"
+      : "measured";
+  const coverageValues = [upResult.coverageStart, downResult.coverageStart]
+    .filter((value): value is number => value != null);
+  return {
+    up: upResult.value,
+    down: downResult.value,
+    total: upResult.value + downResult.value,
+    quality,
+    coverageStart: coverageValues.length > 0 ? Math.min(...coverageValues) : null,
+  };
 }
 
 export function buildHomeTrafficOverview(
@@ -102,6 +126,8 @@ export function buildHomeTrafficOverview(
       up: safeCounter(node.trafficUp),
       down: safeCounter(node.trafficDown),
       total: safeCounter(node.trafficUp) + safeCounter(node.trafficDown),
+      quality: "measured",
+      coverageStart: null,
     },
   }));
 }

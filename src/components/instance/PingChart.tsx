@@ -28,7 +28,7 @@ import {
   getPingHistoryQueryHours,
   getPingHistoryWindow,
 } from "@/utils/pingHistoryResolution";
-import { getPingRecordSampleCounts, isValidPingLatency } from "@/utils/pingSamples";
+import { getPingLossPercent, getPingRecordSampleCounts, isValidPingLatency } from "@/utils/pingSamples";
 import { formatLatency, formatMetricNumber, formatPacketLoss } from "@/utils/format";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
@@ -387,15 +387,11 @@ export function PingChart({
       const p50 = weightedPercentileFromSorted(positives, 0.5);
       const p99 = weightedPercentileFromSorted(positives, 0.99);
       const volatility = p50 && p99 ? p99 / p50 : null;
-      const total = records.reduce(
+      const sampleCount = records.reduce(
         (sum, record) => sum + getPingRecordSampleCounts(record).total,
         0,
       );
-      const lost = records.reduce(
-        (sum, record) => sum + getPingRecordSampleCounts(record).lost,
-        0,
-      );
-      const loss = total > 0 ? (lost / total) * 100 : task.loss;
+      const loss = getPingLossPercent(records);
       return {
         ...task,
         latest,
@@ -405,8 +401,7 @@ export function PingChart({
         p50,
         p99,
         volatility,
-        total,
-        lost,
+        total: sampleCount,
         loss,
         color: taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
       };
@@ -510,7 +505,7 @@ export function PingChart({
               style={{ borderColor: visible ? task.color : "var(--border-subtle)" }}
               title={[
                 taskLabels.get(task.id) ?? `任务 #${task.id}`,
-                `当前 ${formatLatency(task.latest)} | 均值 ${formatLatency(task.avg)} | 丢包 ${formatPacketLoss(task.loss)}`,
+                `当前 ${formatLatency(task.latest)} | 均值 ${formatLatency(task.avg)} | 丢包 ${task.loss == null ? "无样本" : formatPacketLoss(task.loss)}`,
                 `p99 ${formatLatency(task.p99)} | 抖动 ${formatMetricNumber(task.volatility)}`,
                 `min ${formatLatency(task.min)} | max ${formatLatency(task.max)} | 样本 ${task.total ?? 0} | 间隔 ${task.interval}s`,
               ].join("\n")}
@@ -525,9 +520,9 @@ export function PingChart({
               </span>
               <span
                 className="instance-ping-task-loss"
-                style={{ color: task.loss > 0 ? lossHeatColor(task.loss) : "var(--text-tertiary)" }}
+                style={{ color: task.loss != null && task.loss > 0 ? lossHeatColor(task.loss) : "var(--text-tertiary)" }}
               >
-                {formatPacketLoss(task.loss)}
+                {task.loss == null ? "无样本" : formatPacketLoss(task.loss)}
               </span>
             </button>
           );

@@ -64,10 +64,14 @@ function expiryLabel(expiredAt: HomeOverviewNode["expiredAt"]) {
   return { label: `${days} 天后到期`, days };
 }
 
-function OverviewRow({ node, panel, trafficTab, now, displayTimeZone }: { node: HomeTrafficOverviewRow; panel: HomeMetricPanel; trafficTab: HomeTrafficTab; now: number; displayTimeZone: DisplayTimeZone }) {
+function OverviewRow({ node, panel, trafficTab, now, displayTimeZone, trafficError }: { node: HomeTrafficOverviewRow; panel: HomeMetricPanel; trafficTab: HomeTrafficTab; now: number; displayTimeZone: DisplayTimeZone; trafficError: boolean }) {
   const metadata = [node.group, node.region].filter(Boolean).join(" · ");
   const expiry = expiryLabel(node.expiredAt);
   const traffic = node[trafficTab === "total" ? "total" : trafficTab];
+  const trafficUnavailable = trafficTab !== "total" && (trafficError || traffic.quality === "unavailable");
+  const trafficCoverage = traffic.coverageStart == null
+    ? null
+    : formatDisplayDateTime(traffic.coverageStart, displayTimeZone, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   return (
     <Link to={`/instance/${node.uuid}`} className="home-overview-row" data-online={node.online === true ? "true" : node.online === false ? "false" : "pending"}>
       <div className="home-overview-row-main">
@@ -91,8 +95,17 @@ function OverviewRow({ node, panel, trafficTab, now, displayTimeZone }: { node: 
       )}
       {panel === "traffic" && (
         <div className="home-overview-row-value">
-          <strong>{formatBytes(traffic.total)}</strong>
-          <small><ArrowUp size={10} />{formatBytes(traffic.up)} <ArrowDown size={10} />{formatBytes(traffic.down)}</small>
+          <strong>{trafficUnavailable ? "—" : formatBytes(traffic.total)}</strong>
+          <small>
+            {trafficUnavailable
+              ? "周期用量暂不可计算"
+              : trafficTab === "total"
+                ? "累计计数"
+                : traffic.quality === "partial"
+                  ? `部分覆盖，自 ${trafficCoverage ?? "首条样本"}`
+                  : "周期边界样本可用"}
+          </small>
+          {!trafficUnavailable && <small><ArrowUp size={10} />{formatBytes(traffic.up)} <ArrowDown size={10} />{formatBytes(traffic.down)}</small>}
         </div>
       )}
       {panel === "expiry" && (
@@ -188,8 +201,8 @@ export function HomeMetricSummary({
       )}
       <div className="home-overview-content">
         {panel === "traffic" && trafficLoading && <div className="home-overview-empty">正在加载历史流量…</div>}
-        {panel === "traffic" && trafficError && <div className="home-overview-empty">历史流量暂时不可用，当前仍显示实时累计值。</div>}
-        {rows.length > 0 ? rows.map((node) => <OverviewRow key={node.uuid} node={node} panel={panel} trafficTab={trafficTab} now={clock} displayTimeZone={displayTimeZone} />) : !trafficLoading && <div className="home-overview-empty">暂无可用数据</div>}
+        {panel === "traffic" && trafficError && trafficTab !== "total" && <div className="home-overview-empty">历史读取失败，所选周期用量不可计算；可切换到累计流量查看当前计数。</div>}
+        {rows.length > 0 ? rows.map((node) => <OverviewRow key={node.uuid} node={node} panel={panel} trafficTab={trafficTab} now={clock} displayTimeZone={displayTimeZone} trafficError={trafficError} />) : !trafficLoading && <div className="home-overview-empty">暂无可用数据</div>}
       </div>
     </section>
   );
