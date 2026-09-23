@@ -1,4 +1,9 @@
 import type { LoadRecord, NodeInfo } from "@/types/komari";
+import {
+  getZonedDateTimeParts,
+  parseDateTimeLocalInZone,
+  type DisplayTimeZone,
+} from "@/utils/timeDisplay";
 
 export type HomeTrafficPeriod = "today" | "month" | "total";
 
@@ -43,11 +48,26 @@ function toTimestamp(value: string | number) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function getHomeTrafficPeriodStart(period: Exclude<HomeTrafficPeriod, "total">, now = Date.now()) {
-  const date = new Date(now);
-  if (period === "month") date.setDate(1);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+function formatCalendarDate(year: number, month: number, day: number) {
+  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
+export function getHomeTrafficPeriodStart(
+  period: Exclude<HomeTrafficPeriod, "total">,
+  now = Date.now(),
+  displayTimeZone: DisplayTimeZone = "system",
+) {
+  const parts = getZonedDateTimeParts(now, displayTimeZone);
+  const date = period === "month"
+    ? `${parts.year.toString().padStart(4, "0")}-${parts.month.toString().padStart(2, "0")}-01`
+    : formatCalendarDate(parts.year, parts.month, parts.day);
+  const start = parseDateTimeLocalInZone(`${date}T00:00`, displayTimeZone);
+  return (start ?? Math.floor(now / 1000)) * 1_000;
+}
+
+export function getHomeTrafficDateKey(now = Date.now(), displayTimeZone: DisplayTimeZone = "system") {
+  const parts = getZonedDateTimeParts(now, displayTimeZone);
+  return formatCalendarDate(parts.year, parts.month, parts.day);
 }
 
 function getCounter(record: LoadRecord, direction: "up" | "down") {
@@ -92,8 +112,9 @@ export function getHomeTrafficUsage(
   currentUp: number,
   currentDown: number,
   now = Date.now(),
+  displayTimeZone: DisplayTimeZone = "system",
 ): HomeTrafficUsage {
-  const start = getHomeTrafficPeriodStart(period, now);
+  const start = getHomeTrafficPeriodStart(period, now, displayTimeZone);
   const upResult = resolvePeriodCounter(records, "up", currentUp, start, now);
   const downResult = resolvePeriodCounter(records, "down", currentDown, start, now);
   const qualities = [upResult.quality, downResult.quality];
@@ -117,11 +138,12 @@ export function buildHomeTrafficOverview(
   nodes: HomeOverviewNode[],
   recordsByUuid: Record<string, LoadRecord[]> = {},
   now = Date.now(),
+  displayTimeZone: DisplayTimeZone = "system",
 ): HomeTrafficOverviewRow[] {
   return nodes.map((node) => ({
     ...node,
-    today: getHomeTrafficUsage(recordsByUuid[node.uuid], "today", node.trafficUp, node.trafficDown, now),
-    month: getHomeTrafficUsage(recordsByUuid[node.uuid], "month", node.trafficUp, node.trafficDown, now),
+    today: getHomeTrafficUsage(recordsByUuid[node.uuid], "today", node.trafficUp, node.trafficDown, now, displayTimeZone),
+    month: getHomeTrafficUsage(recordsByUuid[node.uuid], "month", node.trafficUp, node.trafficDown, now, displayTimeZone),
     total: {
       up: safeCounter(node.trafficUp),
       down: safeCounter(node.trafficDown),

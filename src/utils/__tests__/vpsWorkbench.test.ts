@@ -135,6 +135,40 @@ describe("expiry and traffic", () => {
     expect(forecast.remaining).toBe(10);
     expect(forecast.burnRate).toBe(2);
     expect(forecast.exhaustInSeconds).toBe(5);
+    expect(forecast.exhaustLabel).toContain("按当前速率估算");
+  });
+
+  it("pauses current-rate forecasts for offline or stale nodes", () => {
+    const base = {
+      trafficLimitType: "sum",
+      trafficUp: 10,
+      trafficDown: 10,
+      netUp: 2,
+      netDown: 2,
+      trafficLimit: 100_000,
+      now: NOW,
+      updatedAt: NOW,
+    };
+    const offline = getTrafficForecast({ ...base, online: false });
+    const stale = getTrafficForecast({ ...base, online: true, updatedAt: NOW - 10 * 60_000 });
+
+    expect(offline).toMatchObject({ forecastState: "offline", exhaustInSeconds: null, exhaustLabel: "节点离线，已暂停预测" });
+    expect(stale).toMatchObject({ forecastState: "stale", exhaustInSeconds: null, exhaustLabel: "数据已过期，已暂停预测" });
+  });
+
+  it("caps implausibly long projections as low near-term risk", () => {
+    const forecast = getTrafficForecast({
+      trafficLimitType: "sum",
+      trafficUp: 0,
+      trafficDown: 0,
+      netUp: 1,
+      netDown: 0,
+      trafficLimit: 50_000_000,
+    });
+
+    expect(forecast.exhaustInSeconds).toBeNull();
+    expect(forecast.forecastState).toBe("current-rate");
+    expect(forecast.exhaustLabel).toBe("按当前速率估算，近期耗尽风险低");
   });
 
   it("keeps unlimited nodes out of traffic pressure", () => {

@@ -33,7 +33,6 @@ import {
   formatBytes,
   formatByteRateLabel,
   resolveExpireTimestamp,
-  trimFixed,
 } from "@/utils/format";
 import { formatRenewalPrice } from "@/utils/billing";
 import { calculateCostSummary, formatCnyMoney, getExchangeRates } from "@/utils/cost";
@@ -85,7 +84,7 @@ import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
-import { buildHomeOverviewNode, buildHomeTrafficOverview, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
+import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
@@ -153,16 +152,6 @@ function formatExpirePressure(node: VpsWorkbenchNode) {
   if (node.expireDays < 0) return "已过期";
   if (node.expireDays === 0) return "今日到期";
   return `${node.expireDays} 天后到期`;
-}
-
-function formatExhaustIn(seconds: number | null) {
-  if (seconds == null) return "当前无明显消耗";
-  if (seconds <= 0) return "已耗尽";
-  const days = seconds / 86400;
-  if (days >= 1) return `约 ${trimFixed(days, days >= 10 ? 0 : 1)} 天耗尽`;
-  const hours = seconds / 3600;
-  if (hours >= 1) return `约 ${trimFixed(hours, 1)} 小时耗尽`;
-  return "不足 1 小时耗尽";
 }
 
 function WorkbenchCard({
@@ -371,7 +360,7 @@ function HomeWorkbenchPanel({
               title="流量预估"
               empty="暂无流量压力"
               nodes={trafficNodes}
-              getDetail={(node) => formatExhaustIn(node.traffic.exhaustInSeconds)}
+              getDetail={(node) => node.traffic.exhaustLabel}
             />
             <WorkbenchList
               title="Ping 关注"
@@ -1029,7 +1018,7 @@ export function NodeGrid() {
     return () => window.clearInterval(timer);
   }, [showHomeOverview]);
   const trafficHistoryQuery = useQuery({
-    queryKey: ["home-traffic-overview", visibleNodeUuids, new Date(trafficClock).toISOString().slice(0, 10)],
+    queryKey: ["home-traffic-overview", visibleNodeUuids, themeSettings.displayTimeZone, getHomeTrafficDateKey(trafficClock, themeSettings.displayTimeZone)],
     queryFn: () =>
       getComparisonLoadRecords({
         uuids: visibleNodeUuids,
@@ -1043,8 +1032,8 @@ export function NodeGrid() {
     retry: 1,
   });
   const trafficOverviewRows = useMemo<HomeTrafficOverviewRow[]>(
-    () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock),
-    [overviewNodes, trafficHistoryQuery.data, trafficClock],
+    () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone),
+    [overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone],
   );
   const todayTrafficLabel = useMemo(() => {
     if (trafficHistoryQuery.isError) return "读取失败";

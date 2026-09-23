@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { previousBeijingEvening, resolveBeijingRange } from "../pingTimeRange";
+import { previousEveningInZone, resolveRangeInZone } from "../pingTimeRange";
 import { normalizeHomepagePingTaskOrder } from "../pingTasks";
 
 describe("custom Ping range", () => {
-  it("defaults to the previous Beijing evening across UTC date boundaries", () => {
-    const draft = previousBeijingEvening(new Date("2026-01-01T17:00:00Z"));
+  it("defaults to the previous evening in the selected time zone", () => {
+    const draft = previousEveningInZone(Date.parse("2026-01-01T17:00:00Z"), "Asia/Shanghai");
     expect(draft).toEqual({ start: "2026-01-01T18:00", end: "2026-01-02T00:00" });
-    expect(resolveBeijingRange(draft)).toEqual({ start: "2026-01-01T10:00:00.000Z", end: "2026-01-01T16:00:00.000Z" });
+    expect(resolveRangeInZone(draft, "Asia/Shanghai")).toEqual({ start: "2026-01-01T10:00:00.000Z", end: "2026-01-01T16:00:00.000Z" });
+    expect(previousEveningInZone(Date.parse("2026-01-01T17:00:00Z"), "America/Los_Angeles"))
+      .toEqual({ start: "2025-12-31T18:00", end: "2026-01-01T00:00" });
   });
   it("rejects reversed and invalid ranges", () => {
-    expect(resolveBeijingRange({ start: "", end: "" })).toBeNull();
-    expect(resolveBeijingRange({ start: "2026-01-02T00:00", end: "2026-01-01T00:00" })).toBeNull();
+    expect(resolveRangeInZone({ start: "", end: "" }, "Asia/Shanghai")).toBeNull();
+    expect(resolveRangeInZone({ start: "2026-01-02T00:00", end: "2026-01-01T00:00" }, "Asia/Shanghai")).toBeNull();
   });
 });
 

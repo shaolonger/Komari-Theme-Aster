@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHomeTrafficOverview, getHomeTrafficPeriodStart } from "@/utils/trafficOverview";
+import { buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficPeriodStart } from "@/utils/trafficOverview";
 
 const NOW = new Date(2026, 5, 28, 12, 0, 0, 0).getTime();
 
@@ -34,6 +34,16 @@ describe("home traffic overview", () => {
     expect(rows[0]?.today).toEqual({ up: 500, down: 500, total: 1_000, quality: "measured", coverageStart: todayStart - 1_000 });
     expect(rows[0]?.month).toEqual({ up: 1_200, down: 1_400, total: 2_600, quality: "measured", coverageStart: monthStart - 1_000 });
     expect(rows[0]?.total).toEqual({ up: 1_500, down: 2_000, total: 3_500, quality: "measured", coverageStart: null });
+  });
+
+  it("uses the configured calendar time zone for period boundaries", () => {
+    const now = Date.parse("2026-06-28T03:00:00Z");
+    expect(new Date(getHomeTrafficPeriodStart("today", now, "Asia/Shanghai")).toISOString())
+      .toBe("2026-06-27T16:00:00.000Z");
+    expect(new Date(getHomeTrafficPeriodStart("today", now, "America/Los_Angeles")).toISOString())
+      .toBe("2026-06-27T07:00:00.000Z");
+    expect(getHomeTrafficDateKey(now, "Asia/Shanghai")).toBe("2026-06-28");
+    expect(getHomeTrafficDateKey(now, "America/Los_Angeles")).toBe("2026-06-27");
   });
 
   it("treats a counter reset as usage since the reset", () => {

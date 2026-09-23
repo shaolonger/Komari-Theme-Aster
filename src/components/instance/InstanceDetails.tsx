@@ -11,7 +11,6 @@ import {
   formatLoadValue,
   formatMetricPercent,
   formatUptimeDays,
-  trimFixed,
 } from "@/utils/format";
 import { formatRenewalPrice } from "@/utils/billing";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
@@ -43,16 +42,6 @@ function formatExpirePressure(node: VpsWorkbenchNode) {
   if (node.expireDays < 0) return "已过期";
   if (node.expireDays === 0) return "今日到期";
   return `${node.expireDays} 天后到期`;
-}
-
-function formatExhaustIn(seconds: number | null) {
-  if (seconds == null) return "当前无明显消耗";
-  if (seconds <= 0) return "已耗尽";
-  const days = seconds / 86400;
-  if (days >= 1) return `约 ${trimFixed(days, days >= 10 ? 0 : 1)} 天耗尽`;
-  const hours = seconds / 3600;
-  if (hours >= 1) return `约 ${trimFixed(hours, 1)} 小时耗尽`;
-  return "不足 1 小时耗尽";
 }
 
 function decisionToneFromPing(state: VpsWorkbenchNode["ping"]["state"]) {
@@ -202,9 +191,7 @@ export function InstanceDetails({
   const trafficDecisionDetail =
     workbenchNode.traffic.status === "unlimited"
       ? "未设置流量上限"
-      : `剩余 ${formatBytes(Math.max(0, workbenchNode.traffic.remaining))} · ${formatExhaustIn(
-          workbenchNode.traffic.exhaustInSeconds,
-        )}`;
+      : `剩余 ${formatBytes(Math.max(0, workbenchNode.traffic.remaining))} · ${workbenchNode.traffic.exhaustLabel}`;
 
   return (
     <InstancePanel

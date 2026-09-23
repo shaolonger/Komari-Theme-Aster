@@ -13,7 +13,8 @@ import { useAllNodeMeta, useVisibleNodeUuids } from "@/hooks/useNode";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import type { NodeInfo } from "@/types/komari";
-import { previousBeijingEvening, resolveBeijingRange, type PingTimeRange } from "@/utils/pingTimeRange";
+import { previousEveningInZone, resolveRangeInZone, type PingTimeRange } from "@/utils/pingTimeRange";
+import { describeDisplayTimeZone } from "@/utils/timeDisplay";
 
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
@@ -31,9 +32,21 @@ export function Instance() {
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
   const [customLoad, setCustomLoad] = useState(false);
   const [customPing, setCustomPing] = useState(false);
-  const [rangeDraft, setRangeDraft] = useState(previousBeijingEvening);
-  const [appliedRange, setAppliedRange] = useState<PingTimeRange>(() => resolveBeijingRange(previousBeijingEvening())!);
-  const parsedRange = resolveBeijingRange(rangeDraft);
+  const [rangeDraft, setRangeDraft] = useState(() => previousEveningInZone(Date.now(), themeSettings.displayTimeZone));
+  const [appliedRange, setAppliedRange] = useState<PingTimeRange>(() => resolveRangeInZone(
+    previousEveningInZone(Date.now(), themeSettings.displayTimeZone),
+    themeSettings.displayTimeZone,
+  )!);
+  const parsedRange = resolveRangeInZone(rangeDraft, themeSettings.displayTimeZone);
+  const customRangeZoneLabel = describeDisplayTimeZone(themeSettings.displayTimeZone);
+
+  useEffect(() => {
+    const draft = previousEveningInZone(Date.now(), themeSettings.displayTimeZone);
+    const resolved = resolveRangeInZone(draft, themeSettings.displayTimeZone);
+    if (!resolved) return;
+    setRangeDraft(draft);
+    setAppliedRange(resolved);
+  }, [themeSettings.displayTimeZone]);
   const chartControlsRef = useRef<HTMLDivElement | null>(null);
 
   const nodeOptions = useMemo(() => {
@@ -204,10 +217,10 @@ export function Instance() {
           event.preventDefault();
           if (parsedRange) setAppliedRange(parsedRange);
         }}>
-          <label className="flex flex-col gap-1 text-xs">开始时间（北京时间）
+          <label className="flex flex-col gap-1 text-xs">开始时间（{customRangeZoneLabel}）
             <input required type="datetime-local" className="surface-inset p-2" value={rangeDraft.start} onChange={(event) => setRangeDraft({ ...rangeDraft, start: event.target.value })} />
           </label>
-          <label className="flex flex-col gap-1 text-xs">结束时间（北京时间）
+          <label className="flex flex-col gap-1 text-xs">结束时间（{customRangeZoneLabel}）
             <input required type="datetime-local" className="surface-inset p-2" value={rangeDraft.end} onChange={(event) => setRangeDraft({ ...rangeDraft, end: event.target.value })} />
           </label>
           <button type="submit" className="instance-toggle-button" disabled={!parsedRange}>应用时间范围</button>

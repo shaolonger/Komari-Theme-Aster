@@ -1,6 +1,6 @@
 import type { NodeInfo, PingOverviewItem } from "@/types/komari";
 import { formatRenewalPrice } from "@/utils/billing";
-import { formatLatency, formatPacketLoss, getExpireDaysRemaining } from "@/utils/format";
+import { formatLatency, formatPacketLoss, getExpireDaysRemaining, trimFixed } from "@/utils/format";
 import { computeTrafficUsed, resolveTrafficUsage } from "@/utils/traffic";
 import { getVpsOperationalRisks, strongestRiskSeverity, type VpsRisk } from "@/utils/vpsRisk";
 
@@ -15,6 +15,7 @@ export type WorkbenchSortKey =
 
 export type ExpiryBucket = "expired" | "soon" | "month" | "later" | "unknown";
 export type TrafficForecastStatus = "unlimited" | "idle" | "ok" | "warning" | "critical" | "exhausted";
+export type TrafficForecastState = "current-rate" | "low-risk" | "idle" | "offline" | "stale" | "awaiting";
 export type PingState = "unbound" | "disabled" | "unknown" | "no-data" | "warning" | "critical" | "ok";
 
 export interface VpsWorkbenchNodeInput {
@@ -53,6 +54,8 @@ export interface TrafficForecast {
   fraction: number;
   burnRate: number;
   exhaustInSeconds: number | null;
+  forecastState: TrafficForecastState;
+  exhaustLabel: string;
 }
 
 export interface PingHealth {
@@ -127,6 +130,9 @@ export function getTrafficForecast({
   netUp,
   netDown,
   trafficLimit,
+  online,
+  updatedAt,
+  now = Date.now(),
 }: {
   trafficLimitType: string | null | undefined;
   trafficUp: number;
@@ -134,6 +140,9 @@ export function getTrafficForecast({
   netUp: number;
   netDown: number;
   trafficLimit: number;
+  online?: boolean | null;
+  updatedAt?: number;
+  now?: number;
 }): TrafficForecast {
   const usage = resolveTrafficUsage(trafficLimitType, trafficUp, trafficDown, trafficLimit);
   if (usage.unlimited) {
@@ -145,17 +154,44 @@ export function getTrafficForecast({
       fraction: usage.fraction,
       burnRate: 0,
       exhaustInSeconds: null,
+      forecastState: "idle",
+      exhaustLabel: "不限流量",
     };
   }
 
   const burnRate = computeTrafficUsed(trafficLimitType, netUp, netDown);
-  const exhaustInSeconds = burnRate > 0 ? usage.remaining / burnRate : null;
+  const fresh = online === undefined && updatedAt === undefined
+    ? true
+    : online === true && updatedAt != null && updatedAt > 0 && now - updatedAt <= 5 * 60_000;
+  const forecastState: TrafficForecastState = online === false
+    ? "offline"
+    : online !== true && (online !== undefined || updatedAt !== undefined)
+      ? "awaiting"
+      : !fresh
+        ? "stale"
+        : burnRate > 0
+          ? "current-rate"
+          : "idle";
+  const rawExhaustInSeconds = forecastState === "current-rate" ? usage.remaining / burnRate : null;
+  const forecastIsLongTerm = rawExhaustInSeconds != null && rawExhaustInSeconds > 365 * 86400;
+  const exhaustInSeconds = forecastIsLongTerm ? null : rawExhaustInSeconds;
+  const exhaustLabel = forecastState === "offline"
+    ? "节点离线，已暂停预测"
+    : forecastState === "awaiting"
+      ? "等待节点上报，暂不预测"
+      : forecastState === "stale"
+        ? "数据已过期，已暂停预测"
+        : forecastState === "idle"
+          ? "暂无有效消耗速率"
+          : forecastIsLongTerm
+            ? "按当前速率估算，近期耗尽风险低"
+            : `按当前速率估算，${formatExhaustTime(exhaustInSeconds)}`;
   const status: TrafficForecastStatus =
     usage.remaining <= 0
       ? "exhausted"
       : usage.fraction >= 0.9 || (exhaustInSeconds != null && exhaustInSeconds <= 7 * 86400)
         ? "critical"
-        : usage.fraction >= 0.8 || (exhaustInSeconds != null && exhaustInSeconds <= 30 * 86400)
+      : usage.fraction >= 0.8 || (exhaustInSeconds != null && exhaustInSeconds <= 30 * 86400)
           ? "warning"
           : burnRate <= 0
             ? "idle"
@@ -169,7 +205,19 @@ export function getTrafficForecast({
     fraction: usage.fraction,
     burnRate,
     exhaustInSeconds,
+    forecastState,
+    exhaustLabel,
   };
+}
+
+function formatExhaustTime(seconds: number | null) {
+  if (seconds == null) return "近期风险低";
+  if (seconds <= 0) return "已耗尽";
+  const days = seconds / 86400;
+  if (days >= 1) return `预计约 ${trimFixed(days, days >= 10 ? 0 : 1)} 天耗尽`;
+  const hours = seconds / 3600;
+  if (hours >= 1) return `预计约 ${trimFixed(hours, 1)} 小时耗尽`;
+  return "预计不足 1 小时耗尽";
 }
 
 export function getPingHealth({
@@ -250,6 +298,9 @@ export function buildVpsWorkbenchNode(input: VpsWorkbenchNodeInput): VpsWorkbenc
       netUp: input.netUp,
       netDown: input.netDown,
       trafficLimit: meta.traffic_limit,
+      online: input.online,
+      updatedAt: input.updatedAt,
+      now: input.now,
     }),
     ping: getPingHealth({
       hasPingBinding: input.hasPingBinding,
