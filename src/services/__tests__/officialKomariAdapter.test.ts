@@ -151,10 +151,20 @@ describe("official Komari metric adapter", () => {
         entity_id: "node-a",
         points: [{ time: "2026-01-01T00:10:00.000Z", value: 400, count: 1 }],
       },
+      {
+        metric_key: "net.total.up",
+        entity_id: "node-b",
+        points: null,
+      },
+      {
+        metric_key: "net.total.down",
+        entity_id: "node-b",
+        points: null,
+      },
     ]));
 
     const records = await getOfficialComparisonLoadRecords({
-      uuids: ["node-a"],
+      uuids: ["node-a", "node-b"],
       hours: 720,
       loadType: "traffic",
       maxPoints: 500,
@@ -172,6 +182,7 @@ describe("official Komari metric adapter", () => {
       net_total_up: 300,
       net_total_down: 400,
     });
+    expect(records["node-b"]).toEqual([]);
   });
 
   it("keeps a downsampled loss ratio exact for comparison charts", async () => {

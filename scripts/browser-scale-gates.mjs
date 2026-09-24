@@ -234,7 +234,9 @@ function officialPingMetricSeries(params, fixture) {
         metric_key: metricKey,
         entity_id: uuid,
         tags: { task_id: "1" },
-        points,
+        points: metricKey.startsWith("net.total.") && fixture.ui && index === entityIds.length - 1
+          ? null
+          : points,
       });
     }
   }

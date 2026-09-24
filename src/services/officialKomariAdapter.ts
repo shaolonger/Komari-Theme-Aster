@@ -34,7 +34,10 @@ const MetricSeriesSchema = z.object({
   metric_key: z.string(),
   entity_id: z.string().default(""),
   tags: z.record(z.string(), z.string()).default({}),
-  points: z.array(MetricPointSchema).default([]),
+  // Komari may serialize a series with no retained samples as `points: null`.
+  // Treat it the same as an empty series so one empty VPS does not fail an
+  // otherwise successful batch query for the whole fleet.
+  points: z.array(MetricPointSchema).nullish().transform((points) => points ?? []),
 }).passthrough();
 
 const MetricQueryResponseSchema = z.object({
