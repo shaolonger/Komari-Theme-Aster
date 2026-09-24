@@ -213,7 +213,7 @@ function officialPingMetricSeries(params, fixture) {
   const series = [];
 
   for (const metricKey of metricKeys) {
-    if (metricKey !== "ping.latency_ms" && metricKey !== "ping.loss") continue;
+    if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey)) continue;
     for (const [index, uuid] of entityIds.entries()) {
       const points = Array.from({ length: pointCount }, (_, point) => {
         const fraction = pointCount === 1 ? 1 : point / (pointCount - 1);
@@ -223,7 +223,9 @@ function officialPingMetricSeries(params, fixture) {
           time: new Date(windowStart + (end - windowStart) * fraction).toISOString(),
           value: metricKey === "ping.latency_ms"
             ? 20 + ((index + point) % 30)
-            : hasLoss ? 0.5 : 0,
+            : metricKey === "ping.loss"
+              ? hasLoss ? 0.5 : 0
+              : 1_000 + index + point * (metricKey === "net.total.up" ? 2 : 3),
           count,
           tags: { task_id: "1" },
         };
@@ -1217,6 +1219,22 @@ try {
     await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('实时带宽') && document.querySelectorAll('.home-overview-row').length === 8`, 6_000);
     await cdp.value(`document.querySelector('[data-home-overview-trigger="traffic"]').click()`);
     await waitUntil(cdp, `document.querySelector('.home-overview-panel.show h3').textContent.includes('流量排行') && document.querySelectorAll('.home-overview-tabs [role="tab"]').length === 3`, 6_000);
+    await waitUntil(cdp, `!Array.from(document.querySelectorAll('.home-overview-empty')).some(item => item.textContent.includes('历史读取失败')) && document.querySelector('.home-overview-row-value strong')?.textContent !== '—'`, 6_000);
+    failGate(
+      (() => {
+        const trafficQueries = rpcRequests("ui-regressions", "public:queryMetrics")
+          .map(({ params }) => params)
+          .filter((params) => Array.isArray(params.metric_keys)
+            && params.metric_keys.length === 2
+            && params.metric_keys.includes("net.total.up")
+            && params.metric_keys.includes("net.total.down")
+            && params.max_points === 500);
+        const windows = trafficQueries.map((params) => Date.parse(params.end) - Date.parse(params.start));
+        return windows.some((duration) => duration <= 24 * 60 * 60 * 1_000)
+          && windows.some((duration) => duration <= 30 * 24 * 60 * 60 * 1_000);
+      })(),
+      "homepage traffic ranking did not use bounded, dense today and month counter queries",
+    );
     await cdp.value(`Array.from(document.querySelectorAll('.home-overview-tabs [role="tab"]')).find(button => button.textContent.includes('本月流量')).click()`);
     failGate(await cdp.value(`document.querySelector('.home-overview-tabs [role="tab"][aria-selected="true"]').textContent.includes('本月流量')`), 'traffic overview month tab did not activate');
     await cdp.value(`document.querySelector('[data-home-overview-trigger="expiry"]').click()`);

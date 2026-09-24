@@ -108,6 +108,7 @@ const RealtimeDeltaSchema = z.object({
 
 export type ComparisonLoadType =
   | "all"
+  | "traffic"
   | "cpu"
   | "ram"
   | "swap"
@@ -477,6 +478,7 @@ export async function getComparisonLoadRecords({
   loadType,
   nodes,
   range,
+  maxPoints,
 }: {
   uuids: string[];
   hours?: number;
@@ -484,11 +486,15 @@ export async function getComparisonLoadRecords({
   /** Current node totals keep percentage charts meaningful for upstream metrics. */
   nodes?: NodeInfo[];
   range?: ComparisonTimeRange;
+  /** Override the per-series point cap for compact dashboard summaries. */
+  maxPoints?: number;
 }): Promise<ComparisonLoadRecords> {
   const uniqueUuids = Array.from(new Set(uuids.filter(Boolean)));
   if (uniqueUuids.length === 0) return {};
 
-  const perNodeMaxCount = getComparisonRecordsMaxCount(hours, LOAD_RECORDS_PER_HOUR);
+  const perNodeMaxCount = maxPoints == null
+    ? getComparisonRecordsMaxCount(hours, LOAD_RECORDS_PER_HOUR)
+    : Math.max(1, Math.trunc(maxPoints));
   const backend = await getBackendProfile();
   if (backend.kind === "official-v1.4") {
     const { getOfficialComparisonLoadRecords } = await getOfficialKomariAdapter();
@@ -508,7 +514,7 @@ export async function getComparisonLoadRecords({
         uuids: uniqueUuids,
         hours,
         type: "load",
-        load_type: loadType,
+        load_type: loadType === "traffic" ? "network" : loadType,
         ...(range ? {
           start: range.start,
           end: range.end,

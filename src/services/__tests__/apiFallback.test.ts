@@ -261,6 +261,42 @@ describe("RPC compatibility fallback", () => {
     expect(result["node-b"]).toEqual([]);
   });
 
+  it("bounds the homepage traffic query and requests only cumulative counters", async () => {
+    rpcCall.mockImplementation((method: string) => {
+      if (method === "rpc.discover") return Promise.reject(new RpcResponseError("method not found", -32601));
+      if (method === "rpc.methods") return Promise.resolve([
+        "common:getNodesLatestStatus",
+        "public:getPublicPingTasks",
+        "public:queryMetrics",
+        "public:getPingMetricStats",
+      ]);
+      if (method === "public:queryMetrics") return Promise.resolve({ series: [] });
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await getComparisonLoadRecords({
+      uuids: ["node-a"],
+      hours: 720,
+      loadType: "traffic",
+      range: {
+        start: "2026-06-01T00:00:00.000Z",
+        end: "2026-06-30T12:00:00.000Z",
+      },
+      maxPoints: 500,
+    });
+
+    expect(rpcCall).toHaveBeenCalledWith(
+      "public:queryMetrics",
+      expect.objectContaining({
+        metric_keys: ["net.total.up", "net.total.down"],
+        max_points: 500,
+        start: "2026-06-01T00:00:00.000Z",
+        end: "2026-06-30T12:00:00.000Z",
+      }),
+      undefined,
+    );
+  });
+
   it("routes homepage multi-task ping summaries through upstream public metrics", async () => {
     rpcCall.mockImplementation((method: string) => {
       if (method === "rpc.discover") {

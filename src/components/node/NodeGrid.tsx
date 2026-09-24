@@ -84,7 +84,7 @@ import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
-import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
+import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
@@ -1031,13 +1031,38 @@ export function NodeGrid() {
   }, [showHomeOverview]);
   const trafficHistoryQuery = useQuery({
     queryKey: ["home-traffic-overview", visibleNodeUuids, themeSettings.displayTimeZone, getHomeTrafficDateKey(trafficClock, themeSettings.displayTimeZone)],
-    queryFn: () =>
-      getComparisonLoadRecords({
+    queryFn: async () => {
+      const common = {
         uuids: visibleNodeUuids,
-        hours: 31 * 24,
-        loadType: "network",
+        loadType: "traffic" as const,
         nodes: allMeta,
-      }),
+        maxPoints: 500,
+      };
+      const [todayRecords, monthRecords] = await Promise.all([
+        getComparisonLoadRecords({
+          ...common,
+          hours: 24,
+          range: getHomeTodayTrafficQueryRange(trafficClock, themeSettings.displayTimeZone),
+        }),
+        getComparisonLoadRecords({
+          ...common,
+          hours: 30 * 24,
+          range: getHomeTrafficQueryRange(trafficClock, themeSettings.displayTimeZone),
+        }),
+      ]);
+      return Object.fromEntries(visibleNodeUuids.map((uuid) => {
+        const recordsByTime = new Map<string, (typeof monthRecords)[string][number]>();
+        for (const record of monthRecords[uuid] ?? []) recordsByTime.set(String(record.time), record);
+        // Today's denser query takes precedence when the two windows share a sample.
+        for (const record of todayRecords[uuid] ?? []) recordsByTime.set(String(record.time), record);
+        return [uuid, Array.from(recordsByTime.values()).sort((left, right) => {
+          const milliseconds = (value: string | number) => typeof value === "number"
+            ? value > 1_000_000_000_000 ? value : value * 1_000
+            : Date.parse(value);
+          return milliseconds(left.time) - milliseconds(right.time);
+        })];
+      }));
+    },
     staleTime: 60_000,
     refetchInterval: showHomeOverview ? 60_000 : false,
     enabled: showHomeOverview && visibleNodeUuids.length > 0,

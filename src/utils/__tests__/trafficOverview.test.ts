@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficPeriodStart } from "@/utils/trafficOverview";
+import { buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficPeriodStart, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange } from "@/utils/trafficOverview";
 
 const NOW = new Date(2026, 5, 28, 12, 0, 0, 0).getTime();
 
@@ -44,6 +44,25 @@ describe("home traffic overview", () => {
       .toBe("2026-06-27T07:00:00.000Z");
     expect(getHomeTrafficDateKey(now, "Asia/Shanghai")).toBe("2026-06-28");
     expect(getHomeTrafficDateKey(now, "America/Los_Angeles")).toBe("2026-06-27");
+  });
+
+  it("limits the homepage history query to the current month and at most 30 days", () => {
+    const lateInMonth = Date.parse("2026-07-31T18:00:00Z");
+    const range = getHomeTrafficQueryRange(lateInMonth, "UTC");
+    expect(range.end).toBe(lateInMonth);
+    expect(range.start).toBe(lateInMonth - 30 * 24 * 60 * 60 * 1_000);
+
+    const earlyInMonth = Date.parse("2026-07-05T18:00:00Z");
+    const earlyRange = getHomeTrafficQueryRange(earlyInMonth, "UTC");
+    expect(earlyRange.start).toBe(getHomeTrafficPeriodStart("month", earlyInMonth, "UTC") - 15 * 60_000);
+  });
+
+  it("keeps today's counter query dense and within a 24-hour window", () => {
+    const now = Date.parse("2026-07-05T18:00:00Z");
+    const range = getHomeTodayTrafficQueryRange(now, "UTC");
+    expect(range.end).toBe(now);
+    expect(range.start).toBe(getHomeTrafficPeriodStart("today", now, "UTC") - 15 * 60_000);
+    expect(range.end - range.start).toBeLessThanOrEqual(24 * 60 * 60 * 1_000);
   });
 
   it("treats a counter reset as usage since the reset", () => {

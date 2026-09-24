@@ -70,6 +70,30 @@ export function getHomeTrafficDateKey(now = Date.now(), displayTimeZone: Display
   return formatCalendarDate(parts.year, parts.month, parts.day);
 }
 
+export function getHomeTrafficQueryRange(
+  now = Date.now(),
+  displayTimeZone: DisplayTimeZone = "system",
+) {
+  const monthStart = getHomeTrafficPeriodStart("month", now, displayTimeZone);
+  const latestAllowedStart = now - 30 * 24 * 60 * 60 * 1_000;
+  return {
+    start: Math.max(monthStart - 15 * 60_000, latestAllowedStart),
+    end: now,
+  };
+}
+
+export function getHomeTodayTrafficQueryRange(
+  now = Date.now(),
+  displayTimeZone: DisplayTimeZone = "system",
+) {
+  const todayStart = getHomeTrafficPeriodStart("today", now, displayTimeZone);
+  const latestAllowedStart = now - 24 * 60 * 60 * 1_000;
+  return {
+    start: Math.max(todayStart - 15 * 60_000, latestAllowedStart),
+    end: now,
+  };
+}
+
 function getCounter(record: LoadRecord, direction: "up" | "down") {
   return safeCounter(direction === "up" ? record.net_total_up : record.net_total_down);
 }

@@ -139,6 +139,41 @@ describe("official Komari metric adapter", () => {
     });
   });
 
+  it("queries only cumulative network counters for the homepage traffic ranking", async () => {
+    rpcCall.mockResolvedValue(metricResponse([
+      {
+        metric_key: "net.total.up",
+        entity_id: "node-a",
+        points: [{ time: "2026-01-01T00:10:00.000Z", value: 300, count: 1 }],
+      },
+      {
+        metric_key: "net.total.down",
+        entity_id: "node-a",
+        points: [{ time: "2026-01-01T00:10:00.000Z", value: 400, count: 1 }],
+      },
+    ]));
+
+    const records = await getOfficialComparisonLoadRecords({
+      uuids: ["node-a"],
+      hours: 720,
+      loadType: "traffic",
+      maxPoints: 500,
+    });
+
+    expect(rpcCall).toHaveBeenCalledWith(
+      "public:queryMetrics",
+      expect.objectContaining({
+        metric_keys: ["net.total.up", "net.total.down"],
+        max_points: 500,
+      }),
+      undefined,
+    );
+    expect(records["node-a"]?.[0]).toMatchObject({
+      net_total_up: 300,
+      net_total_down: 400,
+    });
+  });
+
   it("keeps a downsampled loss ratio exact for comparison charts", async () => {
     rpcCall.mockImplementation((method: string) => {
       if (method === "public:getPublicPingTasks") {

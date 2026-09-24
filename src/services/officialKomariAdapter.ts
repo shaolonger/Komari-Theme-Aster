@@ -250,6 +250,8 @@ async function queryOfficialMetrics({
 
 function requestedLoadMetricKeys(loadType: ComparisonLoadType) {
   switch (loadType) {
+    case "traffic":
+      return [OFFICIAL_LOAD_METRICS.netTotalUp, OFFICIAL_LOAD_METRICS.netTotalDown];
     case "cpu":
       return [OFFICIAL_LOAD_METRICS.cpu];
     case "ram":
