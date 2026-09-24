@@ -148,6 +148,15 @@ export function buildPingTimeRangeOptions(maxHours: number | null | undefined) {
     .sort((left, right) => left.value - right.value);
 }
 
+export function buildTrafficTimeRangeOptions(maxHours: number | null | undefined) {
+  const options = buildHistoryRangeOptions(TIME_RANGE_OPTIONS, maxHours, false);
+  // Expose the same familiar traffic windows even when an older server reports
+  // a shorter retention period; the chart will report partial/missing coverage.
+  const existing = new Set(options.map((option) => option.value));
+  return [...options, ...TIME_RANGE_OPTIONS.filter((option) => !existing.has(option.value))]
+    .sort((left, right) => left.value - right.value);
+}
+
 const GRID_CHART_DEFAULT = { w: 420, h: 150 };
 const GRID_CHART_DESKTOP_MAX_WIDTH = 480;
 const GRID_CHART_TABLET_MAX_WIDTH = 560;

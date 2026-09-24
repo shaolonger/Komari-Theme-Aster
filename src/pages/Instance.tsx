@@ -5,9 +5,11 @@ import "uplot/dist/uPlot.min.css";
 import { InstanceDetails } from "@/components/instance/InstanceDetails";
 import { PingChart } from "@/components/instance/PingChart";
 import { LoadChart } from "@/components/instance/LoadChart";
+import { TrafficChart } from "@/components/instance/TrafficChart";
 import {
   buildLoadTimeRangeOptions,
   buildPingTimeRangeOptions,
+  buildTrafficTimeRangeOptions,
 } from "@/components/instance/chartShared";
 import { useAllNodeMeta, useVisibleNodeUuids } from "@/hooks/useNode";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
@@ -29,11 +31,13 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
-  const [chartType, setChartType] = useState<"load" | "ping">(focus === "ping" ? "ping" : "load");
+  const [chartType, setChartType] = useState<"load" | "ping" | "traffic">(focus === "ping" ? "ping" : "load");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
+  const [trafficHours, setTrafficHours] = useState(24);
   const [customLoad, setCustomLoad] = useState(false);
   const [customPing, setCustomPing] = useState(false);
+  const [customTraffic, setCustomTraffic] = useState(false);
   const [rangeDraft, setRangeDraft] = useState(() => previousEveningInZone(Date.now(), themeSettings.displayTimeZone));
   const [appliedRange, setAppliedRange] = useState<PingTimeRange>(() => resolveRangeInZone(
     previousEveningInZone(Date.now(), themeSettings.displayTimeZone),
@@ -94,8 +98,16 @@ export function Instance() {
     () => buildPingTimeRangeOptions(config?.ping_record_preserve_time),
     [config?.ping_record_preserve_time],
   );
+  const trafficRanges = useMemo(
+    () => buildTrafficTimeRangeOptions(config?.record_preserve_time),
+    [config?.record_preserve_time],
+  );
   const showPingChart = themeSettings.isReady && themeSettings.showPingChart;
-  const customRangeActive = chartType === "load" ? customLoad : customPing;
+  const customRangeActive = chartType === "load"
+    ? customLoad
+    : chartType === "ping"
+      ? customPing
+      : customTraffic;
   const appliedRangeHours = (Date.parse(appliedRange.end) - Date.parse(appliedRange.start)) / 3_600_000;
 
   // 身份稳定:只读 ref,所以空依赖是安全的。它作为 onNodeReady 传给
@@ -133,6 +145,12 @@ export function Instance() {
       );
     }
   }, [pingHours, pingRanges]);
+
+  useEffect(() => {
+    if (!trafficRanges.some((range) => range.value === trafficHours)) {
+      setTrafficHours(trafficRanges.find((range) => range.value === 24)?.value ?? trafficRanges[0]?.value ?? 24);
+    }
+  }, [trafficHours, trafficRanges]);
 
   useEffect(() => {
     if (!showPingChart && chartType === "ping") {
@@ -181,6 +199,14 @@ export function Instance() {
               Ping
             </button>
           )}
+          <button
+            type="button"
+            data-active={chartType === "traffic" ? "true" : "false"}
+            aria-pressed={chartType === "traffic"}
+            onClick={() => startTransition(() => setChartType("traffic"))}
+          >
+            流量
+          </button>
         </div>
         {chartType === "load" && (
           <div
@@ -230,6 +256,27 @@ export function Instance() {
             <button type="button" data-active={customPing ? "true" : "false"} aria-pressed={customPing} onClick={() => setCustomPing(true)}>自定义</button>
           </div>
         )}
+        {chartType === "traffic" && (
+          <div key={`${chartType}-ranges`} className="instance-segmented is-scrollable">
+            {trafficRanges.map((range) => (
+              <button
+                key={range.value}
+                type="button"
+                data-active={!customTraffic && trafficHours === range.value ? "true" : "false"}
+                aria-pressed={!customTraffic && trafficHours === range.value}
+                onClick={() => {
+                  startTransition(() => {
+                    setTrafficHours(range.value);
+                    setCustomTraffic(false);
+                  });
+                }}
+              >
+                {range.label}
+              </button>
+            ))}
+            <button type="button" data-active={customTraffic ? "true" : "false"} aria-pressed={customTraffic} onClick={() => setCustomTraffic(true)}>自定义</button>
+          </div>
+        )}
       </div>
       {customRangeActive && (
         <form className="surface-inset flex flex-wrap items-end gap-3 p-3" onSubmit={(event) => {
@@ -273,6 +320,18 @@ export function Instance() {
               active={chartType === "ping"}
             />
           ) : null}
+        </div>
+        <div
+          className="instance-chart-view"
+          hidden={chartType !== "traffic"}
+          aria-hidden={chartType !== "traffic"}
+        >
+          <TrafficChart
+            uuid={uuid}
+            hours={customTraffic ? appliedRangeHours : trafficHours}
+            range={customTraffic ? appliedRange : undefined}
+            active={chartType === "traffic"}
+          />
         </div>
       </div>
     </div>

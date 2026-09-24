@@ -4,6 +4,7 @@ import {
   buildChartTooltipHooks,
   buildLoadTimeRangeOptions,
   buildPingTimeRangeOptions,
+  buildTrafficTimeRangeOptions,
   type ChartTooltipState,
 } from "@/components/instance/chartShared";
 
@@ -36,6 +37,17 @@ describe("Ping time range options", () => {
       "1 天",
       "7 天",
       "1 月",
+    ]);
+  });
+
+  it("offers fixed traffic windows and the configured retention window", () => {
+    expect(buildTrafficTimeRangeOptions(36)).toEqual([
+      { label: "1 小时", value: 1 },
+      { label: "6 小时", value: 6 },
+      { label: "1 天", value: 24 },
+      { label: "36 小时", value: 36 },
+      { label: "7 天", value: 168 },
+      { label: "1 月", value: 720 },
     ]);
   });
 
