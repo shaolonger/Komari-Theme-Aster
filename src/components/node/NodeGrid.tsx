@@ -60,6 +60,7 @@ import {
   shouldIncludeAgentVersionCompleteness,
 } from "@/utils/nodeMetaOverlay";
 import { invertHomepagePingTaskBindings } from "@/utils/pingTasks";
+import { buildHomeCompareUrl } from "@/utils/pingCompareLink";
 import type { VpsRisk, VpsRiskKind } from "@/utils/vpsRisk";
 import {
   buildVpsWorkbenchNode,
@@ -1413,14 +1414,10 @@ export function NodeGrid() {
     const frozenUuidSet = new Set(frozenUuids);
     return [...frozenUuids, ...liveUuids.filter((uuid) => !frozenUuidSet.has(uuid))];
   }, [listInteractionActive, uuidsKey]);
-  const compareHref = useMemo(() => {
-    const seed =
-      selectedNodeUuids.length >= 2
-        ? selectedNodeUuids
-        : filteredNodes.slice(0, 3).map((node) => node.uuid);
-    if (seed.length < 2) return "/compare";
-    return `/compare?${new URLSearchParams({ nodes: seed.join(",") }).toString()}`;
-  }, [filteredNodes, selectedNodeUuids]);
+  const compareHref = useMemo(
+    () => buildHomeCompareUrl(selectedNodeUuids),
+    [selectedNodeUuids],
+  );
   const showFacetRail =
     themeSettings.isReady &&
     themeSettings.showGroupTabs &&
@@ -1670,16 +1667,16 @@ export function NodeGrid() {
                 : "指定 VPS"}
             </span>
           </button>
-          {selectedNodeUuids.length >= 2 && (
-            <Link
-              to={compareHref}
-              className="home-command-action home-command-compare is-contextual"
-              title={`对比已指定的 ${selectedNodeUuids.length} 台 VPS`}
-            >
-              <BarChart3 size={14} aria-hidden="true" />
-              <span>对比 {selectedNodeUuids.length}</span>
-            </Link>
-          )}
+          <Link
+            to={compareHref}
+            className="home-command-action home-command-compare is-contextual"
+            title={selectedNodeUuids.length >= 2
+              ? `对比已指定的 ${selectedNodeUuids.length} 台 VPS`
+              : "打开 VPS 对比工作台"}
+          >
+            <BarChart3 size={14} aria-hidden="true" />
+            <span>{selectedNodeUuids.length >= 2 ? `对比 ${selectedNodeUuids.length}` : "VPS 对比"}</span>
+          </Link>
           {hasActiveFilters && (
             <button
               type="button"

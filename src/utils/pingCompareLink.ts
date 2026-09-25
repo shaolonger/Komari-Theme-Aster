@@ -8,6 +8,13 @@ export interface PingTaskVpsCompareUrlInput {
   view?: "trend" | "ranking";
 }
 
+/** Carry only an explicit multi-node home selection into the comparison page. */
+export function buildHomeCompareUrl(nodes: string[] = []) {
+  const selectedNodes = Array.from(new Set(nodes.map((node) => node.trim()).filter(Boolean)));
+  if (selectedNodes.length < 2) return "/compare";
+  return `/compare?${new URLSearchParams({ nodes: selectedNodes.join(",") }).toString()}`;
+}
+
 function normalizePingTaskId(value: unknown) {
   const parsed =
     typeof value === "number"
