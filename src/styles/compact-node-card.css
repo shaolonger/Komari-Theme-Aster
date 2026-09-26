@@ -39,6 +39,15 @@
   --compact-card-status: var(--status-offline);
 }
 
+[data-theme-style="diagnostic"] .compact-node-card[data-status="critical"] {
+  border-color: color-mix(in srgb, var(--status-error) 28%, var(--border-strong));
+  box-shadow: inset 3px 0 0 var(--status-error), var(--shadow-card);
+}
+
+[data-theme-style="diagnostic"] .compact-node-card[data-status="warning"] {
+  box-shadow: inset 3px 0 0 var(--status-warning), var(--shadow-card);
+}
+
 .compact-node-card:hover {
   z-index: 1;
   border-color: color-mix(in srgb, var(--compact-card-status) 34%, var(--border-strong));

@@ -154,10 +154,10 @@ export interface NodeMetrics {
 }
 
 export interface ThemeSettings {
-  defaultAppearance?: "system" | "light" | "dark";
+  defaultAppearance?: "system" | "light" | "dark" | "diagnostic";
   displayTimeZone?: string;
-  desktopNodeViewMode?: "large" | "compact" | "list";
-  mobileNodeViewMode?: "large" | "compact" | "list";
+  desktopNodeViewMode?: "large" | "standard" | "compact" | "list";
+  mobileNodeViewMode?: "large" | "standard" | "compact" | "list";
   enableAdminButton?: boolean;
   showPingChart?: boolean;
   homepagePingBindings?: Record<string, string[]>;

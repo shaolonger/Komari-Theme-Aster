@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Cpu,
@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   Database,
   Network,
+  ChevronDown,
 } from "lucide-react";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -31,6 +32,7 @@ import { OsLogo } from "@/components/ui/OsLogo";
 import { MetricBar } from "./MetricBar";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
+import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
@@ -43,12 +45,17 @@ type DisplayTag = { label: string; color: string };
 
 export const NodeCard = memo(function NodeCard({
   uuid,
+  density = "standard",
 }: {
   uuid: string;
+  density?: "standard" | "expanded";
 }) {
-  const { resolvedAppearance } = usePreferences();
+  const { resolvedAppearance, appearance } = usePreferences();
+  const diagnosticAppearance = appearance === "diagnostic";
   const themeSettings = useThemeSettings();
   const model = useNodeCardModel(uuid);
+  const [expanded, setExpanded] = useState(density === "expanded");
+  useEffect(() => setExpanded(density === "expanded"), [density, uuid]);
   if (!model.node) {
     return (
       <div
@@ -90,14 +97,21 @@ export const NodeCard = memo(function NodeCard({
       : sourceRows.some((row) => row.status === "warning" || row.status === "empty")
         ? "warning"
         : "ok";
+  const hostStatus = getHostHealthStatus(node.online, node.updatedAt);
+  const networkStatus = getNetworkHealthStatus(sourceRows, hasHomepagePingBinding);
+  const shownStatus = diagnosticAppearance
+    ? hostStatus === "offline" ? "critical" : hostStatus === "stale" ? "warning" : "ok"
+    : cardStatus;
+  const showExtended = !diagnosticAppearance || expanded || density === "expanded";
   return (
     <article
       className={clsx("server-card", isOffline && "is-offline")}
       data-appearance={resolvedAppearance}
-      data-status={cardStatus}
+      data-status={shownStatus}
+      data-density={density}
     >
       <div className="server-card-content">
-        <NodeCardHeader node={node} subtitle={subtitle} osName={osName} />
+        <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} />
 
         <div className="server-card-stack">
           <NodeMetricSection
@@ -117,7 +131,7 @@ export const NodeCard = memo(function NodeCard({
 
           <NodeTrafficQuota traffic={traffic} />
 
-          {showConnections && (
+          {showExtended && showConnections && (
             <div className="card-metric-section card-metric-divided server-card-meta-grid">
               <FooterStat
                 icon={<Network size={13} strokeWidth={2} />}
@@ -142,13 +156,18 @@ export const NodeCard = memo(function NodeCard({
           />
         </div>
 
-        <NodeCardFooter
+        {density === "standard" && diagnosticAppearance && (
+          <button type="button" className="node-card-details-toggle" aria-expanded={showExtended} onClick={() => setExpanded((value) => !value)}>
+            <ChevronDown size={14} aria-hidden="true" />{showExtended ? "收起扩展信息" : "更多信息 · 配置、价格、在线时长、连接"}
+          </button>
+        )}
+        {showExtended && <NodeCardFooter
           expire={expire}
           expireColor={expireColor}
           uptime={uptime}
           footerTags={footerTags}
           renewalPrice={renewalPrice}
-        />
+        />}
       </div>
     </article>
   );
@@ -158,10 +177,16 @@ function NodeCardHeader({
   node,
   subtitle,
   osName,
+  hostStatus,
+  networkStatus,
+  diagnostic,
 }: {
   node: NodeCardNode;
   subtitle: string;
   osName: string;
+  hostStatus: HostHealthStatus;
+  networkStatus: ReturnType<typeof getNetworkHealthStatus>;
+  diagnostic: boolean;
 }) {
   const detailLabels = nodeDetailLinkLabels(node.name, osName);
   return (
@@ -182,6 +207,7 @@ function NodeCardHeader({
             {subtitle}
           </p>
         )}
+        {diagnostic && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
       </div>
       <Link
         to={`/instance/${node.uuid}`}

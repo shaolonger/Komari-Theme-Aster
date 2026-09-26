@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { BarChart3 } from "lucide-react";
 import type { HomepagePingSourceRow } from "@/utils/homepagePingSources";
@@ -153,9 +153,15 @@ export function PingSourceMatrix({
   compareUrl: string;
   density?: "regular" | "compact";
 }) {
+  const [showAll, setShowAll] = useState(false);
   if (rows.length === 0) return null;
 
-  const visibleRows = rows;
+  const prioritizedRows = [...rows].sort((left, right) => {
+    const priority = (status: string) => status === "critical" ? 0 : status === "warning" ? 1 : status === "empty" ? 2 : 3;
+    return priority(left.status) - priority(right.status);
+  });
+  const visibleRows = showAll ? rows : prioritizedRows.slice(0, 3);
+  const hiddenCount = Math.max(0, prioritizedRows.length - visibleRows.length);
   const latencyValues = rows
     .map((row) => row.latencyMs)
     .filter((value): value is number => value != null);
@@ -200,6 +206,22 @@ export function PingSourceMatrix({
             <PingTaskTile key={source.taskId} source={source} density={density} />
           )
         ))}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            className="ping-task-overflow"
+            aria-expanded={showAll}
+            onClick={() => setShowAll(true)}
+          >
+            <strong>+{hiddenCount}</strong>
+            <span>展开剩余监控任务</span>
+          </button>
+        )}
+        {showAll && prioritizedRows.length > 3 && (
+          <button type="button" className="ping-task-show-less" onClick={() => setShowAll(false)}>
+            收起其他监控任务
+          </button>
+        )}
       </div>
     </section>
   );

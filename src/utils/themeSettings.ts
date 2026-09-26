@@ -40,8 +40,8 @@ import {
   type DisplayTimeZone,
 } from "@/utils/timeDisplay";
 
-export type Appearance = "system" | "light" | "dark";
-export type NodeViewMode = "large" | "compact" | "list";
+export type Appearance = "system" | "light" | "dark" | "diagnostic";
+export type NodeViewMode = "large" | "standard" | "compact" | "list";
 
 export interface ResolvedThemeSettings {
   defaultAppearance: Appearance;
@@ -90,8 +90,8 @@ export interface ResolvedThemeSettings {
 export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   defaultAppearance: "system",
   displayTimeZone: SYSTEM_DISPLAY_TIME_ZONE,
-  desktopNodeViewMode: "compact",
-  mobileNodeViewMode: "compact",
+  desktopNodeViewMode: "standard",
+  mobileNodeViewMode: "standard",
   enableAdminButton: true,
   showPingChart: true,
   homepagePingBindings: {},
@@ -132,7 +132,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
 };
 
 export function isAppearance(value: unknown): value is Appearance {
-  return value === "system" || value === "light" || value === "dark";
+  return value === "system" || value === "light" || value === "dark" || value === "diagnostic";
 }
 
 function normalizeAppearance(
@@ -143,7 +143,7 @@ function normalizeAppearance(
 }
 
 export function isNodeViewMode(value: unknown): value is NodeViewMode {
-  return value === "large" || value === "compact" || value === "list";
+  return value === "large" || value === "standard" || value === "compact" || value === "list";
 }
 
 function normalizeNodeViewMode(

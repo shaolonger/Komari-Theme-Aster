@@ -983,9 +983,9 @@ try {
   await cdp.value(`document.querySelector('.studio-visual-options input[value="dark"]').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.documentElement.dataset.appearance === 'dark'`, 4_000);
   failGate(await cdp.value(`JSON.stringify(Object.entries(localStorage).sort())`) === storageBeforePreview, 'preview changed outer storage');
-  await cdp.value(`document.querySelectorAll('.studio-device-layouts fieldset')[0].querySelectorAll('input')[2].click()`);
+  await cdp.value(`document.querySelector('.studio-device-layouts fieldset input[value="list"]').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.querySelectorAll('.node-list-row:not(.is-loading)').length === 3`, 4_000);
-  await cdp.value(`document.querySelectorAll('.studio-device-layouts fieldset')[0].querySelectorAll('input')[0].click()`);
+  await cdp.value(`document.querySelector('.studio-device-layouts fieldset input[value="large"]').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.querySelectorAll('.home-node-card-slot').length === 3`, 4_000);
   await cdp.value(`(() => { const input = document.querySelector('.studio-background-controls input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '/images/logo/linux.svg'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.documentElement.style.getPropertyValue('--bg-image-desktop').includes('/images/logo/linux.svg')`, 4_000);
@@ -997,7 +997,7 @@ try {
 
   await cdp.value(`document.querySelectorAll('[aria-label="首页预览设备"] button')[1].click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentWindow.innerWidth === 390`, 3_000);
-  await cdp.value(`document.querySelectorAll('.studio-device-layouts fieldset')[1].querySelectorAll('input')[2].click()`);
+  await cdp.value(`document.querySelectorAll('.studio-device-layouts fieldset')[1].querySelector('input[value="list"]').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.querySelectorAll('.node-list-row:not(.is-loading)').length === 3`, 4_000);
 
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '关闭预览').click()`);
@@ -1156,7 +1156,9 @@ try {
     writeFileSync(`${process.env.BROWSER_GATE_SCREENSHOT}.editor.png`, Buffer.from(screenshot.data, "base64"));
   }
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
-  await waitUntil(cdp, `document.querySelectorAll('.ping-task-lane').length === 18`, 6_000);
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3 && document.querySelectorAll('.ping-task-lane').length === 9 && document.querySelectorAll('.ping-task-overflow').length === 3`, 6_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.home-node-card-slot .ping-task-overflow')).forEach(button => button.click())`);
+  await waitUntil(cdp, `document.querySelectorAll('.ping-task-lane').length === 18`, 2_000);
   failGate(await cdp.value(`Array.from(document.querySelectorAll('.home-node-card-slot')[0].querySelectorAll('.ping-task-lane-name')).map(e => e.textContent).join() === 'Task 1,Task 2,Task 3,Task 4,Task 6,Task 5'`), "card did not preserve all six configured tasks in order");
   const facetBefore = await cdp.value(`Array.from(document.querySelectorAll('.home-facet-rail button')).map(e => e.querySelector('span')?.textContent)`);
   await cdp.value(`Array.from(document.querySelectorAll('.home-facet-rail button')).find(e => e.textContent.includes('Group 2')).click()`);

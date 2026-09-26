@@ -175,7 +175,13 @@ export function Instance() {
         }} />
       </div>
       <InstanceDetails uuid={uuid} onNodeReady={alignCharts} />
-      <div ref={chartControlsRef} id="instance-chart-controls" className="instance-chart-controls">
+      <section ref={chartControlsRef} id="instance-chart-controls" className="instance-panel instance-chart-workspace">
+        <header className="instance-chart-workspace-header">
+          <div className="instance-panel-headings">
+            <h2 className="instance-panel-title">节点诊断</h2>
+            <p className="instance-panel-description">选择监控指标与时间范围，检查节点状态变化。</p>
+          </div>
+          <div className="instance-chart-controls">
         <div className="instance-segmented">
           <button
             type="button"
@@ -277,7 +283,8 @@ export function Instance() {
             <button type="button" data-active={customTraffic ? "true" : "false"} aria-pressed={customTraffic} onClick={() => setCustomTraffic(true)}>自定义</button>
           </div>
         )}
-      </div>
+          </div>
+        </header>
       {customRangeActive && (
         <form className="surface-inset flex flex-wrap items-end gap-3 p-3" onSubmit={(event) => {
           event.preventDefault();
@@ -334,6 +341,7 @@ export function Instance() {
           />
         </div>
       </div>
+      </section>
     </div>
   );
 }

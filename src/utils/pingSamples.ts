@@ -19,14 +19,16 @@ export function isLostPingSample(value: unknown): boolean {
  * population instead of treating heterogeneous buckets as equal observations.
  */
 export function getPingRecordSampleCounts(
-  record: Pick<PingRecord, "value" | "sample_count" | "loss_count">,
+  record: Pick<PingRecord, "value" | "sample_count" | "loss_count" | "loss_rate">,
 ) {
   const total = Number.isFinite(record.sample_count) && record.sample_count != null
     ? Math.max(1, Math.round(record.sample_count))
     : 1;
   const explicitLost = Number.isFinite(record.loss_count) && record.loss_count != null
     ? Math.max(0, Math.min(total, Math.round(record.loss_count)))
-    : null;
+    : Number.isFinite(record.loss_rate) && record.loss_rate != null
+      ? Math.max(0, Math.min(1, record.loss_rate)) * total
+      : null;
   const lost = explicitLost ?? (isLostPingSample(record.value) ? total : 0);
 
   return {
@@ -36,7 +38,7 @@ export function getPingRecordSampleCounts(
   };
 }
 
-export function getPingLossPercent(records: Array<Pick<PingRecord, "value" | "sample_count" | "loss_count">>) {
+export function getPingLossPercent(records: Array<Pick<PingRecord, "value" | "sample_count" | "loss_count" | "loss_rate">>) {
   const counts = records.reduce(
     (total, record) => {
       const sample = getPingRecordSampleCounts(record);

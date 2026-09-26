@@ -41,11 +41,11 @@
           if (value == null) return null;
           try {
             const parsed = JSON.parse(value);
-            if (parsed === "system" || parsed === "light" || parsed === "dark") {
+            if (parsed === "system" || parsed === "light" || parsed === "dark" || parsed === "diagnostic") {
               return parsed;
             }
           } catch {
-            if (value === "system" || value === "light" || value === "dark") {
+            if (value === "system" || value === "light" || value === "dark" || value === "diagnostic") {
               return value;
             }
           }
@@ -76,8 +76,9 @@
             ? window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light"
-            : appearance;
+            : appearance === "dark" ? "dark" : "light";
         document.documentElement.dataset.appearance = resolved;
+        document.documentElement.dataset.themeStyle = appearance === "diagnostic" ? "diagnostic" : "default";
         document.documentElement.style.colorScheme = resolved;
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = resolved === "dark" ? "#000000" : "#F5F5F7";

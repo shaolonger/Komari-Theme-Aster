@@ -1126,6 +1126,113 @@
   color: var(--text-primary);
 }
 
+[data-theme-style="diagnostic"] .home-workbench {
+  gap: 14px;
+  border-color: color-mix(in srgb, var(--border-strong) 78%, transparent);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fff 0%, #f8fafd 100%);
+  box-shadow: 0 10px 28px -24px rgba(25, 44, 70, 0.42);
+  padding: 15px;
+}
+
+[data-theme-style="diagnostic"] .home-fleet-strip {
+  padding-bottom: 12px;
+}
+
+[data-theme-style="diagnostic"] .home-ops-panel {
+  border-color: color-mix(in srgb, var(--status-warning) 32%, var(--border-strong));
+  border-radius: 15px;
+  background: linear-gradient(112deg, #fffaf1 0%, #fff 62%);
+  box-shadow: 0 12px 28px -24px rgba(142, 92, 24, 0.42);
+  padding: 15px;
+}
+
+[data-theme-style="diagnostic"] .home-ops-head h2 {
+  font-size: 15px;
+}
+
+[data-theme-style="diagnostic"] .home-ops-head p,
+[data-theme-style="diagnostic"] .home-ops-detail {
+  color: #586678;
+}
+
+[data-theme-style="diagnostic"] .home-command-area {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-1) 86%, transparent);
+  box-shadow: none;
+}
+
+[data-theme-style="diagnostic"] .home-facet-stack {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 9px;
+}
+
+[data-theme-style="diagnostic"] .home-facet-dimensions {
+  align-items: center;
+  gap: 6px;
+}
+
+[data-theme-style="diagnostic"] .home-facet-dimensions button[role="tab"] {
+  min-height: 34px;
+  border-radius: 9px;
+  background: transparent;
+  padding-inline: 12px;
+  color: var(--text-secondary);
+}
+
+[data-theme-style="diagnostic"] .home-facet-dimensions button[role="tab"][aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent-500) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-500) 10%, white);
+  color: var(--accent-500);
+}
+
+[data-theme-style="diagnostic"] .home-facet-more-toggle {
+  min-height: 34px;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+[data-theme-style="diagnostic"] .home-facet-more-toggle svg {
+  transition: transform 140ms ease;
+}
+
+[data-theme-style="diagnostic"] .home-facet-more-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+[data-theme-style="diagnostic"] .home-facet-rail {
+  min-height: 36px;
+  border-color: var(--border-subtle);
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme-style="diagnostic"] .home-node-results {
+  max-width: 1520px;
+  justify-content: center;
+  margin-inline: auto;
+}
+
+[data-theme-style="diagnostic"] .home-node-results[data-view-mode="list"] {
+  display: block;
+}
+
+[data-theme-style="diagnostic"] .home-node-card-slot {
+  min-width: 0;
+}
+
+[data-theme-style="diagnostic"] .home-workbench-search,
+[data-theme-style="diagnostic"] .home-workbench-sort,
+[data-theme-style="diagnostic"] .home-command-action,
+[data-theme-style="diagnostic"] .home-mobile-filter-toggle {
+  min-height: 40px;
+}
+
+[data-theme-style="diagnostic"] .home-risk-filter-strip button {
+  min-height: 36px;
+}
+
 .home-group-tabs button {
   display: inline-flex;
   /* 有空间时均分宽度、从不收缩(溢出时滚动而非挤压)。max-width 上限防止单个长组名

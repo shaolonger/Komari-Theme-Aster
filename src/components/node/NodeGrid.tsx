@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAllNodeMeta, useHomeNodeSummaries } from "@/hooks/useNode";
 import { useHomepagePingOverview, usePingMiniMap } from "@/hooks/usePingMini";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { usePreferences } from "@/hooks/usePreferences";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getAdminClients, getComparisonLoadRecords } from "@/services/api";
 import type { HomeNodeSummary } from "@/services/wsStore";
@@ -799,6 +800,8 @@ export function NodeGrid() {
   const allMeta = useAllNodeMeta();
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
+  const { appearance } = usePreferences();
+  const diagnosticAppearance = appearance === "diagnostic";
   const { mode } = useViewMode();
   const [selectedFacetDimension, setSelectedFacetDimension] = useState(HOME_FACET_LEGACY_GROUP);
   const [facetFilters, setFacetFilters] = useState<HomeFacetFilters>({});
@@ -809,6 +812,7 @@ export function NodeGrid() {
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<HomeRiskFilter>("all");
   const [nodeSearch, setNodeSearch] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [workbenchSort, setWorkbenchSort] = useState<WorkbenchSortKey>("weight");
   const [listSorts, setListSorts] = useState<VpsListSortCondition[]>(() =>
     DEFAULT_VPS_LIST_SORTS.map((condition) => ({ ...condition })),
@@ -1400,7 +1404,7 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <NodeCard uuid={uuid} />}
+        {mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} />}
       </div>
     ));
   }, [uuidsKey, mode]);
@@ -1715,19 +1719,38 @@ export function NodeGrid() {
         )}
         {showFacetRail && (
           <div className="home-facet-stack">
-            <div className="home-facet-dimensions" role="group" aria-label="显示筛选类别">
+            <div className="home-facet-dimensions" role="tablist" aria-label="节点分类筛选">
               <span>分类</span>
-              {visibleFacetDimensions.map((dimension) => <button type="button" key={dimension.id}
-                aria-pressed={enabledDimensions.some((item) => item.id === dimension.id)}
+              {visibleFacetDimensions.map((dimension) => <button type="button" role={diagnosticAppearance ? "tab" : undefined} key={dimension.id}
+                aria-selected={diagnosticAppearance ? selectedFacetDimension === dimension.id : undefined}
+                aria-pressed={!diagnosticAppearance ? enabledDimensions.some((item) => item.id === dimension.id) : undefined}
+                data-active={diagnosticAppearance ? selectedFacetDimension === dimension.id ? "true" : "false" : undefined}
                 onClick={() => {
+                  if (diagnosticAppearance) {
+                    setSelectedFacetDimension(dimension.id);
+                    setShownDimensions((current) => current === null || current.includes(dimension.id) ? current : [...current, dimension.id]);
+                    setActiveSavedViewId("");
+                    return;
+                  }
                   const current = enabledDimensions.map((item) => item.id);
                   const hiding = current.includes(dimension.id);
                   setShownDimensions(hiding ? current.filter((id) => id !== dimension.id) : [...current, dimension.id]);
                   if (hiding) { setFacetFilters((prev) => clearFacetFilter(prev, dimension.id)); setActiveSavedViewId(""); }
                 }}>{dimension.label}</button>)}
-              <small>跨类别同时筛选</small>
+              {diagnosticAppearance ? (
+                <button
+                  type="button"
+                  className="home-facet-more-toggle"
+                  aria-expanded={advancedFiltersOpen}
+                  onClick={() => setAdvancedFiltersOpen((open) => !open)}
+                >
+                  <ChevronDown size={13} aria-hidden="true" />
+                  更多筛选{activeFacetFilterCount > 0 ? ` · ${activeFacetFilterCount}` : ""}
+                </button>
+              ) : <small>跨类别同时筛选</small>}
             </div>
-            {facetRows.filter(({ dimension }) => enabledDimensions.some((item) => item.id === dimension.id)).map(({ dimension, options, counts }) => <FacetRail
+            {facetRows.filter(({ dimension }) => enabledDimensions.some((item) => item.id === dimension.id) &&
+              (!diagnosticAppearance || advancedFiltersOpen || dimension.id === selectedFacetDimension || (facetFilters[dimension.id]?.length ?? 0) > 0)).map(({ dimension, options, counts }) => <FacetRail
               key={dimension.id}
               dimensions={visibleFacetDimensions}
               dimensionCoverage={facetDimensionCoverage}
@@ -1751,7 +1774,13 @@ export function NodeGrid() {
             onInteractionChange={handleListInteractionChange}
           />
         ) : (
-          <div className={gridClassName} style={{ gridTemplateColumns: gridColumns }}>{cards}</div>
+          <div
+            className={`home-node-results ${gridClassName}`}
+            data-view-mode={mode}
+            style={{ gridTemplateColumns: diagnosticAppearance && mode === "standard" ? "repeat(auto-fit, minmax(min(100%, 340px), min(100%, 400px)))" : gridColumns }}
+          >
+            {cards}
+          </div>
         )
       ) : (
         <div className="home-filter-empty">当前筛选下没有匹配的 VPS</div>

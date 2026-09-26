@@ -221,6 +221,19 @@ body::after {
   background: var(--status-offline);
 }
 
+[data-theme-style="diagnostic"] .floating-controls-inner {
+  gap: 6px;
+}
+
+[data-theme-style="diagnostic"] .floating-controls-trigger {
+  width: 32px;
+  height: 32px;
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text-secondary);
+  box-shadow: 0 5px 16px -12px rgba(27, 39, 56, 0.4);
+}
+
 @media (min-width: 640px) {
   .floating-controls {
     top: max(1.25rem, env(safe-area-inset-top));
@@ -776,9 +789,63 @@ body::after {
   gap: 10px;
 }
 
+.instance-chart-workspace {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.instance-chart-workspace-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 13px;
+}
+
+.instance-chart-workspace .instance-chart-controls {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .instance-chart-stage {
   width: 100%;
   min-height: 560px;
+}
+
+[data-theme-style="diagnostic"] .instance-chart-workspace {
+  border-radius: 18px;
+  padding: 18px;
+}
+
+[data-theme-style="diagnostic"] .instance-chart-workspace > .instance-chart-stage .instance-panel {
+  border-color: var(--border-subtle);
+  border-radius: 13px;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme-style="diagnostic"] .instance-summary-panel {
+  background: linear-gradient(180deg, #fff 0%, #f8fafd 100%);
+}
+
+[data-theme-style="diagnostic"] .instance-summary-panel .instance-panel-aside {
+  flex: 0 0 auto;
+}
+
+.instance-status-explanation {
+  margin: -3px 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+[data-theme-style="diagnostic"] .instance-decision-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
 }
 
 .instance-chart-view[hidden] {
@@ -1251,6 +1318,208 @@ body::after {
   opacity: 0.4;
 }
 
+.instance-ping-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.instance-ping-summary > div {
+  display: flex;
+  min-width: 0;
+  min-height: 66px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 11px;
+  background: var(--surface-sunken);
+  padding: 10px 12px;
+}
+
+.instance-ping-summary span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.instance-ping-summary strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-ping-summary > div[data-tone="warning"] strong {
+  color: var(--status-warning);
+}
+
+.instance-ping-summary > div[data-tone="ok"] strong {
+  color: var(--status-success);
+}
+
+.instance-ping-diagnostic-controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 13px;
+}
+
+.instance-ping-diagnostic-controls .instance-segmented {
+  padding: 3px;
+  box-shadow: none;
+}
+
+.instance-ping-group-select {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.instance-ping-group-select select {
+  max-width: 150px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  outline: 0;
+}
+
+.instance-ping-task-groups {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.instance-ping-task-group {
+  min-width: 0;
+}
+
+.instance-ping-task-group h3 {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.instance-ping-task-group h3 button {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 7px;
+  border-radius: 7px;
+  padding: 0 5px;
+  color: inherit;
+}
+
+.instance-ping-task-group h3 button:hover,
+.instance-ping-task-group h3 button[data-active="true"] {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.instance-ping-task-group h3 span {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.instance-ping-task-group h3 small {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 560;
+}
+
+.instance-ping-task-row {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: background 130ms ease, border-color 130ms ease;
+}
+
+.instance-ping-task-row:hover,
+.instance-ping-task-row:focus-within {
+  border-color: var(--border-strong);
+  background: var(--hover-bg);
+}
+
+.instance-ping-task-row .instance-ping-task {
+  border-color: transparent !important;
+  background: transparent;
+  padding: 5px 7px;
+}
+
+.instance-ping-severity {
+  border-radius: 5px;
+  background: var(--surface-sunken);
+  color: var(--text-tertiary);
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.instance-ping-severity.is-warning {
+  background: color-mix(in srgb, var(--status-warning) 11%, var(--surface));
+  color: var(--status-warning);
+}
+
+.instance-ping-severity.is-critical {
+  background: color-mix(in srgb, var(--status-error) 10%, var(--surface));
+  color: var(--status-error);
+}
+
+.instance-ping-watch,
+.instance-ping-locate {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--text-tertiary);
+}
+
+.instance-ping-watch:hover,
+.instance-ping-locate:hover,
+.instance-ping-watch[data-active="true"] {
+  background: color-mix(in srgb, var(--accent-500) 10%, var(--surface));
+  color: var(--accent-500);
+}
+
+[data-theme-style="diagnostic"] .instance-ping-summary > div {
+  border-radius: 9px;
+  background: #f3f6fa;
+}
+
+[data-theme-style="diagnostic"] .instance-ping-task-row[data-severity="critical"] {
+  border-color: color-mix(in srgb, var(--status-error) 18%, transparent);
+}
+
+[data-theme-style="diagnostic"] .instance-ping-task-row[data-severity="warning"] {
+  border-color: color-mix(in srgb, var(--status-warning) 18%, transparent);
+}
+
 .instance-loss-stack {
   display: flex;
   flex-direction: column;
@@ -1355,6 +1624,24 @@ body::after {
 
   .instance-chart-controls {
     align-items: stretch;
+  }
+
+  .instance-chart-workspace-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .instance-chart-workspace .instance-chart-controls {
+    justify-content: flex-start;
+  }
+
+  [data-theme-style="diagnostic"] .instance-chart-workspace {
+    padding: 12px;
+  }
+
+  .instance-ping-diagnostic-controls .instance-segmented {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .instance-chart-stage {

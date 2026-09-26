@@ -25,6 +25,8 @@ import {
   type VpsWorkbenchNode,
 } from "@/utils/vpsWorkbench";
 import { InstancePanel } from "./InstancePanel";
+import { usePreferences } from "@/hooks/usePreferences";
+import { getHostHealthStatus, NodeStatusSummary, type NetworkHealthStatus } from "@/components/node/NodeStatusSummary";
 
 function formatCapability(value: boolean | null, enabled = "已启用", disabled = "未启用") {
   if (value === true) return enabled;
@@ -96,6 +98,7 @@ export function InstanceDetails({
   const meta = useNodeMeta(uuid);
   const metrics = useNodeMetrics(uuid);
   const themeSettings = useThemeSettings();
+  const { appearance } = usePreferences();
   const { data: me } = useAuth();
   useHomepagePingOverview();
   const ping = usePingMini(uuid);
@@ -138,6 +141,8 @@ export function InstanceDetails({
 
   const nodeMeta = overlayAdminClientMeta(meta, adminClient);
   const isOnline = metrics.online;
+  const diagnosticAppearance = appearance === "diagnostic";
+  const hostStatus = getHostHealthStatus(metrics.online, metrics.updatedAt);
   const uptime = formatUptimeDays(metrics.uptime);
   // 按 traffic_limit_type (max/sum/up/down/min) 归并上下行，和卡片、后端保持一致——
   // 对非 "sum" 节点直接把上下行相加是错的。
@@ -177,6 +182,22 @@ export function InstanceDetails({
     }),
     ping,
   });
+  const networkStatus: NetworkHealthStatus = workbenchNode.ping.state === "critical"
+    ? "critical"
+    : workbenchNode.ping.state === "warning"
+      ? "warning"
+      : workbenchNode.ping.state === "ok"
+        ? "ok"
+        : workbenchNode.ping.state === "disabled" || workbenchNode.ping.state === "unbound"
+          ? "unmonitored"
+          : "empty";
+  const hostStatusLabel = hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "上报异常";
+  const assetStatus = workbenchNode.expiryBucket === "expired" || workbenchNode.traffic.status === "exhausted"
+    ? "需处理"
+    : workbenchNode.completeness.ratio < 1 || ["soon", "month", "unknown"].includes(workbenchNode.expiryBucket) || ["warning", "critical"].includes(workbenchNode.traffic.status)
+      ? "需关注"
+      : "正常";
+  const assetTone = assetStatus === "需处理" ? "critical" : assetStatus === "需关注" ? "warning" : "ok";
   const completenessDetail =
     workbenchNode.completeness.missing.length > 0
       ? `缺少 ${workbenchNode.completeness.missing
@@ -199,11 +220,34 @@ export function InstanceDetails({
     <InstancePanel
       id="instance-summary"
       title={panelTitle}
+      className="instance-summary-panel"
+      aside={diagnosticAppearance && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
       description={
         isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
       }
     >
+      {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
       <div className="instance-decision-grid">
+        {diagnosticAppearance && <>
+          <DecisionSummaryItem
+            label="主机状态"
+            value={hostStatusLabel}
+            detail={hostStatus === "online" ? `最近上报 ${lastUpdated}` : hostStatus === "offline" ? "当前没有实时上报" : `最近上报 ${lastUpdated}，数据可能已过期`}
+            tone={hostStatus === "online" ? "ok" : hostStatus === "offline" ? "critical" : "warning"}
+          />
+          <DecisionSummaryItem
+            label="网络监控"
+            value={workbenchNode.ping.label}
+            detail={workbenchNode.ping.detail}
+            tone={decisionToneFromPing(workbenchNode.ping.state)}
+          />
+          <DecisionSummaryItem
+            label="资产状态"
+            value={assetStatus}
+            detail={`${formatExpirePressure(workbenchNode)} · 流量使用 ${trafficDecisionValue}`}
+            tone={assetTone}
+          />
+        </>}
         <DecisionSummaryItem
           label="资料完整度"
           value={`${workbenchNode.completeness.complete}/${workbenchNode.completeness.total}`}

@@ -32,7 +32,7 @@ function resolveAppearance(a: Appearance): ResolvedAppearance {
   if (a === "system") {
     return getSystemAppearanceMediaQuery()?.matches ? "dark" : "light";
   }
-  return a;
+  return a === "dark" ? "dark" : "light";
 }
 
 function parseStoredAppearance(raw: string | null): Appearance | null {
@@ -107,9 +107,10 @@ function markThemeFlip() {
   }, 140);
 }
 
-function applyResolvedAppearance(resolvedAppearance: ResolvedAppearance) {
+function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedAppearance) {
   const root = document.documentElement;
   root.dataset.appearance = resolvedAppearance;
+  root.dataset.themeStyle = appearance === "diagnostic" ? "diagnostic" : "default";
   root.style.colorScheme = resolvedAppearance;
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
@@ -122,11 +123,14 @@ function commit(next: Partial<PrefsState>) {
   if (next.appearance) {
     merged.resolvedAppearance = resolveAppearance(merged.appearance);
   }
-  if (snapshot.resolvedAppearance !== merged.resolvedAppearance) {
+  if (
+    snapshot.resolvedAppearance !== merged.resolvedAppearance ||
+    snapshot.appearance !== merged.appearance
+  ) {
     markThemeFlip();
   }
   snapshot = merged;
-  applyResolvedAppearance(merged.resolvedAppearance);
+  applyAppearance(merged.appearance, merged.resolvedAppearance);
   emit();
 }
 
@@ -180,7 +184,7 @@ function initializeAppearance() {
     appearance: stored.appearance,
     resolvedAppearance: resolveAppearance(stored.appearance),
   };
-  applyResolvedAppearance(snapshot.resolvedAppearance);
+  applyAppearance(snapshot.appearance, snapshot.resolvedAppearance);
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {

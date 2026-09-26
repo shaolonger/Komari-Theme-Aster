@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, LayoutGrid, List, Monitor, Rows3, Settings, SlidersHorizontal, Sun, Moon } from "lucide-react";
+import { Activity, AlertTriangle, ChevronLeft, ChevronRight, LayoutGrid, List, Monitor, Rows3, Settings, SlidersHorizontal, Sun, Moon } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useViewMode } from "@/hooks/useViewMode";
@@ -12,11 +12,13 @@ const APPEARANCE_OPTIONS = [
   { value: "light", icon: Sun, label: "浅色" },
   { value: "system", icon: Monitor, label: "跟随系统" },
   { value: "dark", icon: Moon, label: "深色" },
+  { value: "diagnostic", icon: Activity, label: "诊断" },
 ] as const;
 
 const VIEW_OPTIONS = [
-  { value: "large", icon: LayoutGrid, label: "大卡片" },
-  { value: "compact", icon: Rows3, label: "小卡片" },
+  { value: "large", icon: LayoutGrid, label: "扩展卡片" },
+  { value: "standard", icon: Monitor, label: "标准卡片" },
+  { value: "compact", icon: Rows3, label: "紧凑卡片" },
   { value: "list", icon: List, label: "列表" },
 ] as const;
 

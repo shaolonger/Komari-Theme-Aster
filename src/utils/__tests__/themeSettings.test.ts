@@ -3,12 +3,12 @@ import {
   filterHomepagePingTaskGroups,
   normalizeHomepagePingTaskGroups,
 } from "@/utils/homepagePingSettings";
-import { normalizeThemeSettings } from "@/utils/themeSettings";
+import { isAppearance, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
-  it("defaults desktop and mobile node cards to the compact scanning view", () => {
-    expect(normalizeThemeSettings({}).desktopNodeViewMode).toBe("compact");
-    expect(normalizeThemeSettings({}).mobileNodeViewMode).toBe("compact");
+  it("defaults desktop and mobile node cards to the standard scanning view", () => {
+    expect(normalizeThemeSettings({}).desktopNodeViewMode).toBe("standard");
+    expect(normalizeThemeSettings({}).mobileNodeViewMode).toBe("standard");
     expect(normalizeThemeSettings({ desktopNodeViewMode: "large" }).desktopNodeViewMode).toBe(
       "large",
     );
@@ -17,7 +17,9 @@ describe("normalizeThemeSettings", () => {
     ).toMatchObject({ desktopNodeViewMode: "list", mobileNodeViewMode: "list" });
     expect(
       normalizeThemeSettings({ desktopNodeViewMode: "table" as never }).desktopNodeViewMode,
-    ).toBe("compact");
+    ).toBe("standard");
+    expect(normalizeThemeSettings({ desktopNodeViewMode: "standard" }).desktopNodeViewMode).toBe("standard");
+    expect(isAppearance("diagnostic")).toBe(true);
   });
 
   it("defaults overview ratings on unless explicitly disabled", () => {

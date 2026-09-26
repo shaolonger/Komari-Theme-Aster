@@ -157,6 +157,41 @@
   --ring: rgba(93, 136, 255, 0.46);
 }
 
+/* 诊断风格沿用浅色底色，收紧灰阶并把高对比色留给状态和图表。 */
+[data-theme-style="diagnostic"] {
+  --bg-0: #f1f4f8;
+  --bg-1: #f7f9fc;
+  --surface: #ffffff;
+  --surface-elev: #ffffff;
+  --surface-sunken: #edf1f6;
+  --border: rgba(27, 39, 56, 0.1);
+  --border-subtle: rgba(27, 39, 56, 0.075);
+  --border-strong: rgba(27, 39, 56, 0.16);
+  --hairline: rgba(27, 39, 56, 0.09);
+  --text-primary: #182230;
+  --text-secondary: #455367;
+  --text-tertiary: #647184;
+  --hover-bg: #edf2f8;
+  --accent-500: #2863ad;
+  --status-success: #23835c;
+  --status-warning: #b96a10;
+  --status-error: #c23c3c;
+  --status-info: #2863ad;
+  --status-online: #23835c;
+  --status-offline: #c23c3c;
+  --progress-cpu: #5680c4;
+  --progress-memory: #8276bd;
+  --progress-swap: #727cc2;
+  --progress-disk: #c78652;
+  --progress-network: #4c9a79;
+  --progress-traffic-from: #5680c4;
+  --progress-traffic-to: #8276bd;
+  --shadow-card:
+    0 1px 2px rgba(27, 39, 56, 0.045),
+    0 12px 28px -20px rgba(27, 39, 56, 0.2);
+  --ring: rgba(40, 99, 173, 0.35);
+}
+
 /* 标签配色 — DStatus 风格 pill,按标签颜色名取色 */
 [data-tag="ruby"],
 [data-tag="red"],

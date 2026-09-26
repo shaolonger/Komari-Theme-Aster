@@ -30,11 +30,14 @@ describe("ping sample predicates", () => {
       .toEqual({ total: 5, lost: 5, valid: 0 });
     expect(getPingRecordSampleCounts({ value: 8, loss_count: 9 }))
       .toEqual({ total: 1, lost: 1, valid: 0 });
+    expect(getPingRecordSampleCounts({ value: 42, sample_count: 5, loss_rate: 0.2 }))
+      .toEqual({ total: 5, lost: 1, valid: 4 });
   });
 
   it("returns unknown loss when a task has no samples", () => {
     expect(getPingLossPercent([])).toBeNull();
     expect(getPingLossPercent([{ value: 25 }])).toBe(0);
     expect(getPingLossPercent([{ value: -1 }])).toBe(100);
+    expect(getPingLossPercent([{ value: 42, loss_rate: 0.25 }])).toBe(25);
   });
 });

@@ -17,6 +17,7 @@ import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { usePreferences } from "@/hooks/usePreferences";
 import { formatBytes, formatLoadValue, formatMetricPercent, trimFixed } from "@/utils/format";
 import {
   buildHomepagePingCompareUrl,
@@ -27,6 +28,7 @@ import { speedRateColor } from "@/utils/metricTone";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
+import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary } from "./NodeStatusSummary";
 import type { NodeInfo, NodeMetrics, TrafficTrendSample } from "@/types/komari";
 import type { ByteRateDisplay } from "@/utils/format";
 import type { TrafficDisplay } from "@/utils/traffic";
@@ -118,10 +120,16 @@ function CompactNodeHeader({
   node,
   osName,
   isOffline,
+  diagnostic,
+  hostStatus,
+  networkStatus,
 }: {
   node: CompactNode;
   osName: string;
   isOffline: boolean;
+  diagnostic: boolean;
+  hostStatus: ReturnType<typeof getHostHealthStatus>;
+  networkStatus: ReturnType<typeof getNetworkHealthStatus>;
 }) {
   const detailLabels = nodeDetailLinkLabels(node.name, osName);
   return (
@@ -137,6 +145,7 @@ function CompactNodeHeader({
           </span>
         )}
       </div>
+      {diagnostic && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
       <Link
         to={`/instance/${node.uuid}`}
         className="compact-node-detail-link"
@@ -312,6 +321,7 @@ function resolveCardStatus(isOffline: boolean, rows: HomepagePingSourceRow[]) {
 export const CompactNodeCard = memo(function CompactNodeCard({ uuid }: { uuid: string }) {
   const model = useNodeCardModel(uuid);
   const themeSettings = useThemeSettings();
+  const { appearance } = usePreferences();
 
   if (!model.node) {
     return <div className="compact-node-card animate-pulse" aria-busy />;
@@ -342,15 +352,22 @@ export const CompactNodeCard = memo(function CompactNodeCard({ uuid }: { uuid: s
   const sourceRows = buildHomepagePingSourceRows(ping, themeSettings.homepagePingTaskGroups, themeSettings.homepagePingTaskOrder[node.uuid]);
   const compareUrl = buildHomepagePingCompareUrl(uuid, ping.taskIds ?? []);
   const cardStatus = resolveCardStatus(isOffline, sourceRows);
+  const diagnostic = appearance === "diagnostic";
+  const hostStatus = getHostHealthStatus(node.online, node.updatedAt);
+  const networkStatus = getNetworkHealthStatus(sourceRows, hasHomepagePingBinding);
+  const shownStatus = diagnostic
+    ? hostStatus === "offline" ? "critical" : hostStatus === "stale" ? "warning" : "ok"
+    : cardStatus;
   const emptyText = pingEmptyLabels(hasHomepagePingBinding).text;
 
   return (
     <article
       className={clsx("compact-node-card", isOffline && "is-offline")}
-      data-status={cardStatus}
+      data-status={shownStatus}
+      data-density="compact"
       data-online={node.online === true ? "true" : node.online === false ? "false" : "pending"}
     >
-      <CompactNodeHeader node={node} osName={osName} isOffline={isOffline} />
+      <CompactNodeHeader node={node} osName={osName} isOffline={isOffline} diagnostic={diagnostic} hostStatus={hostStatus} networkStatus={networkStatus} />
       <CompactNodeMeta
         subtitle={subtitle}
         tags={footerTags}
