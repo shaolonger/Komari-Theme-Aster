@@ -105,7 +105,7 @@ test("runner wraps an installed traceroute tool in a bounded structured result",
     fs.mkdirSync(fakeBin);
     fs.writeFileSync(path.join(fakeBin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n");
     fs.chmodSync(path.join(fakeBin, "timeout"), 0o755);
-    fs.writeFileSync(path.join(fakeBin, "nexttrace"), "#!/bin/sh\nprintf '{\\\"hops\\\":[]}'\n");
+    fs.writeFileSync(path.join(fakeBin, "nexttrace"), "#!/bin/sh\nprintf '%s' '{\"hops\":[]}'\n");
     fs.chmodSync(path.join(fakeBin, "nexttrace"), 0o755);
     const runner = path.resolve(__dirname, "../../runner/probe.sh");
     const process = spawnSync("/bin/sh", [runner, "route", "route.example.net"], {
