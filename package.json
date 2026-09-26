@@ -1,7 +1,7 @@
 {
   "name": "komari-theme-aster",
   "private": true,
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "description": "Aster — 面向 Komari 的服务器监控与资产管理主题",
   "author": "shaolonger",

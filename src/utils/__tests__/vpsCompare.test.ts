@@ -171,6 +171,22 @@ describe("buildComparisonSeries", () => {
     expect(series.map((item) => item.points[0]?.value)).toEqual([80, 10]);
     expect(filterPingRecordsByTask(pingRecords, 1).map((record) => record.value)).toEqual([20, 30]);
   });
+
+  it("keeps the chosen VPS set when the selected task has no samples on some VPS", () => {
+    const series = buildPingTaskVpsComparisonSeries({
+      metricKey: "ping_latency",
+      nodes,
+      records: [
+        { client: "a", task_id: 1, time: 1000, value: 20 },
+        { client: "a", task_id: 2, time: 1000, value: 80 },
+        { client: "b", task_id: 1, time: 1000, value: 30 },
+      ],
+      taskId: 2,
+    });
+
+    expect(series.map((item) => item.uuid)).toEqual(["a", "b"]);
+    expect(series.map((item) => item.points.map((point) => point.value))).toEqual([[80], []]);
+  });
 });
 
 describe("parseComparisonMetricKeys", () => {

@@ -16,8 +16,10 @@ import {
   Download,
   LineChart,
   Link2,
+  RotateCcw,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import {
   getComparisonLoadRecords,
@@ -1216,16 +1218,6 @@ export function Compare() {
     }
     return Array.from(ids).sort((left, right) => left - right);
   }, [selectedPingTaskId, selectedPingTaskIds, themeSettings.homepagePingBindings]);
-  const selectedPingTaskBoundUuids = useMemo(
-    () =>
-      getPingTaskBoundNodeUuids(
-        themeSettings.homepagePingBindings,
-        selectedPingTaskId,
-        visibleNodeUuids,
-      ),
-    [selectedPingTaskId, themeSettings.homepagePingBindings, visibleNodeUuids],
-  );
-
   const canQuery = selectedNodes.length > 0;
   const canFetch = canQuery && rangeIsUsable;
   const loadQuery = useQuery({
@@ -1445,6 +1437,33 @@ export function Compare() {
     setSearchParams(updateParams(searchParams, { nodes: unique }), { replace: true });
   };
 
+  const resetFilters = () => {
+    const nextHours = loadRanges.some((range) => range.value === DEFAULT_HOURS)
+      ? DEFAULT_HOURS
+      : loadRanges[0]?.value ?? DEFAULT_HOURS;
+    const seededEnd = Math.floor(Date.now() / 1000);
+    setSelectedMetricKeys([DEFAULT_METRIC]);
+    setSelectedPingTaskId(null);
+    setSelectedPingTaskIds([]);
+    setHours(nextHours);
+    setView("trend");
+    setRangeMode("preset");
+    setNodeSearch("");
+    setCustomStartInput(formatDateTimeLocalValue(seededEnd - nextHours * 3_600, displayTimeZone));
+    setCustomEndInput(formatDateTimeLocalValue(seededEnd, displayTimeZone));
+    setSearchParams(
+      updateParams(searchParams, {
+        metrics: [DEFAULT_METRIC],
+        hours: nextHours,
+        view: "trend",
+        rangeMode: "preset",
+        pingTask: null,
+        pingTasks: null,
+      }),
+      { replace: true },
+    );
+  };
+
   const commitMetricSelection = (nextKeys: ComparisonMetricKey[]) => {
     const normalized = Array.from(new Set(nextKeys)).filter(isComparisonMetricKey);
     const safeKeys = normalized.length > 0 ? normalized : [DEFAULT_METRIC];
@@ -1522,7 +1541,10 @@ export function Compare() {
     const boundUuids = nextTaskId == null
       ? []
       : getPingTaskBoundNodeUuids(themeSettings.homepagePingBindings, nextTaskId, visibleNodeUuids);
-    const nextUuids = preset === "network" && boundUuids.length > 0 ? boundUuids : selectedUuids;
+    const nextUuids =
+      preset === "network" && selectedUuids.length === 0 && boundUuids.length > 0
+        ? boundUuids
+        : selectedUuids;
 
     setSelectedMetricKeys(nextMetrics);
     setHours(nextHours);
@@ -1549,43 +1571,16 @@ export function Compare() {
 
   const commitPingTask = (taskId: number | null) => {
     const normalizedTaskId = normalizeComparisonPingTaskId(taskId);
-    const boundUuids =
-      normalizedTaskId == null
-        ? []
-        : getPingTaskBoundNodeUuids(
-            themeSettings.homepagePingBindings,
-            normalizedTaskId,
-            visibleNodeUuids,
-          );
-    const nextUuids = normalizedTaskId != null && boundUuids.length > 0 ? boundUuids : selectedUuids;
-
     setSelectedPingTaskId(normalizedTaskId);
     setSelectedPingTaskIds([]);
-    if (nextUuids !== selectedUuids) {
-      setSelectedUuids(nextUuids);
-    }
     setSearchParams(
       updateParams(searchParams, {
-        nodes: nextUuids,
         pingTask: normalizedTaskId,
         pingTasks: null,
       }),
       { replace: true },
     );
   };
-
-  useEffect(() => {
-    if (!taskScopedPingMode || searchParams.has("nodes") || selectedUuids.length > 0) return;
-    if (selectedPingTaskBoundUuids.length === 0) return;
-    setSelectedUuids(selectedPingTaskBoundUuids);
-    setSearchParams(updateParams(searchParams, { nodes: selectedPingTaskBoundUuids }), { replace: true });
-  }, [
-    searchParams,
-    selectedPingTaskBoundUuids,
-    selectedUuids.length,
-    setSearchParams,
-    taskScopedPingMode,
-  ]);
 
   const commitHours = (next: number) => {
     setRangeMode("preset");
@@ -1716,6 +1711,18 @@ export function Compare() {
                   ? `选择 VPS 比较「${selectedPingTaskLabel}」`
                   : "选择 1 台查看趋势，选择多台进行对比"}
               </span>
+            )}
+            {selectedUuids.length > 0 && (
+              <button
+                type="button"
+                className="compare-clear-selection"
+                onClick={() => commitSelected([])}
+                aria-label="清空已选 VPS"
+                title="清空已选 VPS"
+              >
+                <X size={13} aria-hidden="true" />
+                清空
+              </button>
             )}
           </div>
         </div>
@@ -1878,6 +1885,15 @@ export function Compare() {
             </button>
           </div>
         )}
+        <button
+          type="button"
+          className="compare-action-button compare-filter-reset"
+          onClick={resetFilters}
+          title="重置指标、时间、Ping 任务和视图；保留已选 VPS"
+        >
+          <RotateCcw size={14} aria-hidden="true" />
+          重置筛选
+        </button>
       </section>
 
       {hasPingMetrics && (
@@ -1905,6 +1921,9 @@ export function Compare() {
               </button>
             </div>
           </div>
+          <p className="compare-ping-task-hint">
+            任务范围只筛选已选 VPS 的 Ping 数据；切换任务不会更改 VPS 选择。
+          </p>
           {pingTaskOptions.length > 0 && (
             <div className="compare-ping-task-options">
               {pingTaskOptions.map((option) => (
@@ -1931,7 +1950,7 @@ export function Compare() {
           <strong>{selectedNodes.length}</strong>
           <small>
             {taskScopedPingMode
-              ? `任务绑定 ${selectedPingTaskBoundUuids.length} 台`
+              ? "仅比较所选 VPS 的该任务数据"
               : selectedNodes.length <= 1
                 ? "单台可查看"
                 : "多台对比中"}
