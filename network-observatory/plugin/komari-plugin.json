@@ -1,0 +1,35 @@
+{
+  "name": {
+    "zh_CN": "Aster 网络观测",
+    "en": "Aster Network Observatory"
+  },
+  "short": "aster-network-observatory",
+  "description": "为 Aster 提供计划式网络可达性、路径和吞吐量观测。",
+  "author": "shaolonger",
+  "version": "1.0.0",
+  "url": "https://github.com/shaolonger/Komari-Theme-Aster",
+  "entry": "script.js",
+  "komari": ">=1.5.1",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowSystemRPC": true,
+    "timeout": 30,
+    "maxHTTPBodyBytes": 131072
+  },
+  "configuration": {
+    "type": "managed",
+    "data": []
+  },
+  "pages": [
+    {
+      "title": {
+        "zh_CN": "网络观测",
+        "en": "Network Observatory"
+      },
+      "type": "redirect",
+      "url": "/network-observatory",
+      "visibility": "admin"
+    }
+  ]
+}

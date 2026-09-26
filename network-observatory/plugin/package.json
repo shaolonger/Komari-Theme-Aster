@@ -1,0 +1,7 @@
+{
+  "name": "aster-network-observatory-plugin",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/network-observatory.node.cjs"
+  }
+}

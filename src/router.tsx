@@ -14,6 +14,9 @@ const Compare = lazy(() =>
 const NotFound = lazy(() =>
   import("@/pages/NotFound").then((m) => ({ default: m.NotFound })),
 );
+const NetworkObservatory = lazy(() =>
+  import("@/pages/NetworkObservatory").then((m) => ({ default: m.NetworkObservatory })),
+);
 
 function Loading() {
   return (
@@ -42,6 +45,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Compare />
+          </Suspense>
+        ),
+      },
+      {
+        path: "network-observatory",
+        element: (
+          <Suspense fallback={<Loading />}>
+            <NetworkObservatory />
           </Suspense>
         ),
       },

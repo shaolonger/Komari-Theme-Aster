@@ -74,3 +74,4 @@ await viteBuild({ root });
 console.log("Packaging...");
 await importScript("scripts/make-preview.mjs");
 await importScript("scripts/package-zip.mjs");
+await importScript("scripts/package-network-observatory.mjs");

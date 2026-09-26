@@ -87,6 +87,7 @@ jobs:
           name: Komari-Theme-Aster-package
           path: |
             Komari-Theme-Aster-v*.zip
+            Aster-Network-Observatory-v*.zip
             preview.png
 
       - name: Resolve release notes
@@ -112,6 +113,7 @@ jobs:
         with:
           files: |
             Komari-Theme-Aster-v*.zip
+            Aster-Network-Observatory-v*.zip
             preview.png
           body_path: ${{ steps.release-notes.outputs.path }}
 
@@ -121,5 +123,6 @@ jobs:
         with:
           files: |
             Komari-Theme-Aster-v*.zip
+            Aster-Network-Observatory-v*.zip
             preview.png
           generate_release_notes: true
