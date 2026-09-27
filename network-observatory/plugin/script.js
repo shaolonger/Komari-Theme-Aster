@@ -447,5 +447,3 @@ function load() {
   server.cron("* * * * *", () => { void tick(); });
   void tick();
 }
-
-module.exports = { load };

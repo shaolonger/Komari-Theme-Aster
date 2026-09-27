@@ -170,7 +170,6 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
         throw new Error(`unexpected RPC: ${method}`);
       },
     };
-    const pluginModule = { exports: {} };
     const nativeRequire = require;
     const pluginRequire = (name) => name === "server"
       ? fakeServer
@@ -178,15 +177,15 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
         ? nativeRequire(name)
         : nativeRequire(path.resolve(__dirname, "..", name));
     const entry = fs.readFileSync(path.resolve(__dirname, "../script.js"), "utf8");
-    vm.runInNewContext(entry, {
+    const pluginRuntime = {
       require: pluginRequire,
-      module: pluginModule,
-      exports: pluginModule.exports,
       __storageDir__: temp,
       Buffer,
       console,
-    }, { filename: "script.js" });
-    pluginModule.exports.load();
+    };
+    vm.runInNewContext(entry, pluginRuntime, { filename: "script.js" });
+    assert.equal(typeof pluginRuntime.load, "function", "Komari invokes the global load() entry point");
+    pluginRuntime.load();
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     assert.equal(cronJobs.length, 1);
