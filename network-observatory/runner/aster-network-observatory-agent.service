@@ -1,0 +1,29 @@
+[Unit]
+Description=Aster Network Observatory node probe worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=aster-netobs
+Group=aster-netobs
+ExecStart=/usr/bin/python3 /usr/local/libexec/aster-network-observatory/agent.py run
+Restart=always
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

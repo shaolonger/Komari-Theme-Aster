@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { getAdminClients } from "@/services/api";
 import {
   getNetworkObservatoryStatus,
+  issueNetworkObservatoryToken,
+  revokeNetworkObservatoryToken,
   runNetworkObservatorySchedule,
   saveNetworkObservatorySchedules,
   type NetworkMode,
@@ -53,6 +55,7 @@ const DEFAULT_FORM = {
   client: "",
 };
 const EMPTY_SCHEDULES: NetworkSchedule[] = [];
+const EMPTY_REGISTERED_NODES: NetworkStatus["registeredNodes"] = [];
 const GLYPHS = {
   activity: "◌",
   back: "←",
@@ -127,6 +130,9 @@ export function NetworkObservatory() {
   const [saveError, setSaveError] = useState("");
   const [runPending, setRunPending] = useState(false);
   const [runError, setRunError] = useState("");
+  const [credentialPending, setCredentialPending] = useState("");
+  const [credentialError, setCredentialError] = useState("");
+  const [issuedCredential, setIssuedCredential] = useState<{ uuid: string; name: string; token: string } | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -160,6 +166,8 @@ export function NetworkObservatory() {
   const scheduleById = useMemo(() => new Map(schedules.map((schedule) => [schedule.id, schedule])), [schedules]);
   const sortedNodes = useMemo(() => nodes.slice().sort((a, b) => a.name.localeCompare(b.name)), [nodes]);
   const nodeByUuid = useMemo(() => new Map(sortedNodes.map((node) => [node.uuid, node.name])), [sortedNodes]);
+  const registeredNodes = status?.registeredNodes ?? EMPTY_REGISTERED_NODES;
+  const registeredByUuid = useMemo(() => new Map(registeredNodes.map((node) => [node.uuid, node])), [registeredNodes]);
   const results = (status?.history ?? []).map((result) => ({
     ...result,
     nodeName: nodeByUuid.get(result.nodeUuid) || result.nodeName,
@@ -193,6 +201,40 @@ export function NetworkObservatory() {
     }
   }
 
+  async function issueCredential(node: { uuid: string; name: string }) {
+    setCredentialPending(node.uuid);
+    setCredentialError("");
+    setIssuedCredential(null);
+    try {
+      const result = await issueNetworkObservatoryToken(node.uuid);
+      setIssuedCredential({ ...result, name: node.name });
+      await refreshStatus();
+    } catch (error) {
+      setCredentialError(error instanceof Error ? error.message : "无法生成节点凭证。");
+    } finally {
+      setCredentialPending("");
+    }
+  }
+
+  async function revokeCredential(node: { uuid: string; name: string }) {
+    if (!window.confirm(`撤销 ${node.name} 的网络观测凭证？该节点的检测计划会暂停。`)) return;
+    setCredentialPending(node.uuid);
+    setCredentialError("");
+    setIssuedCredential(null);
+    try {
+      const response = await revokeNetworkObservatoryToken(node.uuid);
+      setStatus((current) => current ? {
+        ...current,
+        registeredNodes: response.registeredNodes,
+        config: response.config,
+      } : current);
+    } catch (error) {
+      setCredentialError(error instanceof Error ? error.message : "无法撤销节点凭证。");
+    } finally {
+      setCredentialPending("");
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = form.name.trim();
@@ -200,6 +242,7 @@ export function NetworkObservatory() {
     if (!name) return setFormError("请为检测计划填写名称。");
     if (!isTcpQualityMode(form.mode) && !target) return setFormError("请填写目标主机名或 IP 地址。");
     if (!form.client) return setFormError("请选择一台 VPS。");
+    if (!registeredByUuid.has(form.client)) return setFormError("请先为这台 VPS 生成凭证并安装本地探测服务。");
     const plan: NetworkSchedule = {
       id: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
       name,
@@ -234,7 +277,7 @@ export function NetworkObservatory() {
             <h1>网络观测服务尚未连接</h1>
             <p>安装并启用 Aster Network Observatory Komari 插件，然后刷新此页。</p>
             <code>{statusError || "插件接口不可用"}</code>
-            <p className="network-install-hint">插件只接受 Komari 管理员请求。安装说明与插件包位于仓库的 network-observatory 目录。</p>
+            <p className="network-install-hint">页面需要最新版网络观测插件。安装说明与节点探测服务位于 Release 插件包和仓库文档中。</p>
           </div>
         </section>
       </main>
@@ -255,10 +298,47 @@ export function NetworkObservatory() {
       </div>
 
       <section className="network-stat-grid" aria-label="网络观测状态">
-        <div className="network-stat-card"><span><Glyph name="clock" size={15} />待处理</span><strong>{status.pending}</strong><small>节点命令仍在运行或等待回报</small></div>
+        <div className="network-stat-card"><span><Glyph name="clock" size={15} />待处理</span><strong>{status.pending}</strong><small>等待节点探测器领取或回传</small></div>
         <div className="network-stat-card"><span><Glyph name="activity" size={15} />启用计划</span><strong>{schedules.filter((item) => item.enabled).length}</strong><small>间隔从 1 分钟至 1 天</small></div>
         <div className="network-stat-card"><span><Glyph name="check" size={15} />最近成功</span><strong>{results.filter((item) => item.status === "success").length}</strong><small>最多保留最近 500 条检测记录</small></div>
         <div className="network-stat-card"><span><Glyph name="warning" size={15} />最近异常</span><strong>{results.filter((item) => item.status !== "success").length}</strong><small>失败与超时单独标记</small></div>
+      </section>
+
+      <section className="network-panel network-agents-panel">
+        <div className="network-panel-heading">
+          <div><h2>节点探测服务</h2><p>每台执行节点需要安装本地服务。它只向 Komari 发起 HTTPS 请求，可保持 Agent 的 `--disable-web-ssh` 开启。</p></div>
+          <span className="network-agent-count">已登记 {registeredNodes.length} / {nodes.length} 台</span>
+        </div>
+        {credentialError && <p className="network-form-error" role="alert">{credentialError}</p>}
+        {issuedCredential && <div className="network-credential-reveal" role="status">
+          <strong>{issuedCredential.name} 的一次性凭证</strong>
+          <p>请立即复制并在该节点运行安装向导。离开或刷新页面后不会再次显示；遗失时可重置凭证。</p>
+          <code>{issuedCredential.token}</code>
+          <button type="button" className="network-secondary-button" onClick={() => {
+            void navigator.clipboard?.writeText(issuedCredential.token).catch(() => setCredentialError("无法访问剪贴板，请手动复制凭证。"));
+          }}>复制凭证</button>
+          <pre>sudo python3 /usr/local/libexec/aster-network-observatory/agent.py configure</pre>
+        </div>}
+        {nodesError && <p className="network-form-error">无法读取 Komari 节点清单，请检查管理员权限。</p>}
+        <div className="network-agent-list">
+          {sortedNodes.map((node) => {
+            const registration = registeredByUuid.get(node.uuid);
+            const lastSeen = registration?.lastSeenAt ? new Date(registration.lastSeenAt).getTime() : 0;
+            const online = lastSeen > 0 && Date.now() - lastSeen < 90_000;
+            return <article className="network-agent-row" key={node.uuid}>
+              <div><strong>{node.name}</strong><small>{node.uuid}</small></div>
+              <span className={online ? "network-enabled" : "network-disabled"}>{!registration ? "未登记" : online ? "探测器在线" : "等待连接"}</span>
+              <small>{registration?.lastSeenAt ? `最近连接：${formatTime(registration.lastSeenAt)}` : registration ? "凭证已生成，等待安装服务" : "先生成节点凭证"}</small>
+              <div className="network-agent-actions">
+                <button type="button" className="network-secondary-button" disabled={credentialPending === node.uuid} onClick={() => void issueCredential(node)}>
+                  {credentialPending === node.uuid ? "处理中…" : registration ? "重置凭证" : "生成凭证"}
+                </button>
+                {registration && <button type="button" className="network-danger-button" disabled={credentialPending === node.uuid} onClick={() => void revokeCredential(node)}>撤销</button>}
+              </div>
+            </article>;
+          })}
+          {sortedNodes.length === 0 && <div className="network-empty-state"><Glyph name="activity" size={22} /><p>没有可登记的 Komari 节点。</p></div>}
+        </div>
       </section>
 
       <div className="network-layout">
@@ -278,8 +358,8 @@ export function NetworkObservatory() {
               <label>目的地区域（可选）<input maxLength={64} value={form.region} onChange={(event) => setForm({ ...form, region: event.target.value })} placeholder="北京 / 日本 / 欧洲" /></label>
             </div>
             <label>执行节点<select required value={form.client} onChange={(event) => setForm({ ...form, client: event.target.value })}>
-              <option value="">选择一台在线或待机 VPS</option>
-              {sortedNodes.map((node) => <option key={node.uuid} value={node.uuid}>{node.name} · {node.uuid.slice(0, 8)}</option>)}
+              <option value="">选择已登记探测服务的 VPS</option>
+              {sortedNodes.map((node) => <option key={node.uuid} value={node.uuid} disabled={!registeredByUuid.has(node.uuid)}>{node.name} · {registeredByUuid.has(node.uuid) ? "已登记" : "未登记"}</option>)}
             </select>{nodesError && <small className="network-form-error">无法读取节点，请检查管理员权限。</small>}</label>
             <label>检测间隔<select value={form.intervalMinutes} onChange={(event) => setForm({ ...form, intervalMinutes: Number(event.target.value) })}>{INTERVALS[form.mode].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             {form.mode === "throughput" && <p className="network-inline-note"><Glyph name="speed" size={15} />将上传 10 秒测试数据到目标 iperf3 服务端。请使用你有权使用的端点，并为该 VPS 留出流量预算。</p>}
@@ -304,7 +384,7 @@ export function NetworkObservatory() {
             ))}</div>
           )}
           {runError && <p className="network-form-error" role="alert">{runError}</p>}
-            <div className="network-requirements"><h3>节点工具要求</h3><p>HTTPS：curl · 路径：NextTrace · 吞吐：iperf3 服务端与客户端 · 三网/国际：同版本 TcpQuality 入口和 core。计划由 Komari 插件定时调度；浏览器关闭不影响执行。</p></div>
+            <div className="network-requirements"><h3>节点工具要求</h3><p>探测服务：Python 3、systemd、curl、timeout · 路径：NextTrace · 吞吐：iperf3 服务端与客户端 · 三网/国际：同版本 TcpQuality 入口和 core。计划由 Komari 插件定时调度；浏览器关闭不影响执行。</p></div>
         </section>
       </div>
 

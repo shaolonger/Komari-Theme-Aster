@@ -19,7 +19,6 @@ const MODE_INTERVALS = Object.freeze({
   "tcpquality-intl": TCPQUALITY_INTERVALS,
   "tcpquality-all": TCPQUALITY_INTERVALS,
 });
-const RUNNER_PATH = "/usr/local/libexec/aster-network-observatory/probe.sh";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
@@ -101,23 +100,6 @@ function normalizeConfig(input) {
   return { schedules };
 }
 
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
-}
-
-function buildProbeCommand(schedule) {
-  const mode = MODES.includes(schedule.mode) ? schedule.mode : "";
-  if (!mode || (!mode.startsWith("tcpquality-") && !isHost(schedule.target))) throw new Error("拒绝执行无效的探测参数");
-  const port = Number(schedule.port);
-  if (["throughput", "https"].includes(mode) && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-    throw new Error("目标端口无效");
-  }
-  const args = mode.startsWith("tcpquality-") ? [mode, "default"] : [mode, schedule.target];
-  if (["throughput", "https"].includes(mode)) args.push(String(port));
-  const timeoutSeconds = mode === "tcpquality-route" ? 210 : mode === "tcpquality-intl" ? 330 : mode === "tcpquality-all" ? 510 : 150;
-  return `timeout ${timeoutSeconds}s sh ${shellQuote(RUNNER_PATH)} ${args.map(shellQuote).join(" ")}`;
-}
-
 function parseProbeOutput(output, expected = {}) {
   if (typeof output !== "string") throw new Error("Agent 未返回文本结果");
   const lines = output.replace(/\r\n/g, "\n").split("\n");
@@ -168,14 +150,11 @@ module.exports = {
   HISTORY_LIMIT,
   INTERVALS,
   MODES,
-  RUNNER_PATH,
   TASK_OUTPUT_LIMIT,
-  buildProbeCommand,
   createDueRuns,
   isHost,
   normalizeConfig,
   normalizeSchedule,
   parseProbeOutput,
   readAdminPrincipal,
-  shellQuote,
 };

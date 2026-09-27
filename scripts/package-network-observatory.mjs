@@ -11,6 +11,9 @@ const files = [
   ["script.js", resolve(plugin, "script.js")],
   ["src/model.js", resolve(plugin, "src/model.js")],
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
+  ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
+  ["runner/install.sh", resolve(root, "network-observatory/runner/install.sh")],
+  ["runner/aster-network-observatory-agent.service", resolve(root, "network-observatory/runner/aster-network-observatory-agent.service")],
   ["README.md", resolve(root, "network-observatory/README.md")],
 ];
 

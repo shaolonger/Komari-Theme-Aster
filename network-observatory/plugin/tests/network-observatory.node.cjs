@@ -7,7 +7,6 @@ const { test } = require("node:test");
 const vm = require("node:vm");
 const {
   API_BASE,
-  buildProbeCommand,
   createDueRuns,
   isHost,
   normalizeConfig,
@@ -58,13 +57,11 @@ test("keeps throughput and each TcpQuality suite at daily cadence", () => {
   assert.throws(() => normalizeConfig({ schedules: [schedule({ mode: "tcpquality-intl", intervalMinutes: 60 })] }), /间隔无效/);
 });
 
-test("validates and safely quotes only known probe commands", () => {
+test("normalizes only the fixed probe types and approved schedule intervals", () => {
   const input = schedule({ mode: "https", target: "status.example.net", port: 443, intervalMinutes: 5 });
-  const command = buildProbeCommand(input);
-  assert.match(command, /^timeout 150s sh '/);
-  assert.match(command, /'https' 'status\.example\.net' '443'$/);
-  assert.match(buildProbeCommand(schedule({ mode: "tcpquality-intl", target: "default", intervalMinutes: 1440 })), /^timeout 330s sh .*'tcpquality-intl' 'default'$/);
-  assert.throws(() => buildProbeCommand(schedule({ mode: "route", target: "example.net; touch /tmp/x" })), /无效/);
+  assert.equal(normalizeConfig({ schedules: [input] }).schedules[0].mode, "https");
+  assert.equal(normalizeConfig({ schedules: [schedule({ mode: "tcpquality-intl", target: "default", intervalMinutes: 1440 })] }).schedules[0].mode, "tcpquality-intl");
+  assert.throws(() => normalizeConfig({ schedules: [schedule({ mode: "route", target: "example.net; touch /tmp/x" })] }), /有效的目标/);
 });
 
 test("advances at most one due plan so probe work is staggered", () => {
@@ -159,20 +156,17 @@ test("runner selects fixed TcpQuality commands and rejects floating code install
   }
 });
 
-test("plugin persists admin schedules, dispatches a single node, and protects its routes", async () => {
+test("plugin queues admin plans for per-node HTTPS workers without system RPC", async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-plugin-test-"));
   try {
     const routes = new Map();
     const cronJobs = [];
-    const commands = [];
+    const rpcCalls = [];
     const fakeServer = {
       route(method, route, handler) { routes.set(`${method} ${route}`, handler); },
       cron(expression, handler) { cronJobs.push({ expression, handler }); },
       async call(method, params) {
-        if (method === "admin:exec") {
-          commands.push(params);
-          return { task_id: "task-42" };
-        }
+        rpcCalls.push({ method, params });
         throw new Error(`unexpected RPC: ${method}`);
       },
     };
@@ -180,7 +174,7 @@ test("plugin persists admin schedules, dispatches a single node, and protects it
     const nativeRequire = require;
     const pluginRequire = (name) => name === "server"
       ? fakeServer
-      : ["fs", "path"].includes(name)
+      : ["fs", "path", "crypto"].includes(name)
         ? nativeRequire(name)
         : nativeRequire(path.resolve(__dirname, "..", name));
     const entry = fs.readFileSync(path.resolve(__dirname, "../script.js"), "utf8");
@@ -189,6 +183,7 @@ test("plugin persists admin schedules, dispatches a single node, and protects it
       module: pluginModule,
       exports: pluginModule.exports,
       __storageDir__: temp,
+      Buffer,
       console,
     }, { filename: "script.js" });
     pluginModule.exports.load();
@@ -198,12 +193,14 @@ test("plugin persists admin schedules, dispatches a single node, and protects it
     assert.equal(cronJobs[0].expression, "* * * * *");
     assert.ok(routes.has("GET /api/aster-network-observatory/v1/status"));
     assert.ok(routes.has("PUT /api/aster-network-observatory/v1/config"));
+    assert.equal(JSON.parse(fs.readFileSync(path.resolve(__dirname, "../komari-plugin.json"), "utf8")).permissions.allowSystemRPC, undefined);
 
-    async function invoke(method, route, { body = "", roles = ["admin"], type = "user" } = {}) {
-      const key = `${method} ${route}`;
-      const handler = routes.get(key) ?? (method === "POST" && route.includes("/run/")
-        ? routes.get("POST /api/aster-network-observatory/v1/run/:id")
-        : undefined);
+    async function invoke(method, route, { body = "", roles = ["admin"], type = "user", headers = {} } = {}) {
+      const handler = [...routes.entries()].find(([key]) => {
+        const [registeredMethod, registeredPath] = key.split(" ");
+        const matcher = new RegExp(`^${registeredPath.split("/").map((part) => part.startsWith(":") ? "[^/]+" : part).join("/")}$`);
+        return method === registeredMethod && matcher.test(route);
+      })?.[1];
       assert.ok(handler, `missing plugin route ${method} ${route}`);
       const response = {
         statusCode: 200,
@@ -214,10 +211,18 @@ test("plugin persists admin schedules, dispatches a single node, and protects it
       await handler({
         body,
         url: route,
+        headers,
         context: { principal: { type, roles } },
       }, response);
       return { ...response, json: JSON.parse(response.body) };
     }
+
+    const issued = await invoke("POST", `/api/aster-network-observatory/v1/nodes/${CLIENT}/token`);
+    assert.equal(issued.statusCode, 201);
+    assert.match(issued.json.token, /^[0-9a-f]{64}$/);
+    const token = issued.json.token;
+    const stored = fs.readFileSync(path.join(temp, "state.json"), "utf8");
+    assert.equal(stored.includes(token), false, "server must persist only the credential hash");
 
     const config = { schedules: [schedule({ mode: "https", target: "health.example.net", port: 443, intervalMinutes: 5, nextRunAt: Date.now() + 60_000 })] };
     const saved = await invoke("PUT", "/api/aster-network-observatory/v1/config", { body: JSON.stringify(config) });
@@ -226,21 +231,50 @@ test("plugin persists admin schedules, dispatches a single node, and protects it
 
     const forbidden = await invoke("POST", "/api/aster-network-observatory/v1/run/test_plan_1", { roles: ["viewer"] });
     assert.equal(forbidden.statusCode, 403);
-    assert.equal(commands.length, 0);
+
+    const unauthorized = await invoke("POST", `/api/aster-network-observatory/v1/nodes/${CLIENT}/verify`);
+    assert.equal(unauthorized.statusCode, 401);
+    const verified = await invoke("POST", `/api/aster-network-observatory/v1/nodes/${CLIENT}/verify`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(verified.statusCode, 200);
 
     const run = await invoke("POST", "/api/aster-network-observatory/v1/run/test_plan_1");
     assert.equal(run.statusCode, 202);
-    assert.equal(run.json.task.taskId, "task-42");
-    assert.deepEqual(Array.from(commands[0].clients), [CLIENT]);
-    assert.match(commands[0].command, /health\.example\.net/);
+    const taskId = run.json.task.taskId;
+    assert.match(taskId, /^[0-9a-f-]{36}$/i);
+    assert.equal(run.json.task.status, "queued");
 
     const blockedConcurrentRun = await invoke("POST", "/api/aster-network-observatory/v1/run/test_plan_1");
     assert.equal(blockedConcurrentRun.statusCode, 400);
-    assert.match(blockedConcurrentRun.json.error, /已有网络检测任务/);
+    assert.match(blockedConcurrentRun.json.error, /已有节点检测任务/);
+
+    const pollUnauthorized = await invoke("GET", `/api/aster-network-observatory/v1/nodes/${CLIENT}/poll`);
+    assert.equal(pollUnauthorized.statusCode, 401);
+    const poll = await invoke("GET", `/api/aster-network-observatory/v1/nodes/${CLIENT}/poll`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(poll.statusCode, 200);
+    assert.equal(poll.json.task.taskId, taskId);
+    assert.equal(poll.json.task.target, "health.example.net");
+    const emptyPoll = await invoke("GET", `/api/aster-network-observatory/v1/nodes/${CLIENT}/poll`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(emptyPoll.json.task, null);
+
+    const encodedOutput = Buffer.from("HTTPS probe passed", "utf8").toString("base64");
+    const output = `ASTER_NETWORK_RESULT_V1\thttps\thealth.example.net\t0\t${encodedOutput}\n`;
+    const submitted = await invoke("POST", `/api/aster-network-observatory/v1/nodes/${CLIENT}/result`, {
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ taskId, output }),
+    });
+    assert.equal(submitted.statusCode, 200);
 
     const status = await invoke("GET", "/api/aster-network-observatory/v1/status");
-    assert.equal(status.json.pending, 1);
+    assert.equal(status.json.pending, 0);
     assert.equal(status.json.config.schedules[0].enabled, true);
+    assert.equal(status.json.registeredNodes[0].uuid, CLIENT);
+    assert.equal(status.json.history[0].rawOutput, "HTTPS probe passed");
+    assert.equal(rpcCalls.length, 0, "the plugin must not invoke remote execution RPCs");
+
+    const revoked = await invoke("DELETE", `/api/aster-network-observatory/v1/nodes/${CLIENT}/token`);
+    assert.equal(revoked.statusCode, 200);
+    assert.equal(revoked.json.registeredNodes.length, 0);
+    assert.equal(revoked.json.config.schedules[0].enabled, false);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

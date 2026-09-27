@@ -500,3 +500,132 @@
     justify-content: flex-end;
   }
 }
+.network-agents-panel {
+  margin-bottom: 22px;
+}
+
+.network-agent-count {
+  color: var(--text-secondary, #86909c);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.network-agent-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.network-agent-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(125, 140, 160, 0.18));
+  border-radius: 12px;
+  background: var(--surface-subtle, rgba(125, 140, 160, 0.035));
+}
+
+.network-agent-row > div:first-child,
+.network-agent-row > small {
+  min-width: 0;
+}
+
+.network-agent-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.network-agent-row > div:first-child strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-agent-row small {
+  color: var(--text-secondary, #86909c);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.network-agent-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.network-secondary-button,
+.network-danger-button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, rgba(125, 140, 160, 0.25));
+  border-radius: 8px;
+  color: var(--text, inherit);
+  background: var(--surface, transparent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.network-secondary-button:hover:not(:disabled) {
+  border-color: var(--accent, #668df2);
+}
+
+.network-danger-button {
+  color: var(--danger, #d45d64);
+}
+
+.network-secondary-button:disabled,
+.network-danger-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.network-credential-reveal {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent, #668df2) 38%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #668df2) 7%, transparent);
+}
+
+.network-credential-reveal p {
+  margin: 0;
+  color: var(--text-secondary, #86909c);
+  font-size: 12px;
+}
+
+.network-credential-reveal code {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface, rgba(0, 0, 0, 0.12));
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.network-credential-reveal pre {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--surface, rgba(0, 0, 0, 0.12));
+  overflow-x: auto;
+  font-size: 11px;
+}
+
+@media (max-width: 850px) {
+  .network-agent-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .network-agent-row > small {
+    grid-column: 1 / -1;
+  }
+
+  .network-agent-actions {
+    grid-column: 1 / -1;
+  }
+}

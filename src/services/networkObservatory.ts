@@ -36,6 +36,11 @@ export const NetworkResultSchema = z.object({
   carrier: z.string(),
   region: z.string(),
 });
+export const NetworkAgentSchema = z.object({
+  uuid: z.string(),
+  tokenIssuedAt: z.string(),
+  lastSeenAt: z.string(),
+});
 export const NetworkStatusSchema = z.object({
   config: z.object({ schedules: z.array(NetworkScheduleSchema) }),
   pending: z.number(),
@@ -43,11 +48,13 @@ export const NetworkStatusSchema = z.object({
   updatedAt: z.string(),
   modes: z.array(NetworkModeSchema),
   intervals: z.array(z.number()),
+  registeredNodes: z.array(NetworkAgentSchema),
 });
 
 export type NetworkSchedule = z.infer<typeof NetworkScheduleSchema>;
 export type NetworkResult = z.infer<typeof NetworkResultSchema>;
 export type NetworkMode = z.infer<typeof NetworkModeSchema>;
+export type NetworkAgent = z.infer<typeof NetworkAgentSchema>;
 export type NetworkStatus = z.infer<typeof NetworkStatusSchema>;
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
@@ -83,4 +90,22 @@ export function runNetworkObservatorySchedule(scheduleId: string): Promise<{ tas
   return request(`/run/${encodeURIComponent(scheduleId)}`, responseSchema, {
     method: "POST",
   }) as Promise<{ task: { taskId: string } }>;
+}
+
+export function issueNetworkObservatoryToken(nodeUuid: string): Promise<{ uuid: string; token: string }> {
+  const responseSchema = z.object({ uuid: z.string(), token: z.string().regex(/^[0-9a-f]{64}$/) });
+  return request(`/nodes/${encodeURIComponent(nodeUuid)}/token`, responseSchema, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function revokeNetworkObservatoryToken(nodeUuid: string): Promise<{ registeredNodes: NetworkAgent[]; config: { schedules: NetworkSchedule[] } }> {
+  const responseSchema = z.object({
+    registeredNodes: z.array(NetworkAgentSchema),
+    config: z.object({ schedules: z.array(NetworkScheduleSchema) }),
+  });
+  return request(`/nodes/${encodeURIComponent(nodeUuid)}/token`, responseSchema, {
+    method: "DELETE",
+  });
 }
