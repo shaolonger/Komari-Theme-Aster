@@ -4,7 +4,7 @@
 
 ## 兼容范围与权限
 
-- Komari 服务端需要支持插件系统（插件清单最低版本为 1.5.1）。此方案不使用 `admin:exec`，也不需要修改或重新编译 Komari/komari-agent。
+- Komari 服务端需为 1.4.3 或更高版本。已对照 Komari 官方 1.4.3 标签源码确认：插件路由、定时任务、Node.js `crypto`/`fs`/`path` 模块和请求身份上下文均可用。此方案不使用 `admin:exec`，也不需要修改或重新编译 Komari/komari-agent。
 - 在 Komari 管理后台安装本仓库 Release 中的 `Aster-Network-Observatory-v*.zip`。启用插件时只需审批插件 API 路由权限；不需要系统 RPC、子进程执行或本地监听权限。
 - 在 Aster 的「网络观测」页为每台检测节点生成一次性凭证。服务端只保存凭证的 SHA-256 摘要；节点凭证只能领取分配给对应 UUID 的任务并提交结果。重置凭证会立即使旧凭证失效，撤销凭证会暂停该节点的计划。
 - 节点服务只接受固定检测类型和经过校验的主机名/IP/端口，不会把计划字段作为 shell 命令执行。节点只向 Komari 发起出站 HTTPS 请求，不需要开放 VPS 入站端口。

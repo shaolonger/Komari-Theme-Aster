@@ -193,7 +193,10 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
     assert.equal(cronJobs[0].expression, "* * * * *");
     assert.ok(routes.has("GET /api/aster-network-observatory/v1/status"));
     assert.ok(routes.has("PUT /api/aster-network-observatory/v1/config"));
-    assert.equal(JSON.parse(fs.readFileSync(path.resolve(__dirname, "../komari-plugin.json"), "utf8")).permissions.allowSystemRPC, undefined);
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../komari-plugin.json"), "utf8"));
+    assert.equal(manifest.komari, ">=1.4.3");
+    assert.equal(manifest.permissions.allowRoutes, true);
+    assert.equal(manifest.permissions.allowSystemRPC, undefined);
 
     async function invoke(method, route, { body = "", roles = ["admin"], type = "user", headers = {} } = {}) {
       const handler = [...routes.entries()].find(([key]) => {
