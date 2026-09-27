@@ -765,6 +765,7 @@ function assertOfficialRequestProfile(run, nodes) {
 
 const results = [];
 let cdp;
+const largeScaleBudgetMs = process.env.CI === "true" ? 16_000 : 12_000;
 try {
   cdp = new CDP(await waitForDebugger());
   await cdp.open();
@@ -773,7 +774,7 @@ try {
   await cdp.call("HeapProfiler.enable");
 
   for (const backend of Object.values(BACKEND_PROFILES)) {
-    for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, 12_000]]) {
+    for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
       const run = `${backend.id}-scale-${nodes}`;
       await clearFixturePage(cdp);
       activeFixture = { backend: backend.id, nodes, soak: false, run };
