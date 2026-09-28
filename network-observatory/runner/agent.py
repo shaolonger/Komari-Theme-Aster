@@ -10,6 +10,8 @@ import json
 import os
 import re
 import signal
+import shutil
+import threading
 import stat
 import subprocess
 import sys
@@ -24,6 +26,7 @@ API_BASE = "/api/aster-network-observatory/v1"
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 PROBE_PATH = Path("/usr/local/libexec/aster-network-observatory/probe.sh")
 SERVICE_NAME = "aster-network-observatory-agent.service"
+RUNNER_VERSION = "1.2.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 TASK_TIMEOUT = 600
@@ -201,14 +204,36 @@ def load_config(path):
     return validate_config(config)
 
 
-def configure():
+def capabilities(config):
+    found = [name for name in ("curl", "nexttrace", "iperf3", "timeout") if shutil.which(name)]
+    entry = Path(config.get("tcpqualityBin") or "/usr/local/libexec/tcpquality/runTcpQuality.sh")
+    if os.access(entry, os.X_OK) and entry.with_name("runTcpQuality-core.sh").is_file():
+        found.append("tcpquality")
+    return {"capabilities": found, "runnerVersion": RUNNER_VERSION}
+
+
+def heartbeat(config, stop):
+    # A long route/throughput test must not make a healthy worker appear offline.
+    while not stop.is_set():
+        try:
+            api_request(config, "heartbeat", method="POST", body=capabilities(config))
+        except (urllib.error.URLError, OSError, ValueError):
+            pass  # Polling reports connectivity errors; older plugins lack heartbeat.
+        stop.wait(30)
+
+
+def configure(server_url="", node_uuid=""):
+
     if os.geteuid() != 0:
         raise PermissionError("请使用 sudo 运行配置向导，以安全写入节点凭证")
-    print("Aster 网络观测节点配置（凭证不会回显）")
-    server_url = validate_base_url(input("Komari 地址 [https://komari.example.com]: ").strip() or "https://komari.example.com")
-    node_uuid = input("Komari 节点 UUID: ").strip()
-    token = getpass.getpass("一次性节点凭证: ").strip()
-    tcpquality_bin = input("TcpQuality 脚本路径（没有则留空）: ").strip()
+    previous = load_config(CONFIG_PATH) if CONFIG_PATH.exists() else {}
+    print("Aster 网络观测节点配置（探测器密钥只显示一次，输入不会回显）")
+    default_url = server_url or previous.get("serverUrl", "")
+    server_url = validate_base_url(server_url or input(f"Komari 地址 [{default_url}]: ").strip() or default_url)
+    node_uuid = node_uuid or input(f"Komari 节点 UUID [{previous.get('nodeUuid', '')}]: ").strip() or previous.get("nodeUuid", "")
+    reuse = previous.get("serverUrl") == server_url and previous.get("nodeUuid") == node_uuid
+    token = getpass.getpass("探测器密钥（已有配置可回车保留）: ").strip() or (previous.get("token", "") if reuse else "")
+    tcpquality_bin = input("TcpQuality 脚本路径（回车保留现有路径或使用默认）: ").strip() or previous.get("tcpqualityBin", "")
     config = validate_config({
         "serverUrl": server_url,
         "nodeUuid": node_uuid,
@@ -229,12 +254,16 @@ def configure():
     os.chmod(temporary_path, 0o640)
     os.chown(temporary_path, 0, group.gr_gid)
     os.replace(temporary_path, CONFIG_PATH)
-    subprocess.run(["systemctl", "enable", "--now", SERVICE_NAME], check=True)
+    subprocess.run(["systemctl", "enable", SERVICE_NAME], check=True)
+    subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
     print(f"已登记节点 {node_uuid} 并启动 {SERVICE_NAME}。")
 
 
 def run_daemon(config_path):
     config = load_config(config_path)
+    stop = threading.Event()
+    worker = threading.Thread(target=heartbeat, args=(config, stop), daemon=True)
+    worker.start()
     print(f"网络观测探测器已启动，节点 {config['nodeUuid']}，每 {POLL_SECONDS} 秒检查一次任务。", flush=True)
     while True:
         try:
@@ -253,13 +282,15 @@ def run_daemon(config_path):
 def main():
     parser = argparse.ArgumentParser(description="Aster 网络观测节点探测器")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("configure", help="交互式登记节点凭证并启用 systemd 服务")
+    configure_parser = subparsers.add_parser("configure", help="交互式登记节点凭证并启用 systemd 服务")
+    configure_parser.add_argument("--server-url", default="")
+    configure_parser.add_argument("--node-uuid", default="")
     run_parser = subparsers.add_parser("run", help="运行节点任务轮询服务")
     run_parser.add_argument("--config", default=str(CONFIG_PATH))
     args = parser.parse_args()
     try:
         if args.command == "configure":
-            configure()
+            configure(args.server_url, args.node_uuid)
         else:
             run_daemon(args.config)
     except KeyboardInterrupt:

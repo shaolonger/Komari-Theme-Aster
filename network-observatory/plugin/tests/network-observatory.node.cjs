@@ -156,7 +156,7 @@ test("runner selects fixed TcpQuality commands and rejects floating code install
   }
 });
 
-test("plugin queues admin plans for per-node HTTPS workers without system RPC", async () => {
+test("plugin queues admin plans for per-node HTTPS workers using only read-only inventory RPC", async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-plugin-test-"));
   try {
     const routes = new Map();
@@ -167,7 +167,8 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
       cron(expression, handler) { cronJobs.push({ expression, handler }); },
       async call(method, params) {
         rpcCalls.push({ method, params });
-        throw new Error(`unexpected RPC: ${method}`);
+        assert.equal(method, "admin:listClients");
+        return [{ uuid: CLIENT, name: "One", group: "test" }, { uuid: CLIENT_TWO, name: "Two", group: "test" }];
       },
     };
     const nativeRequire = require;
@@ -195,13 +196,13 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
     const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../komari-plugin.json"), "utf8"));
     assert.equal(manifest.komari, ">=1.4.3");
     assert.equal(manifest.permissions.allowRoutes, true);
-    assert.equal(manifest.permissions.allowSystemRPC, undefined);
+    assert.equal(manifest.permissions.allowSystemRPC, true);
 
     async function invoke(method, route, { body = "", roles = ["admin"], type = "user", headers = {} } = {}) {
       const handler = [...routes.entries()].find(([key]) => {
         const [registeredMethod, registeredPath] = key.split(" ");
         const matcher = new RegExp(`^${registeredPath.split("/").map((part) => part.startsWith(":") ? "[^/]+" : part).join("/")}$`);
-        return method === registeredMethod && matcher.test(route);
+        return method === registeredMethod && matcher.test(route.split("?")[0]);
       })?.[1];
       assert.ok(handler, `missing plugin route ${method} ${route}`);
       const response = {
@@ -271,7 +272,7 @@ test("plugin queues admin plans for per-node HTTPS workers without system RPC", 
     assert.equal(status.json.config.schedules[0].enabled, true);
     assert.equal(status.json.registeredNodes[0].uuid, CLIENT);
     assert.equal(status.json.history[0].rawOutput, "HTTPS probe passed");
-    assert.equal(rpcCalls.length, 0, "the plugin must not invoke remote execution RPCs");
+    assert.ok(rpcCalls.length >= 1 && rpcCalls.every((call) => call.method === "admin:listClients"), "the plugin may only read the node inventory");
 
     const revoked = await invoke("DELETE", `/api/aster-network-observatory/v1/nodes/${CLIENT}/token`);
     assert.equal(revoked.statusCode, 200);

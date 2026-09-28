@@ -7,7 +7,7 @@ const sections = [
   { id: 'overview', title: '巡检与指标', description: '决定首页首先呈现哪些信号', keywords: '指标 评级 流量 带宽 在线 连接 TCP UDP 排序', panels: ['首页巡检', '小卡片显示项'] },
   { id: 'views', title: '节点与视图', description: '把节点组织成适合日常工作的视图', keywords: '节点 VPS 标签 分组 厂商 地区 用途 筛选', panels: ['VPS 标签与视图'] },
   { id: 'assets', title: '资产与成本', description: '设定成本统计的范围与计算方式', keywords: '汇率 费用 计费 价格 排除 资产 成本', panels: ['服务器花费'] },
-  { id: 'network', title: '网络观测', description: '为每个节点选择值得持续关注的探测任务', keywords: 'Ping 网络 延迟 丢包 任务 绑定 探测', panels: ['主页延迟检测'] },
+  { id: 'network', title: '网络观测', description: '为每个节点选择值得持续关注的探测任务', keywords: 'Ping 网络 延迟 丢包 任务 绑定 探测', panels: ['网络检测方案', '主页延迟检测'] },
 ];
 function matchesSection(section: (typeof sections)[number], query: string) {
   return `${section.title} ${section.keywords} ${section.panels.join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -16,7 +16,7 @@ function matchesSection(section: (typeof sections)[number], query: string) {
 const StudioContext = createContext({ active: 'appearance', query: '', navigate: (_section: string) => {} });
 
 export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty: boolean }) {
-  const [active, setActive] = useState('appearance');
+  const [active, setActive] = useState(() => new URLSearchParams(window.location.search).get('section') === 'network' ? 'network' : 'appearance');
   const [query, setQuery] = useState('');
   const [navigation, setNavigation] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);

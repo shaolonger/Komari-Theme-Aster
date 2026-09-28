@@ -6,7 +6,7 @@
   "short": "aster-network-observatory",
   "description": "为 Aster 提供无需 Agent 远程执行权限的计划式网络观测。",
   "author": "shaolonger",
-  "version": "1.1.4",
+  "version": "1.2.0",
   "url": "https://github.com/shaolonger/Komari-Theme-Aster",
   "entry": "script.js",
   "komari": ">=1.4.3",
@@ -14,7 +14,8 @@
     "node": true,
     "allowRoutes": true,
     "timeout": 30,
-    "maxHTTPBodyBytes": 131072
+    "maxHTTPBodyBytes": 131072,
+    "allowSystemRPC": true
   },
   "configuration": {
     "type": "managed",
@@ -27,7 +28,7 @@
         "en": "Network Observatory"
       },
       "type": "redirect",
-      "url": "/network-observatory",
+      "url": "/?view=theme-manage&section=network",
       "visibility": "admin"
     }
   ]

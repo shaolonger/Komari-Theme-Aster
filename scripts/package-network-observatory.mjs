@@ -11,6 +11,7 @@ const files = [
   ["komari-plugin.json", resolve(plugin, "komari-plugin.json")],
   ["script.js", resolve(plugin, "script.js")],
   ["src/model.js", resolve(plugin, "src/model.js")],
+  ...["catalog", "policies", "admin"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
   ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
   ["runner/install.sh", resolve(root, "network-observatory/runner/install.sh")],

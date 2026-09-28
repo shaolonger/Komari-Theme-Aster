@@ -1,7 +1,7 @@
 {
   "name": "komari-theme-aster",
   "private": true,
-  "version": "1.2.12",
+  "version": "1.3.0",
   "type": "module",
   "description": "Aster — 面向 Komari 的服务器监控与资产管理主题",
   "author": "shaolonger",
@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:contract": "node scripts/check-rpc-contract.mjs",
     "test:upstream-contract": "node scripts/check-upstream-surface.mjs",
-    "test:network-observatory": "node --test network-observatory/plugin/tests/network-observatory.node.cjs && python3 -m unittest discover -s network-observatory/runner/tests -v",
+    "test:network-observatory": "node --test network-observatory/plugin/tests/*.node.cjs && python3 -m unittest discover -s network-observatory/runner/tests -v",
     "test:bundle": "npm run build && node scripts/check-performance-budgets.mjs && node scripts/check-theme-static-routes.mjs",
     "test:performance": "node --expose-gc ./node_modules/vitest/vitest.mjs run src/services/__tests__/performanceGate.test.ts src/services/__tests__/apiFallback.test.ts src/workers/__tests__/comparisonAnalysisProtocol.test.ts",
     "test:browser-scale": "npm run build && node scripts/browser-scale-gates.mjs",

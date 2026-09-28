@@ -28,9 +28,9 @@ case "$MODE" in
     else
       HTTPS_HOST="$TARGET"
       case "$TARGET" in *:*) HTTPS_HOST="[$TARGET]" ;; esac
-      timeout 10s curl --proto '=https' --silent --show-error --fail --output /dev/null \
+      timeout 10s curl --proto '=https' --silent --show-error --fail --head --output /dev/null \
         --connect-timeout 3 --max-time 8 \
-        --write-out 'status=%{http_code} connect_seconds=%{time_connect} tls_seconds=%{time_appconnect} ttfb_seconds=%{time_starttransfer}\n' \
+        --write-out 'status=%{http_code} dns_seconds=%{time_namelookup} connect_seconds=%{time_connect} tls_seconds=%{time_appconnect} ttfb_seconds=%{time_starttransfer}\n' \
         "https://$HTTPS_HOST:$PORT/" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
     fi
     ;;

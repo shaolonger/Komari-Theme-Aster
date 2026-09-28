@@ -6,17 +6,20 @@ const {
   API_BASE,
   HISTORY_LIMIT,
   MODES,
-  createDueRuns,
   normalizeConfig,
   parseProbeOutput,
   readAdminPrincipal,
 } = require("./src/model.js");
 
+const { normalizeInventory, reconcilePolicies } = require("./src/policies.js");
+const { registerAdminRoutes } = require("./src/admin.js");
 const storageDir = __storageDir__;
 const statePath = path.join(storageDir, "state.json");
 const TASK_LEASE_MS = 12 * 60_000;
 const TASK_QUEUE_TTL_MS = 20 * 60_000;
 const MAX_TASK_ATTEMPTS = 3;
+const GLOBAL_CONCURRENCY = 4;
+const QUEUE_LIMIT = 2000;
 let busy = false;
 let stateQueue = Promise.resolve();
 
@@ -33,6 +36,9 @@ function isObject(value) {
 function readState() {
   try {
     const saved = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    if (!isObject(saved) || !isObject(saved.config) || !Array.isArray(saved.config.schedules)) {
+      throw new Error("网络观测状态文件格式无效；已停止写入以保护旧数据");
+    }
     const nodes = {};
     if (isObject(saved.nodes)) {
       for (const [uuid, node] of Object.entries(saved.nodes)) {
@@ -41,23 +47,32 @@ function readState() {
           tokenHash: node.tokenHash,
           tokenIssuedAt: typeof node.tokenIssuedAt === "string" ? node.tokenIssuedAt : "",
           lastSeenAt: typeof node.lastSeenAt === "string" ? node.lastSeenAt : "",
+          capabilities: Array.isArray(node.capabilities) ? node.capabilities.filter((v) => ["curl", "nexttrace", "iperf3", "tcpquality", "timeout"].includes(v)) : null,
+          runnerVersion: typeof node.runnerVersion === "string" ? node.runnerVersion.slice(0, 30) : "",
+          capabilitiesAt: typeof node.capabilitiesAt === "string" ? node.capabilitiesAt : "",
         };
       }
     }
+    if (Array.isArray(saved.tasks) && saved.tasks.length > QUEUE_LIMIT) throw new Error("已保存任务队列超出限制，请先检查数据目录");
     const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((task) =>
       isObject(task) && typeof task.taskId === "string" &&
       typeof task.scheduleId === "string" && typeof task.nodeUuid === "string" &&
       MODES.includes(task.mode) && ["queued", "running"].includes(task.status),
-    ).slice(0, 100) : [];
+    ) : [];
     return {
       config: normalizeConfig(saved.config),
       nodes,
       tasks,
+      policies: Array.isArray(saved.policies) ? saved.policies : [],
+      inventory: Array.isArray(saved.inventory) ? saved.inventory : [],
+      inventoryAt: saved.inventoryAt || "",
+      inventoryError: saved.inventoryError || "",
       history: Array.isArray(saved.history) ? saved.history.slice(-HISTORY_LIMIT) : [],
       updatedAt: typeof saved.updatedAt === "string" ? saved.updatedAt : "",
     };
-  } catch {
-    return { config: { schedules: [] }, nodes: {}, tasks: [], history: [], updatedAt: "" };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return { config: { schedules: [] }, nodes: {}, tasks: [], history: [], policies: [], inventory: [], inventoryAt: "", inventoryError: "", updatedAt: "" };
   }
 }
 
@@ -129,7 +144,26 @@ function authenticateNode(req, res, state, action) {
   return { uuid, node };
 }
 
+function nodeHistory(state, uuid) {
+  if (!/^[0-9a-f-]{36}$/i.test(uuid)) throw new Error("节点 UUID 无效");
+  try { return JSON.parse(fs.readFileSync(path.join(storageDir, `history-${uuid}.json`), "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; return state.history.filter((row) => row.nodeUuid === uuid); }
+}
+
 function appendHistory(state, record) {
+  const rows = [...nodeHistory(state, record.nodeUuid), record].slice(-HISTORY_LIMIT);
+  let bytes = 0;
+  let start = rows.length;
+  while (start > 0) {
+    const size = Buffer.byteLength(JSON.stringify(rows[start - 1]), "utf8");
+    if (bytes + size > 2 * 1024 * 1024) break;
+    bytes += size;
+    start--;
+  }
+  const file = path.join(storageDir, `history-${record.nodeUuid}.json`);
+  fs.mkdirSync(storageDir, { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(rows.slice(start)), { mode: 0o600 });
+  fs.renameSync(`${file}.tmp`, file);
   state.history.push(record);
   state.history = state.history.slice(-HISTORY_LIMIT);
 }
@@ -137,6 +171,9 @@ function appendHistory(state, record) {
 function finishFailedTask(state, task, message, status = "timeout") {
   appendHistory(state, {
     completedAt: new Date().toISOString(),
+    taskId: task.taskId,
+    runnerVersion: state.nodes[task.nodeUuid]?.runnerVersion || "",
+    catalogVersion: task.catalogVersion || "",
     mode: task.mode,
     target: task.target,
     status,
@@ -187,44 +224,71 @@ function createTask(schedule, nodeName = "") {
     startedAt: 0,
     leaseUntil: 0,
     attempts: 0,
+    catalogVersion: schedule.catalogVersion || "",
   };
 }
 
 function queueSchedule(state, schedule) {
-  if (state.tasks.length > 0) throw new Error("已有节点检测任务排队或运行");
+  if (state.tasks.some((task) => task.scheduleId === schedule.id)) throw new Error("已有节点检测任务排队或运行，请等待完成");
+  if (state.tasks.length >= QUEUE_LIMIT) throw new Error("任务队列已满，请稍后重试");
   if (!state.nodes[schedule.clients[0]]) throw new Error("请先为所选节点生成并安装网络观测凭证");
   state.tasks.push(createTask(schedule));
+}
+
+function requiredTool(mode) {
+  return mode === "https" ? "curl" : mode === "route" ? "nexttrace" : mode === "throughput" ? "iperf3" : "tcpquality";
+}
+
+function nodeReady(node, mode, now) {
+  return node && now - Date.parse(node.lastSeenAt || "") < 90_000 &&
+    (!node.capabilities || (node.capabilities.includes("timeout") && node.capabilities.includes(requiredTool(mode))));
+}
+
+async function syncInventory() {
+  try {
+    const inventory = normalizeInventory(await server.call("admin:listClients"));
+    await withStateLock(async () => {
+      const state = readState();
+      reconcilePolicies(state, inventory);
+      state.inventory = inventory;
+      state.inventoryAt = new Date().toISOString();
+      state.inventoryError = "";
+      writeState(state);
+    });
+  } catch (error) {
+    await withStateLock(async () => {
+      const state = readState();
+      state.inventoryError = `无法同步 Komari 分组：${String(error.message || error).slice(0, 180)}`;
+      writeState(state);
+    });
+  }
 }
 
 async function tick() {
   if (busy) return;
   busy = true;
   try {
+    await syncInventory();
     await withStateLock(async () => {
       const state = readState();
       const now = Date.now();
       expireTasks(state, now);
-      const due = createDueRuns(state.config, now);
-      if (state.tasks.length > 0 && due.due.length > 0) {
-        state.config.schedules = due.config.schedules.map((item) => item.id === due.due[0].id
-          ? { ...item, nextRunAt: now + 60_000 }
-          : item);
-      } else if (due.due.length > 0) {
-        state.config = due.config;
-        try {
-          queueSchedule(state, due.due[0]);
-        } catch (error) {
-          finishFailedTask(state, createTask(due.due[0]), String(error?.message || error), "failed");
-        }
+      const due = state.config.schedules.filter((plan) => plan.enabled && plan.nextRunAt <= now)
+        .sort((a, b) => a.nextRunAt - b.nextRunAt);
+      let queued = 0;
+      for (const plan of due) {
+        if (queued >= 32 || state.tasks.length >= QUEUE_LIMIT) break;
+        if (!nodeReady(state.nodes[plan.clients[0]], plan.mode, now) || state.tasks.some((task) => task.scheduleId === plan.id)) continue;
+        queueSchedule(state, plan);
+        plan.nextRunAt = now + plan.intervalMinutes * 60_000;
+        queued++;
       }
       state.updatedAt = new Date().toISOString();
       writeState(state);
     });
   } catch (error) {
     console.error("Aster network observatory scheduler failed:", error);
-  } finally {
-    busy = false;
-  }
+  } finally { busy = false; }
 }
 
 function safeNodeList(nodes) {
@@ -232,10 +296,13 @@ function safeNodeList(nodes) {
     uuid,
     tokenIssuedAt: node.tokenIssuedAt,
     lastSeenAt: node.lastSeenAt,
+    capabilities: node.capabilities, runnerVersion: node.runnerVersion, capabilitiesAt: node.capabilitiesAt,
   }));
 }
 
 function load() {
+  registerAdminRoutes({ server, readState, writeState, withStateLock, authorized, readBody, respond,
+    nodeHistory, safeNodeList, syncInventory, queueSchedule, createTask, requiredTool });
   server.route("GET", `${API_BASE}/status`, async (req, res) => {
     if (!authorized(req, res)) return;
     await withStateLock(async () => {
@@ -262,17 +329,12 @@ function load() {
     await withStateLock(async () => {
       const state = readState();
       const token = crypto.randomBytes(32).toString("hex");
-      const wasRegistered = Boolean(state.nodes[uuid]);
       state.nodes[uuid] = {
+        ...state.nodes[uuid],
         tokenHash: hashToken(token),
         tokenIssuedAt: new Date().toISOString(),
-        lastSeenAt: state.nodes[uuid]?.lastSeenAt || "",
+        lastSeenAt: "",
       };
-      if (!wasRegistered) {
-        state.config.schedules = state.config.schedules.map((schedule) => schedule.clients.includes(uuid) && !schedule.enabled
-          ? { ...schedule, enabled: true, nextRunAt: Date.now() + schedule.intervalMinutes * 60_000 }
-          : schedule);
-      }
       state.updatedAt = new Date().toISOString();
       writeState(state);
       respond(res, 201, { uuid, token });
@@ -286,7 +348,7 @@ function load() {
       const state = readState();
       delete state.nodes[uuid];
       state.config.schedules = state.config.schedules.map((schedule) => schedule.clients.includes(uuid)
-        ? { ...schedule, enabled: false }
+        ? { ...schedule, enabled: false, customized: Boolean(schedule.sourcePolicy), revision: schedule.revision + 1 }
         : schedule);
       state.tasks = state.tasks.filter((task) => {
         if (task.nodeUuid !== uuid) return true;
@@ -310,10 +372,23 @@ function load() {
         respond(res, 401, { error: "节点凭证无效" });
         return;
       }
-      currentNode.lastSeenAt = new Date().toISOString();
-      current.updatedAt = currentNode.lastSeenAt;
-      writeState(current);
       respond(res, 200, { ok: true, uuid: identity.uuid });
+    });
+  });
+
+  server.route("POST", `${API_BASE}/nodes/:uuid/heartbeat`, async (req, res) => {
+    const identity = authenticateNode(req, res, readState(), "heartbeat");
+    if (!identity) return;
+    let input;
+    try { input = readBody(req); } catch (error) { respond(res, 400, { error: String(error.message) }); return; }
+    await withStateLock(async () => {
+      const state = readState(), node = state.nodes[identity.uuid];
+      if (!node || node.tokenHash !== identity.node.tokenHash) { respond(res, 401, { error: "节点凭证无效" }); return; }
+      if (!Array.isArray(input.capabilities)) { respond(res, 400, { error: "工具状态格式无效" }); return; }
+      node.capabilities = [...new Set(input.capabilities.filter((name) => ["curl", "nexttrace", "iperf3", "tcpquality", "timeout"].includes(name)))];
+      node.runnerVersion = typeof input.runnerVersion === "string" ? input.runnerVersion.slice(0, 30) : "";
+      node.lastSeenAt = node.capabilitiesAt = new Date().toISOString();
+      writeState(state); respond(res, 200, { ok: true });
     });
   });
 
@@ -330,7 +405,11 @@ function load() {
       }
       const now = Date.now();
       currentNode.lastSeenAt = new Date(now).toISOString();
-      let task = current.tasks.find((item) => item.nodeUuid === identity.uuid && item.status === "queued");
+      expireTasks(current, now);
+      const active = current.tasks.filter((item) => item.status === "running");
+      let task = active.length < GLOBAL_CONCURRENCY && !active.some((item) => item.nodeUuid === identity.uuid)
+        ? current.tasks.find((item) => item.nodeUuid === identity.uuid && item.status === "queued" &&
+          !(item.mode === "throughput" && active.some((running) => running.mode === "throughput" && running.target === item.target && running.port === item.port))) : null;
       if (task) {
         task.status = "running";
         task.startedAt = now;
@@ -383,6 +462,9 @@ function load() {
         const record = parseProbeOutput(input.output, task);
         if (record.mode !== task.mode || record.target !== task.target) throw new Error("节点返回的检测类型或目标与计划不匹配");
         record.completedAt = new Date().toISOString();
+        record.taskId = task.taskId;
+        record.runnerVersion = currentNode.runnerVersion || "";
+        record.catalogVersion = task.catalogVersion || "";
         record.scheduleId = task.scheduleId;
         record.nodeUuid = task.nodeUuid;
         record.nodeName = task.nodeName;
@@ -406,6 +488,7 @@ function load() {
       const incoming = normalizeConfig(readBody(req));
       await withStateLock(async () => {
         const current = readState();
+        if (current.policies.length) { respond(res, 409, { error: "已有方案继承，请更新主题并在实例详情页编辑计划" }); return; }
         for (const schedule of incoming.schedules) {
           if (schedule.enabled && !current.nodes[schedule.clients[0]]) {
             throw new Error(`计划“${schedule.name}”的节点尚未注册本地探测器`);

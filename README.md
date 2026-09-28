@@ -17,7 +17,7 @@
 
 ## 网络观测
 
-Aster 可通过伴生 Komari 插件定时检查 HTTPS、NextTrace 路径、三网回程、国际互联和吞吐量。节点本地探测服务主动通过 HTTPS 领取检测任务并回传结果，因此 Agent 可以保持 `--disable-web-ssh`，也无需修改或重新编译 Komari/Agent 源码。完整的逐步指南涵盖主题与插件安装、UUID 和一次性凭证的区别、VPS 登记、首个检测计划、各模式依赖及故障排查，见 [网络观测使用指南](network-observatory/README.md)。HTTPS、NextTrace 与自建 iperf3 可使用免费软件和自有端点；第三方测试端点可能看到探测节点的公网 IP，运营者仍需承担自有服务器及网络流量成本。
+Aster 可在每台 VPS 的实例详情页配置、运行和查看网络检测；内置 HTTPS、NextTrace 三网路径、TcpQuality 回程/国际互联、自有站点与授权 iperf3 方案。可预览并批量套用到多台 VPS，或按 Komari 分组自动继承，新节点接入后无需逐个填写目标。节点探测器通过出站 HTTPS 领取任务，Agent 可保持 `--disable-web-ssh`，无需改造 Komari/Agent。插件适配 Komari 1.4.3 及以上，分组自动继承需批准其系统 RPC 权限；代码只读取节点清单。安装步骤、公开目标来源、工具许可与流量影响见 [网络检测使用指南](network-observatory/README.md)。
 
 ## 效果预览
 

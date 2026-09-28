@@ -77,6 +77,14 @@ const requestPayloads = new Map();
 let savedUiSettings = null;
 let rejectNextStudioSave = false;
 let studioSaveBarrier = null;
+const networkPluginFixture = { schedules: [], agents: new Map(), applications: 0 };
+const networkReportFixture = {
+  completedAt: new Date().toISOString(), taskId: "report-1", mode: "https",
+  target: "www.cloudflare.com", status: "success", exitCode: 0,
+  rawOutput: "status=200 dns_seconds=0.011 connect_seconds=0.032 tls_seconds=0.079 ttfb_seconds=0.185",
+  scheduleId: "basic-node-0-cloudflare", nodeUuid: "node-0", nodeName: "Scale Node 0",
+  carrier: "", region: "", runnerVersion: "1.2.0", catalogVersion: "2026-09-28.1",
+};
 
 function count(label, run = activeFixture.run) {
   const counts = requestCounts.get(run) ?? {};
@@ -360,6 +368,48 @@ const server = createServer(async (request, response) => {
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (fixture.network && url.pathname.startsWith("/api/aster-network-observatory/v1/")) {
+    const suffix = url.pathname.slice("/api/aster-network-observatory/v1/".length);
+    const nodes = nodeList(fixture.nodes);
+    if (suffix === "catalog") return sendJson(response, {
+      apiVersion: 2, version: "2026-09-28.1", inventoryAt: new Date().toISOString(), inventoryError: "",
+      inventory: nodes.map(({ uuid, name, group }) => ({ uuid, name, group })),
+      nodes: [...networkPluginFixture.agents.values()], policies: [],
+      presets: [{ id: "basic", name: "基础 HTTPS 可用性", description: "两个公共网站参考目标，每 15 分钟检查。", source: "https://www.cloudflare.com/", requirement: "curl", items: [
+        { id: "cloudflare", name: "Cloudflare 网站", mode: "https", target: "www.cloudflare.com", port: 443, intervalMinutes: 15 },
+        { id: "wikipedia", name: "Wikipedia 网站", mode: "https", target: "www.wikipedia.org", port: 443, intervalMinutes: 15 },
+      ] }],
+    });
+    const nodeMatch = /^nodes\/([^/]+)\/(status|history|token)$/.exec(suffix);
+    if (nodeMatch && nodeMatch[2] === "status") {
+      const uuid = nodeMatch[1], records = uuid === "node-0" ? [networkReportFixture] : [];
+      return sendJson(response, { apiVersion: 2, schedules: networkPluginFixture.schedules.filter((plan) => plan.clients[0] === uuid), tasks: [], node: networkPluginFixture.agents.get(uuid) ?? null, latest: records, history: { items: records, total: records.length, nextCursor: "" }, policies: [], inventoryError: "" });
+    }
+    if (nodeMatch && nodeMatch[2] === "history") {
+      const records = nodeMatch[1] === "node-0" ? [networkReportFixture] : [];
+      return sendJson(response, { items: records, total: records.length, nextCursor: "" });
+    }
+    if (nodeMatch && nodeMatch[2] === "token" && request.method === "POST") {
+      networkPluginFixture.agents.set(nodeMatch[1], { uuid: nodeMatch[1], tokenIssuedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), capabilities: ["curl", "timeout"], runnerVersion: "1.2.0", capabilitiesAt: new Date().toISOString() });
+      return sendJson(response, { uuid: nodeMatch[1], token: "a".repeat(64) });
+    }
+    if (suffix === "policies/preview" || suffix === "policies/apply") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      const selected = nodes.filter((node) => input.clients.includes(node.uuid) || input.groups.includes(node.group));
+      const added = selected.length * 2 - networkPluginFixture.schedules.length;
+      if (suffix.endsWith("apply")) {
+        networkPluginFixture.applications += 1;
+        for (const node of selected) for (const [id, target] of [["cloudflare", "www.cloudflare.com"], ["wikipedia", "www.wikipedia.org"]]) {
+          const planId = `basic-${node.uuid}-${id}`;
+          if (!networkPluginFixture.schedules.some((plan) => plan.id === planId)) networkPluginFixture.schedules.push({ id: planId, name: `${node.name} · ${id}`, mode: "https", enabled: true, target, carrier: "", region: "", port: 443, intervalMinutes: 15, clients: [node.uuid], nextRunAt: Date.now() + 60_000, revision: 0, sourcePolicy: "fixture", customized: false, catalogVersion: "2026-09-28.1" });
+        }
+        return sendJson(response, { added });
+      }
+      return sendJson(response, { planCount: selected.length * 2, added, unchanged: networkPluginFixture.schedules.length, nodes: selected.map(({ uuid, name, group }) => ({ uuid, name, group, state: networkPluginFixture.agents.has(uuid) ? "就绪" : "未接入", planCount: 2 })) });
+    }
+  }
   if (fixture.ui && url.pathname === "/api/admin/theme/settings") {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -1191,6 +1241,54 @@ try {
     writeFileSync(process.env.BROWSER_GATE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
+  // Exercise the actual instance workspace and bulk drawer against a plugin
+  // wire fixture; the plugin itself is covered by policy.node.cjs.
+  activeFixture = { ...activeFixture, network: true, run: "network-workspace" };
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/instance/node-0?focus=network` });
+  await waitUntil(cdp, `document.querySelector('.network-workspace .network-latest-card') !== null`, 6_000);
+  failGate(await cdp.value(`document.querySelector('.instance-segmented button[data-active="true"]')?.textContent === '网络检测'`), "network tab did not deep-link into the instance");
+  failGate(await cdp.value(`document.querySelector('input[type="datetime-local"]') === null`), "chart range controls leaked into the network tab");
+  await cdp.value(`document.querySelector('.network-latest-card').click()`);
+  await waitUntil(cdp, `document.querySelector('.network-drawer[open] .network-measurements') !== null`, 2_000);
+  failGate(await cdp.value(`document.querySelector('.network-drawer').textContent.includes('首字节累计')`), "structured network report was not rendered");
+  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-node-banner button')).find(b => b.textContent.includes('启用检测')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-drawer[open] pre')?.textContent.includes("--node-uuid 'node-0'")`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-drawer button')).find(b => b.textContent.includes('生成本机探测器密钥')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-credential-reveal code')?.textContent.length === 64`, 2_000);
+  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
+  await waitUntil(cdp, `document.querySelector('.network-capabilities')?.textContent.includes('curl')`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
+  await waitUntil(cdp, `document.querySelectorAll('.network-preset-grid .network-preset').length === 1`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-node-picker label')).find(e => e.textContent.includes('Scale Node 1')).querySelector('input').click()`);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-panel button')).find(b => b.textContent.includes('预览应用范围')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-preview')?.textContent.includes('4 条计划')`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-panel button')).find(b => b.textContent.includes('确认应用')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-policy-panel [role="status"]')?.textContent.includes('应用成功')`, 3_000);
+  failGate(networkPluginFixture.applications === 1, "bulk preset was not submitted to the plugin API");
+  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
+  await waitUntil(cdp, `document.querySelectorAll('.network-instance-plan').length === 2`, 3_000);
+  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1`), "network workspace overflows mobile viewport");
+  await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-drawer[open]') !== null`, 2_000);
+  failGate(await cdp.value(`document.querySelector('.network-drawer').getBoundingClientRect().width <= innerWidth + 1`), "network configuration drawer overflows mobile viewport");
+  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.network-mobile.png`);
+  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
+  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.network-desktop.png`);
+  await cdp.value(`document.querySelector('input[aria-label="搜索并切换 VPS"]').focus()`);
+  await waitUntil(cdp, `document.querySelectorAll('.node-switch-results [role="option"]').length === 3`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.node-switch-results [role="option"]')).find(e => e.textContent.includes('Scale Node 1')).click()`);
+  await waitUntil(cdp, `location.pathname === '/instance/node-1' && location.search === '?focus=network'`, 3_000);
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
+  await waitUntil(cdp, `Array.from(document.querySelectorAll('.home-command-action')).some(b => b.textContent.includes('网络检测'))`, 6_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.home-command-action')).find(b => b.textContent.includes('网络检测')).click()`);
+  await waitUntil(cdp, `document.querySelector('.network-drawer[open] .network-preset-grid') !== null`, 4_000);
+  failGate(await cdp.value(`document.querySelectorAll('.network-drawer .network-node-picker label').length === 3`), "Home batch launcher did not load the VPS inventory");
+  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
+  results.push({ networkWorkspace: "deep link, structured report, per-node credential, two-node preset preview/apply, mobile drawer, node switch, Home batch launcher" });
+
   if (process.env.BROWSER_GATE_SCREENSHOT) {
     activeFixture = {
       backend: BACKEND_PROFILES.official.id,
@@ -1227,7 +1325,7 @@ try {
     await waitUntil(cdp, `!Array.from(document.querySelectorAll('.home-overview-empty')).some(item => item.textContent.includes('历史读取失败')) && document.querySelector('.home-overview-row-value strong')?.textContent !== '—'`, 6_000);
     failGate(
       (() => {
-        const trafficQueries = rpcRequests("ui-regressions", "public:queryMetrics")
+        const trafficQueries = rpcRequests("docs-screenshots", "public:queryMetrics")
           .map(({ params }) => params)
           .filter((params) => Array.isArray(params.metric_keys)
             && params.metric_keys.length === 2

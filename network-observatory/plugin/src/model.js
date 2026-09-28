@@ -1,5 +1,6 @@
 const API_BASE = "/api/aster-network-observatory/v1";
 const HISTORY_LIMIT = 500;
+const PLAN_LIMIT = 5000;
 const TASK_OUTPUT_LIMIT = 48_000;
 const MODES = Object.freeze([
   "https",
@@ -85,12 +86,17 @@ function normalizeSchedule(input, index = 0) {
     intervalMinutes,
     clients,
     nextRunAt: Number.isFinite(Number(input.nextRunAt)) ? Number(input.nextRunAt) : 0,
+    revision: Number.isSafeInteger(input.revision) ? input.revision : 0,
+    sourcePolicy: clampText(input.sourcePolicy, 48),
+    customized: input.customized === true,
+    catalogVersion: clampText(input.catalogVersion, 40),
   };
 }
 
 function normalizeConfig(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { schedules: [] };
-  const items = Array.isArray(input.schedules) ? input.schedules.slice(0, 200) : [];
+  const items = Array.isArray(input.schedules) ? input.schedules : [];
+  if (items.length > PLAN_LIMIT) throw new Error(`计划数量超过 ${PLAN_LIMIT}，请缩小应用范围`);
   const schedules = items.map(normalizeSchedule);
   const ids = new Set();
   for (const schedule of schedules) {
@@ -119,7 +125,7 @@ function parseProbeOutput(output, expected = {}) {
     mode,
     target,
     exitCode,
-    status: exitCode === 0 ? "success" : "failed",
+    status: exitCode === 0 ? "success" : exitCode === 124 ? "timeout" : "failed",
     rawOutput,
     completedAt: new Date().toISOString(),
     scheduleId: expected.scheduleId ?? "",
@@ -148,6 +154,10 @@ function createDueRuns(config, now = Date.now()) {
 module.exports = {
   API_BASE,
   HISTORY_LIMIT,
+  PLAN_LIMIT,
+  UUID,
+  MODE_INTERVALS,
+  normalizeSchedule,
   INTERVALS,
   MODES,
   TASK_OUTPUT_LIMIT,

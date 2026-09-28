@@ -102,7 +102,7 @@ PY
 sh "$TEMP_DIR/runner/install.sh"
 if [ -r /dev/tty ]; then
   printf '\n现在登记节点并启动服务；请准备好 Komari 地址、节点 UUID 和一次性凭证。\n'
-  python3 /usr/local/libexec/aster-network-observatory/agent.py configure </dev/tty
+  python3 /usr/local/libexec/aster-network-observatory/agent.py configure "$@" </dev/tty
 else
   printf '%s\n' \
     '当前会话没有交互终端，节点服务尚未登记凭证。' \

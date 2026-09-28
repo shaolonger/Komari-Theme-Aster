@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from unittest.mock import patch, call
+from types import SimpleNamespace
 from pathlib import Path
 
 from importlib.util import module_from_spec, spec_from_file_location
@@ -42,6 +44,33 @@ class AgentValidationTests(unittest.TestCase):
             AGENT.validate_base_url("http://komari.example.com")
         self.assertEqual(AGENT.validate_base_url("http://127.0.0.1:25774/"), "http://127.0.0.1:25774")
         self.assertEqual(AGENT.validate_base_url("https://komari.example.com/komari/"), "https://komari.example.com/komari")
+
+    def test_prefilled_upgrade_keeps_only_matching_existing_credential_and_restarts_service(self):
+        existing = {"serverUrl": "https://panel.example.net", "nodeUuid": TASK["taskId"], "token": "a" * 64, "tcpqualityBin": ""}
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "agent.json"
+            target.write_text(__import__("json").dumps(existing), encoding="utf-8")
+            target.chmod(0o600)
+            with patch.object(AGENT, "CONFIG_PATH", target), patch.object(AGENT.os, "geteuid", return_value=0), patch.object(AGENT.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=0)), patch.object(AGENT.os, "chown"), patch.object(AGENT.getpass, "getpass", return_value=""), patch("builtins.input", return_value=""), patch.object(AGENT, "api_request", return_value={}) as request, patch.object(AGENT.subprocess, "run") as service:
+                AGENT.configure(existing["serverUrl"], existing["nodeUuid"])
+                self.assertEqual(AGENT.load_config(target)["token"], existing["token"])
+                request.assert_called_once()
+                self.assertEqual(service.call_args_list, [call(["systemctl", "enable", AGENT.SERVICE_NAME], check=True), call(["systemctl", "restart", AGENT.SERVICE_NAME], check=True)])
+                with self.assertRaises(ValueError):
+                    AGENT.configure("https://other.example.net", existing["nodeUuid"])
+                self.assertEqual(AGENT.load_config(target)["serverUrl"], existing["serverUrl"])
+
+    def test_capabilities_reflect_installed_commands_and_tcpquality_pair(self):
+        with tempfile.TemporaryDirectory() as temp:
+            entry = Path(temp) / "runTcpQuality.sh"
+            core = Path(temp) / "runTcpQuality-core.sh"
+            entry.write_text("#!/bin/sh\n", encoding="utf-8")
+            core.write_text("# core\n", encoding="utf-8")
+            entry.chmod(0o755)
+            with patch.object(AGENT.shutil, "which", side_effect=lambda name: f"/bin/{name}" if name in {"curl", "timeout"} else None):
+                reported = AGENT.capabilities({"tcpqualityBin": str(entry)})
+            self.assertEqual(set(reported["capabilities"]), {"curl", "timeout", "tcpquality"})
+            self.assertEqual(reported["runnerVersion"], AGENT.RUNNER_VERSION)
 
     def test_runs_only_the_fixed_probe_script_with_separate_arguments(self):
         with tempfile.TemporaryDirectory() as temp:

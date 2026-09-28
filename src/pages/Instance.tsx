@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import "uplot/dist/uPlot.min.css";
@@ -21,6 +21,7 @@ import { describeDisplayTimeZone } from "@/utils/timeDisplay";
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
 const DEFAULT_PING_HOURS = 6;
+const NetworkWorkspace = lazy(() => import("@/components/network/NetworkWorkspace").then((m) => ({ default: m.NetworkWorkspace })));
 
 export function Instance() {
   const { uuid } = useParams<{ uuid: string }>();
@@ -31,7 +32,7 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
-  const [chartType, setChartType] = useState<"load" | "ping" | "traffic">(focus === "ping" ? "ping" : "load");
+  const [chartType, setChartType] = useState<"load" | "ping" | "traffic" | "network">(focus === "network" ? "network" : focus === "ping" ? "ping" : "load");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
   const [trafficHours, setTrafficHours] = useState(24);
@@ -57,7 +58,8 @@ export function Instance() {
 
   useEffect(() => {
     if (!focus) return;
-    if (focus === "ping") setChartType("ping");
+    if (focus === "network") setChartType("network");
+    else if (focus === "ping") setChartType("ping");
     else if (["cpu", "ram", "disk"].includes(focus)) setChartType("load");
     const frame = window.requestAnimationFrame(() => {
       const target = document.getElementById(
@@ -107,7 +109,7 @@ export function Instance() {
     ? customLoad
     : chartType === "ping"
       ? customPing
-      : customTraffic;
+      : chartType === "traffic" ? customTraffic : false;
   const appliedRangeHours = (Date.parse(appliedRange.end) - Date.parse(appliedRange.start)) / 3_600_000;
 
   // 身份稳定:只读 ref,所以空依赖是安全的。它作为 onNodeReady 传给
@@ -171,15 +173,16 @@ export function Instance() {
           返回
         </Link>
         <NodeSwitcher key={uuid} nodes={nodeOptions} currentUuid={selectedNodeUuid} onSelect={(nextUuid) => {
-          if (nextUuid !== uuid) startTransition(() => navigate(`/instance/${nextUuid}`));
+          if (nextUuid !== uuid) startTransition(() => navigate(`/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`));
         }} />
       </div>
       <InstanceDetails uuid={uuid} onNodeReady={alignCharts} />
+      {chartType !== "network" && <Link className="network-instance-shortcut" to={`/instance/${uuid}?focus=network`}>网络检测 · 探测器、计划与报告 →</Link>}
       <section ref={chartControlsRef} id="instance-chart-controls" className="instance-panel instance-chart-workspace">
         <header className="instance-chart-workspace-header">
           <div className="instance-panel-headings">
             <h2 className="instance-panel-title">节点诊断</h2>
-            <p className="instance-panel-description">选择监控指标与时间范围，检查节点状态变化。</p>
+            <p className="instance-panel-description">{chartType === "network" ? "查看本机探测器、检测计划和网络报告。" : "选择监控指标与时间范围，检查节点状态变化。"}</p>
           </div>
           <div className="instance-chart-controls">
         <div className="instance-segmented">
@@ -189,6 +192,7 @@ export function Instance() {
             aria-pressed={chartType === "load"}
             onClick={() => {
               startTransition(() => setChartType("load"));
+              if (focus === "network") navigate(`/instance/${uuid}`, { replace: true });
             }}
           >
             负载
@@ -200,6 +204,7 @@ export function Instance() {
               aria-pressed={chartType === "ping"}
               onClick={() => {
                 startTransition(() => setChartType("ping"));
+                if (focus === "network") navigate(`/instance/${uuid}`, { replace: true });
               }}
             >
               Ping
@@ -209,10 +214,11 @@ export function Instance() {
             type="button"
             data-active={chartType === "traffic" ? "true" : "false"}
             aria-pressed={chartType === "traffic"}
-            onClick={() => startTransition(() => setChartType("traffic"))}
+            onClick={() => { startTransition(() => setChartType("traffic")); if (focus === "network") navigate(`/instance/${uuid}`, { replace: true }); }}
           >
             流量
           </button>
+          <button type="button" data-active={chartType === "network" ? "true" : "false"} aria-pressed={chartType === "network"} onClick={() => { setChartType("network"); navigate(`/instance/${uuid}?focus=network`, { replace: true }); }}>网络检测</button>
         </div>
         {chartType === "load" && (
           <div
@@ -300,7 +306,7 @@ export function Instance() {
           {!parsedRange && <span role="alert" className="text-xs">请选择有效时间，结束时间须晚于开始时间。</span>}
         </form>
       )}
-      <div className="instance-chart-stage">
+      {chartType !== "network" && <div className="instance-chart-stage">
         <div
           className="instance-chart-view"
           hidden={chartType !== "load"}
@@ -340,7 +346,8 @@ export function Instance() {
             active={chartType === "traffic"}
           />
         </div>
-      </div>
+      </div>}
+        {chartType === "network" && <Suspense fallback={<p>正在加载网络检测…</p>}><NetworkWorkspace key={uuid} uuid={uuid} name={nodeOptions.find((node) => node.uuid === uuid)?.name || uuid} /></Suspense>}
       </section>
     </div>
   );

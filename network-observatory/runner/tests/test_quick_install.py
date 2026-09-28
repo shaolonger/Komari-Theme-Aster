@@ -15,7 +15,7 @@ ARCHIVE_NAME = "Aster-Network-Observatory-latest.zip"
 PLUGIN_FILES = {
     "komari-plugin.json": json.dumps({
         "short": "aster-network-observatory",
-        "version": "1.1.3",
+        "version": "1.2.0",
     }).encode(),
     "runner/agent.py": b"agent",
     "runner/install.sh": b"installer",

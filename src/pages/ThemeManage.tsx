@@ -1,3 +1,4 @@
+import { NetworkPolicyPanel } from "@/components/network/NetworkPolicyPanel";
 import { HomepagePreview } from "@/components/settings/HomepagePreview";
 import { validateStudioInputs } from "@/utils/studioValidation";
 import { useStudioDraft } from "@/hooks/useStudioDraft";
@@ -1114,6 +1115,7 @@ export function ThemeManage() {
         <AssetEditor nodes={sortedClients} excluded={normalizeCostIgnoredNodes(draftCostIgnoredText)} onExcludedChange={value => setDraftCostIgnoredText(value.join('\n'))} showSummary={draftShowCostSummary} onSummaryChange={setDraftShowCostSummary} showShortcut={draftShowCostSummaryFloatingButton} onShortcutChange={setDraftShowCostSummaryFloatingButton} rateUrl={draftCostRateApiUrl} onRateUrlChange={setDraftCostRateApiUrl} invalid={draftCostRateApiUrlInvalid}/>
       </StudioPanel>
 
+      <StudioPanel title="网络检测方案" description="批量套用方案和管理分组继承；操作直接保存到网络插件。检测结果位于各 VPS 实例详情。"><NetworkPolicyPanel /></StudioPanel>
       <StudioPanel
         title="主页延迟检测"
         description={

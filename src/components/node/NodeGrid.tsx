@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -795,6 +797,8 @@ function NodeSelectionPanel({
   );
 }
 
+const HomeNetworkBatch = lazy(() => import("@/components/network/HomeNetworkBatch"));
+
 export function NodeGrid() {
   const nodes = useHomeNodeSummaries();
   const allMeta = useAllNodeMeta();
@@ -806,6 +810,7 @@ export function NodeGrid() {
   const [selectedFacetDimension, setSelectedFacetDimension] = useState(HOME_FACET_LEGACY_GROUP);
   const [facetFilters, setFacetFilters] = useState<HomeFacetFilters>({});
   const [selectedNodeUuids, setSelectedNodeUuids] = useState<string[]>([]);
+  const [networkBatchOpen, setNetworkBatchOpen] = useState(false);
   const [nodeSelectorOpen, setNodeSelectorOpen] = useState(false);
   const [nodeSelectorSearch, setNodeSelectorSearch] = useState("");
   const [activeSavedViewId, setActiveSavedViewId] = useState("");
@@ -1681,6 +1686,7 @@ export function NodeGrid() {
             <BarChart3 size={14} aria-hidden="true" />
             <span>{selectedNodeUuids.length >= 2 ? `对比 ${selectedNodeUuids.length}` : "VPS 对比"}</span>
           </Link>
+          {me?.logged_in && <button type="button" className="home-command-action" onClick={() => setNetworkBatchOpen(true)}>网络检测{selectedNodeUuids.length ? ` · ${selectedNodeUuids.length} 台` : " · 批量配置"}</button>}
           {hasActiveFilters && (
             <button
               type="button"
@@ -1704,6 +1710,7 @@ export function NodeGrid() {
             onClose={() => setListSortPanelOpen(false)}
           />
         )}
+        {networkBatchOpen && <Suspense fallback={<p>正在加载网络方案…</p>}><HomeNetworkBatch nodes={selectedNodeUuids} onClose={() => setNetworkBatchOpen(false)} /></Suspense>}
         {nodeSelectorOpen && (
           <NodeSelectionPanel
             nodes={workbenchNodes}
