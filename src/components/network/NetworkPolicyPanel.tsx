@@ -27,7 +27,7 @@ export function NetworkPolicyPanel({ initialNodes = [], onApplied }: { initialNo
   }
   if (!me?.logged_in) return <p>请以管理员身份登录后配置网络检测。</p>;
   if (catalog.isPending) return <p role="status">正在读取检测方案…</p>;
-  if (!catalog.data) return <div className="network-empty-state"><p>请安装并启用网络观测插件 v1.2.0 或以上版本，再打开方案管理。</p><p role="alert">{catalog.error?.message}</p><a href={networkGuide} target="_blank" rel="noreferrer">查看安装指南</a><button type="button" onClick={() => void catalog.refetch()}>重试</button></div>;
+  if (!catalog.data) return <div className="network-empty-state"><p>无法读取网络检测方案。请检查插件是否已启用、权限是否批准，并查看下方错误及插件日志。</p><p role="alert">{catalog.error?.message}</p><a href={networkGuide} target="_blank" rel="noreferrer">查看排查指南</a><button type="button" onClick={() => void catalog.refetch()}>重试</button></div>;
   const data = catalog.data;
   const selected = data.presets.filter((preset) => presets.includes(preset.id));
   const input: ApplyNetworkPolicies = { presetIds: presets, clients, groups: inherit ? groups : [], inherit, settingsByPreset: settings, trafficAccepted };

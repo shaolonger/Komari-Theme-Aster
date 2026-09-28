@@ -30,7 +30,17 @@ function fixture(initial, { gojaErrno = 0 } = {}) {
     try { return fs.readFileSync(file, encoding); }
     catch (error) {
       if (!gojaErrno || error.code !== 'ENOENT') throw error;
-      throw { value: { Op: 'lstat', Path: file, Err: gojaErrno } };
+      // Goja exposes syscall.Errno as an object, even when console logs serialize it as 2.
+      throw { value: { Op: 'lstat', Path: file, Err: { toString: () => gojaErrno === 2 ? 'no such file or directory' : 'permission denied' } } };
+    }
+  };
+  pluginFs.accessSync = (file) => {
+    try { return fs.accessSync(file); }
+    catch (error) {
+      if (!gojaErrno || error.code !== 'ENOENT') throw error;
+      const probeError = new Error('Komari accessSync filesystem error');
+      probeError.code = gojaErrno === 2 ? 'ENOENT' : 'EACCES';
+      throw probeError;
     }
   };
   const pluginRequire = (name) => name === 'server' ? server : name === 'fs' ? pluginFs : ['path', 'crypto'].includes(name) ? require(name) : require(path.resolve(__dirname, '..', name));
@@ -124,7 +134,7 @@ test('does not overwrite state when Komari reports a filesystem error other than
   try {
     await sleep();
     assert.equal(f.errors.length, 1);
-    await assert.rejects(f.invoke('GET', `${BASE}/status`), (error) => error?.value?.Err === 13);
+    await assert.rejects(f.invoke('GET', `${BASE}/status`), (error) => error?.value?.Err?.toString() === 'permission denied');
     assert.throws(f.state, /ENOENT/);
   } finally { f.cleanup(); }
 });

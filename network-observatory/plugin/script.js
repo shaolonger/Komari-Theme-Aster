@@ -35,9 +35,17 @@ function isObject(value) {
 
 function isMissingFile(error, file) {
   if (error?.code === "ENOENT") return true;
-  // Komari 1.4.3 wraps fs errors as Go PathError values, without a Node error code.
+  // Komari 1.4.3 exposes a Go PathError. Its Err serializes as 2 in logs,
+  // but is an object in JavaScript, so strict numeric comparison does not work.
   const pathError = error?.value;
-  return pathError?.Path === file && pathError?.Op === "lstat" && pathError?.Err === 2;
+  if (pathError?.Path !== file || !["lstat", "open"].includes(pathError?.Op)) return false;
+  try {
+    // Unlike readFileSync, Komari's accessSync gives missing files a Node-style code.
+    fs.accessSync(file);
+  } catch (probeError) {
+    return probeError?.code === "ENOENT";
+  }
+  return false;
 }
 
 function readState() {

@@ -30,7 +30,7 @@ export function NetworkWorkspace({ uuid, name }: { uuid: string; name: string })
   async function copy(value: string) { try { await navigator.clipboard.writeText(value); setMessage("已复制"); } catch { setError("复制失败，请手动选中文本复制。"); } }
   if (!me?.logged_in) return <div className="network-empty-state"><p>网络检测报告和配置仅管理员可见。</p><a href="/admin" target="_blank" rel="noreferrer">登录管理后台</a></div>;
   if (status.isPending) return <p role="status">正在读取本机网络检测…</p>;
-  if (!status.data) return <div className="network-empty-state"><strong>网络检测插件尚未就绪</strong><p>请安装并启用网络观测插件 v1.2.0 或以上版本，并批准路由与系统 RPC 权限。</p><p role="alert">{status.error?.message}</p><a href={networkGuide} target="_blank" rel="noreferrer">查看操作指南</a><button type="button" onClick={() => void status.refetch()}>重新连接</button></div>;
+  if (!status.data) return <div className="network-empty-state"><strong>网络检测数据暂不可用</strong><p>请检查插件是否已启用、权限是否批准，并查看下方错误及插件日志。</p><p role="alert">{status.error?.message}</p><a href={networkGuide} target="_blank" rel="noreferrer">查看排查指南</a><button type="button" onClick={() => void status.refetch()}>重新连接</button></div>;
   const data = status.data, agent = data.node;
   const rows = history.data?.pages.flatMap((page) => page.items) || data.history.items;
   const command = installCommand(uuid, base);
