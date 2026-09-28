@@ -314,7 +314,7 @@ export function NetworkObservatory() {
         {credentialError && <p className="network-form-error" role="alert">{credentialError}</p>}
         {issuedCredential && <div className="network-credential-reveal" role="status">
           <strong>{issuedCredential.name} 的一次性凭证</strong>
-          <p>请立即复制凭证，然后在该节点的 SSH 终端运行一键安装命令。离开或刷新页面后凭证不会再次显示；遗失时可重置凭证。</p>
+          <p>下方 64 位字符串是 Aster 一次性凭证，不是 UUID。配置向导问 UUID 时，请复制节点名称下方显示的 36 位 ID。凭证只在此显示一次；遗失时可重置。</p>
           <code>{issuedCredential.token}</code>
           <button type="button" className="network-secondary-button" onClick={() => {
             void navigator.clipboard?.writeText(issuedCredential.token).catch(() => setCredentialError("无法访问剪贴板，请手动复制凭证。"));

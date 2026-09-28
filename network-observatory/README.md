@@ -1,50 +1,145 @@
-# Aster 网络观测插件
+# Aster 网络观测：从安装到第一次检测
 
-此插件为 Aster 增加由 Komari 服务端定时调度的网络检查页。任务由每台 VPS 上的本地探测服务通过 HTTPS 主动领取并回传；Komari Agent 的 `--disable-web-ssh` 可以继续开启。计划和最近 500 条结果保存在 Komari 插件持久化目录中，浏览器关闭后仍会继续运行。
+这份指南带你从安装插件走到看到第一条检测结果。若你的 VPS 已经登记，并且网络观测页面显示该节点为「探测器在线」，直接跳到[创建第一个检测计划](#5-创建第一个检测计划)即可，不必重新安装探测服务。
 
-## 兼容范围与权限
+## 先分清三个值
 
-- Komari 服务端需为 1.4.3 或更高版本。已对照 Komari 官方 1.4.3 标签源码确认：插件路由、定时任务、Node.js `crypto`/`fs`/`path` 模块和请求身份上下文均可用。此方案不使用 `admin:exec`，也不需要修改或重新编译 Komari/komari-agent。
-- 在 Komari 管理后台安装本仓库 Release 中的 `Aster-Network-Observatory-v*.zip`。启用插件时只需审批插件 API 路由权限；不需要系统 RPC、子进程执行或本地监听权限。
-- 在 Aster 的「网络观测」页为每台检测节点生成一次性凭证。服务端只保存凭证的 SHA-256 摘要；节点凭证只能领取分配给对应 UUID 的任务并提交结果。重置凭证会立即使旧凭证失效，撤销凭证会暂停该节点的计划。
-- 节点服务只接受固定检测类型和经过校验的主机名/IP/端口，不会把计划字段作为 shell 命令执行。节点只向 Komari 发起出站 HTTPS 请求，不需要开放 VPS 入站端口。
+配置节点时会用到 Komari 地址、节点 UUID 和 Aster 一次性凭证。UUID 与凭证不是一回事：
 
-## 安装节点探测服务
+| 值 | 在哪里取得 | 用途 |
+| --- | --- | --- |
+| Komari 地址 | 浏览器中打开的 Komari 面板地址，例如 `https://monitor.example.com` | 节点探测服务连接面板；如果面板部署在子路径下，地址也要包含子路径，例如 `https://example.com/komari` |
+| 节点 UUID | Aster「网络观测」页的节点列表中，节点名称下方显示的 36 位带连字符 ID | 标识 Komari 中哪台 VPS 执行检测 |
+| 一次性节点凭证 | 点击该节点的「生成凭证」或「重置凭证」后，页面仅展示一次的 64 位十六进制字符串 | 证明探测服务获准代表这台节点领取任务和提交结果 |
 
-在 Aster 的「网络观测」页先为节点生成一次性凭证，然后在该 Linux VPS 上运行一条命令。安装器会从 GitHub 最新 Release 下载网络观测 runner，校验 SHA-256，安装 systemd 服务并启动交互式配置向导：
+配置向导会先后询问 Komari 地址、UUID，再以隐藏输入方式询问一次性凭证。不要把凭证填入 UUID 栏，也不要把 Komari Agent 的密钥当作 Aster 凭证。「一次性」指页面只展示这串值一次；节点会将它作为长期凭证保存，重置后旧值立即失效。若丢失，可在页面重置并重新配置该节点。
+
+## 1. 检查版本和安装包
+
+- Komari 服务端需为 **1.4.3 或更高版本**。本方案不要求修改或重新编译 Komari/komari-agent，也不要求开启 Agent Web SSH/RCE。
+- 在 Komari 后台安装并启用 Aster 主题和 `Aster-Network-Observatory-v*.zip` 插件包。插件需要批准 API 路由权限；不需要系统 RPC、执行子进程或本地监听权限。
+- 插件启用后，以管理员身份打开侧边栏里的「网络观测」入口。若菜单未出现，确认插件已启用、当前账号有管理员权限，再刷新面板。
+
+主题与插件分别发布：主题 ZIP 用于安装 Aster 页面；网络观测插件 ZIP 用于注册 API 和调度任务。只安装其中一个，网络观测功能都无法完整工作。
+
+## 2. 生成节点凭证
+
+1. 在「网络观测」页找到要执行检测的 VPS。
+2. 点击它右侧的「生成凭证」。如果页面已经显示凭证，点击「重置凭证」会立即让旧凭证失效。
+3. 立即复制页面显示的一次性凭证，并保留在安全位置，直到完成节点登记。刷新或离开页面后无法再次查看旧值。
+4. 同一行节点名称下方的 36 位 ID 才是节点 UUID。将来配置向导问 UUID 时，从这里复制。
+
+只为确实会执行检测的 VPS 生成凭证。选择「撤销」会禁用该节点凭证并暂停其计划。
+
+## 3. 在 VPS 安装并登记探测服务
+
+在目标 Linux VPS 的 SSH 终端粘贴下面的一键命令。它下载并校验最新 runner，安装 systemd 服务，然后启动交互式配置向导：
 
 ```sh
 curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh
 ```
 
-向导会要求 Komari 地址、节点 UUID 和刚才生成的一次性凭证。凭证输入时不会回显；向导会先向插件验证凭证，再以 `root:aster-netobs`、`0640` 权限写入 `/etc/aster-network-observatory/agent.json`，并启用 systemd 服务。节点服务以专用 `aster-netobs` 用户运行，通过 systemd 获得 `CAP_NET_RAW`，用于需要原始套接字的路径检测。安装器需要 root、systemd、curl 和 Python 3；若缺少 Python 3，会尝试通过系统包管理器安装。若当前终端没有交互 TTY，服务会安装好但不会登记凭证，可稍后运行配置命令完成登记。
+需要 Linux、systemd、curl 和 root/sudo 权限。若缺少 Python 3，安装器会尝试通过 apt、dnf、yum 或 zypper 安装。配置向导依次询问：
 
-如需离线安装，也可从 Aster Release 下载网络观测插件 ZIP，复制包内的 `runner/` 目录到节点，再运行 `sudo sh runner/install.sh`；然后按安装器输出运行配置向导。
+1. **Komari 地址**：填写实际面板地址，使用 HTTPS；不要加登录路径、查询参数或片段。如果 Komari 位于反向代理子路径下，把该子路径包含在地址中。
+2. **Komari 节点 UUID**：复制 Aster 节点列表中该 VPS 名称下方的 UUID。它通常是 `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` 格式。
+3. **一次性节点凭证**：粘贴刚才生成的 Aster 凭证。输入时终端不会显示字符，这是隐藏输入的正常表现。
+4. **TcpQuality 脚本路径**：没有安装 TcpQuality 时直接回车；安装了则填写其入口脚本绝对路径。
 
-在主题页面保持网络观测页打开时，节点服务每 15 秒主动检查一次计划；浏览器关闭后服务仍会运行。排查服务状态可运行：
+向导验证地址、UUID 和凭证后会保存配置并启动服务。节点只向 Komari 发起出站 HTTPS 请求，不需要开放 VPS 入站端口；Komari Agent 的 `--disable-web-ssh` 可以保持开启。反向代理必须转发插件 API 路由，并保留 `Authorization` 请求头。
+
+如果已经运行一键命令并在 Aster 页面看到「探测器在线」，这一部分已完成，不要重复登记。安装后查看服务状态和日志：
 
 ```sh
-sudo systemctl status aster-network-observatory-agent
-sudo journalctl -u aster-network-observatory-agent -f
+sudo systemctl status aster-network-observatory-agent --no-pager
+sudo journalctl -u aster-network-observatory-agent -n 100 --no-pager
 ```
 
-节点上的 Komari Agent 可以继续使用 `--disable-web-ssh`。节点需要能解析并通过 HTTPS 访问 Komari 服务端；反向代理需允许插件 API 路由及请求头 `Authorization`。
+正常启动日志会写明节点 UUID 和每 15 秒轮询一次任务。浏览器不必一直打开：检测计划由 Komari 插件调度，探测服务在 VPS 上持续轮询；面板每 30 秒自动刷新状态。
 
-## 可选工具
+## 4. 先选择一个轻量目标
 
-- **HTTPS 可用性**：系统 `curl` 发起轻量 GET，仅记录状态码、TCP 连接、TLS 握手和首字节耗时，不下载正文。计划间隔 1/5/15/60 分钟或 6/12/24 小时。
-- **路径追踪**：使用 NextTrace JSON 输出记录逐跳路径，每 6/12/24 小时。可从 [NTrace-core](https://github.com/nxtrace/NTrace-core) 获取；节点服务的 systemd 单元提供 `CAP_NET_RAW`。
-- **iperf3 吞吐量**：向你自己管理的 iperf3 服务端上传 10 秒单连接测试数据，每天最多一次。先在目标端启动 `iperf3 -s` 并设置防火墙；速度测试会消耗节点和服务端流量。
-- **三网回程（TcpQuality）**：使用 `--route --route-protocol both --no-rank-upload`，仅做三网 TCP/UDP 路由识别，不上传报告；每日最多一次。
-- **国际互联（TcpQuality）**：使用 `--intl --no-rank-upload` 测量国际目标；每日最多一次。
-- **综合巡检（TcpQuality）**：使用 `--all --no-rank-upload`，包含回程、国际互联和脚本自带测速；每日最多一次，流量更多。
+第一次建议创建 HTTPS 可用性计划，目标选自己管理、能正常返回 HTTP 成功状态的域名或健康检查地址。它不需要另开端口，也不会下载页面正文。运行结果会包含 HTTP 状态码、TCP 建连、TLS 握手和首字节耗时。
 
-`curl` 是 HTTPS 检测的基础依赖；其他工具仅在对应检测类型启用时需要。探测器不会自动下载或安装第三方工具。iperf3 服务端需要自行部署。TcpQuality 如不在默认路径 `/usr/local/libexec/tcpquality/runTcpQuality.sh`，可在节点配置向导中填写脚本路径；入口与 core 应来自同一个固定 commit。
+其他模式需要额外工具或目标，请先看[检测类型和依赖](#7-检测类型和依赖)，再决定是否启用。
 
-## TcpQuality 的第三方连接
+## 5. 创建第一个检测计划
 
-插件包不包含 TcpQuality 源码或二进制，节点服务也不会在每次执行时下载新脚本。管理员需要自行从其项目选定固定 commit，并在每个节点安装入口与 core。`--no-rank-upload` 会关闭报告上传和排名参与；脚本仍会查询其线路数据并连接测试目标。检测目标会看到节点的公网出口 IP。TcpQuality 仓库当前没有声明许可证；商用使用或再分发前请向上游确认许可。若只需要许可证明确的开源方案，可组合 HTTPS、NextTrace 和自建 iperf3 服务；无需收费平台，但 VPS 与流量仍可能产生费用。
+在「添加检测计划」面板按下面填写：
 
-## 结果与隐私
+1. **计划名称**：写一个能认出目标和节点的名字，例如 `洛杉矶 VPS · 网站健康检查`。
+2. **检测类型**：选「HTTPS 可用性」。
+3. **目标主机**：填写域名或 IP，不要写 `https://`、路径或查询参数。建议填写你自己的健康检查域名。
+4. **端口**：HTTPS 默认使用 `443`；只有目标明确使用其他 HTTPS 端口时才修改。
+5. **运营商 / 目的地区域**：可选，用于给结果加标签，不会改变实际检测目标。
+6. **执行节点**：选择状态为「已登记」的 VPS。任务会从这台 VPS 发出。
+7. **检测间隔**：首次建议每 5 分钟；日常监控可依目标重要性改为每 1、5、15、60 分钟，或每 6/12/24 小时。
+8. 点击「保存计划」。
 
-在 Aster 的「网络观测」页生成或撤销节点凭证、配置计划、手动触发检测、查看节点最后在线时间和原始输出。单次只派发一个任务；任务有领取时限、运行租约和超时重试上限。NextTrace、TcpQuality 等输出可能包含公网 IP、运营商和路由信息，请按你的数据保留要求管理 Komari 插件数据目录。
+保存后，在「检测计划」列表中点击该计划右侧的播放按钮（鼠标提示「立即运行」），可以马上进行一次检测。等节点领取并完成任务后，点击页面右上角「刷新结果」，或等待页面自动刷新。成功结果会出现在「最近检测」中；展开「查看原始诊断输出」可读到具体指标。`status=200` 表示目标返回成功，`connect_seconds`、`tls_seconds` 和 `ttfb_seconds` 分别是建连、TLS 和首字节耗时。
+
+计划会继续按间隔自动执行。每台探测服务一次只运行一个任务；长时间检测或队列中有其他任务时，结果可能稍后出现。
+
+## 6. 配置其他 VPS 或调整凭证
+
+每台要作为检测来源的 VPS 都要单独生成凭证并运行同一条一键命令。创建计划时，再为每个计划选择执行节点。已在线的 VPS 可直接复用，不必为了新增计划重新安装。
+
+若凭证遗失或需要更换：
+
+1. 在网络观测页该节点所在行点击「重置凭证」，并复制新凭证。
+2. 在 VPS 重新运行配置向导：
+
+   ```sh
+   sudo python3 /usr/local/libexec/aster-network-observatory/agent.py configure
+   ```
+
+3. 重新输入 Komari 地址、同一节点 UUID 和新凭证。没有 TcpQuality 时，路径留空。验证成功后配置会替换旧凭证并重启服务。
+
+重置凭证后，旧配置会立即失效，因此请确保可以登录 VPS 并完成重新配置。
+
+## 7. 检测类型和依赖
+
+| 类型 | 前置条件 | 建议频率和影响 |
+| --- | --- | --- |
+| HTTPS 可用性 | 节点有 curl；目标提供 HTTPS | 可每分钟至每天。只发起轻量 GET，不保存响应正文。 |
+| 路径追踪 | 在节点安装 NextTrace，并确保 `nexttrace` 可由服务找到 | 可每 6/12/24 小时。结果包含逐跳路由；中间路由器不回应探测不等于终点故障。 |
+| iperf3 吞吐量 | 节点安装 iperf3 客户端；目标是你管理的 iperf3 服务端，并开放相应 TCP 端口（默认 5201） | 每天一次，单连接运行 10 秒并向服务端发送测试数据。会消耗两端流量。 |
+| 三网回程（TcpQuality） | 节点安装同一固定版本的 TcpQuality 入口脚本和相邻 core 脚本；配置向导填写入口绝对路径 | 每天一次。使用 TCP/UDP 检查回程；关闭报告和排名上传。 |
+| 国际互联（TcpQuality） | 同上 | 每天一次。会连接多个国际测试目标，目标可见节点公网 IP。 |
+| TcpQuality 综合巡检 | 同上 | 每天一次、流量更多，包含回程、国际互联和脚本自带测速。建议只在低峰时段运行。 |
+
+NextTrace 可从 [NTrace-core 官方项目](https://github.com/nxtrace/NTrace-core) 获取。探测服务不会自动下载这些可选工具。TcpQuality 入口和 core 必须来自同一个你选定的固定版本；其仓库未声明许可证，商用或再分发前应向上游确认。即使关闭 TcpQuality 报告上传，脚本仍会查询线路数据并连接测试目标。若优先使用许可证明确的开源工具，可选 HTTPS、NextTrace 和自建 iperf3。
+
+自建 iperf3 服务端可先在目标机器安装 iperf3 并用 `iperf3 -s` 启动服务，再开放防火墙/安全组上的 TCP 5201（或计划中填写的端口）。生产使用时需让服务端以适合该系统的常驻方式运行。不要把未获授权的公共测速端点当作自己的目标。
+
+## 8. 常见问题排查
+
+### 提示「Komari 节点 UUID 无效」
+
+UUID 必须是 Aster 节点列表里节点名称下方的 36 位 ID，含四个 ASCII 连字符。不要填写 64 位 Aster 一次性凭证、Komari Agent 密钥、节点名称或 IP 地址。确认复制的是同一台 VPS 的 UUID 后，重新运行 `configure`。
+
+### 提示「节点凭证格式无效」或「节点凭证无效」
+
+凭证应是为这台 UUID 生成的 Aster 64 位十六进制值，不是 UUID。若凭证已丢失、复制错误或刚重置过，在面板重置一次，使用新显示的值重新运行配置向导。
+
+### 面板显示「等待连接」或计划一直待处理
+
+先在 VPS 执行上面的 `systemctl status` 和 `journalctl` 命令。确认服务正在运行、配置使用正确的 Komari 地址和 UUID，并且 VPS 可以解析域名、出站访问面板 HTTPS。若使用反向代理，检查它是否保留 `Authorization` 请求头并转发 `/api/aster-network-observatory/`。修复网络或代理后可执行：
+
+```sh
+sudo systemctl restart aster-network-observatory-agent
+```
+
+服务每 15 秒领取任务一次；页面状态按 30 秒刷新。稍等片刻后点「刷新结果」。
+
+### 显示「缺少 nexttrace / iperf3」或找不到 TcpQuality
+
+这是节点缺少所选模式的可选工具，不代表节点登记失败。安装对应工具并确认它位于 systemd 服务的 PATH 中；TcpQuality 则需确认配置里的入口路径正确、同目录 core 文件存在且入口可执行。需要修改 TcpQuality 路径时，先重置凭证，再通过 `configure` 保存新路径。
+
+### 找不到网络观测入口或页面提示插件服务未连接
+
+确认已安装并启用网络观测 Komari 插件及 Aster 主题，插件版本与 Komari 版本兼容，当前账号是管理员。重新加载页面；仍失败时检查 Komari 服务端插件日志。节点探测服务登记成功不能替代面板端插件。
+
+## 9. 数据与费用
+
+计划和最近 500 条结果保存在 Komari 插件持久化目录中。结果原文可能包含目标 IP、出口公网 IP、运营商和路由信息，请按自己的保留要求管理数据目录。软件和插件本身不收取费用；VPS、流量、第三方测速目标以及自建 iperf3 端点仍可能产生成本。检测目标会看到探测节点的公网出口 IP。
