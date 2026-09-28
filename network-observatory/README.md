@@ -11,16 +11,15 @@
 
 ## 安装节点探测服务
 
-从 Aster Release 下载网络观测插件 ZIP，把包内 `runner/` 目录复制到 Linux 节点。Debian/Ubuntu 示例：
+在 Aster 的「网络观测」页先为节点生成一次性凭证，然后在该 Linux VPS 上运行一条命令。安装器会从 GitHub 最新 Release 下载网络观测 runner，校验 SHA-256，安装 systemd 服务并启动交互式配置向导：
 
 ```sh
-sudo apt-get update
-sudo apt-get install -y python3 curl coreutils grep
-sudo sh runner/install.sh
-sudo python3 /usr/local/libexec/aster-network-observatory/agent.py configure
+curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh
 ```
 
-安装向导会要求 Komari 地址、节点 UUID 和刚才生成的一次性凭证。凭证输入时不会回显；向导会先向插件验证凭证，再以 `root:aster-netobs`、`0640` 权限写入 `/etc/aster-network-observatory/agent.json`，并启用 systemd 服务。节点服务以专用 `aster-netobs` 用户运行，通过 systemd 获得 `CAP_NET_RAW`，用于需要原始套接字的路径检测。
+向导会要求 Komari 地址、节点 UUID 和刚才生成的一次性凭证。凭证输入时不会回显；向导会先向插件验证凭证，再以 `root:aster-netobs`、`0640` 权限写入 `/etc/aster-network-observatory/agent.json`，并启用 systemd 服务。节点服务以专用 `aster-netobs` 用户运行，通过 systemd 获得 `CAP_NET_RAW`，用于需要原始套接字的路径检测。安装器需要 root、systemd、curl 和 Python 3；若缺少 Python 3，会尝试通过系统包管理器安装。若当前终端没有交互 TTY，服务会安装好但不会登记凭证，可稍后运行配置命令完成登记。
+
+如需离线安装，也可从 Aster Release 下载网络观测插件 ZIP，复制包内的 `runner/` 目录到节点，再运行 `sudo sh runner/install.sh`；然后按安装器输出运行配置向导。
 
 在主题页面保持网络观测页打开时，节点服务每 15 秒主动检查一次计划；浏览器关闭后服务仍会运行。排查服务状态可运行：
 

@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import zlib from "node:zlib";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,6 +14,7 @@ const files = [
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
   ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
   ["runner/install.sh", resolve(root, "network-observatory/runner/install.sh")],
+  ["runner/quick-install.sh", resolve(root, "network-observatory/runner/quick-install.sh")],
   ["runner/aster-network-observatory-agent.service", resolve(root, "network-observatory/runner/aster-network-observatory-agent.service")],
   ["README.md", resolve(root, "network-observatory/README.md")],
 ];
@@ -69,4 +71,12 @@ end.writeUInt32LE(centralDirectory.length, 12);
 end.writeUInt32LE(offset, 16);
 const outputPath = resolve(root, `Aster-Network-Observatory-v${manifest.version}.zip`);
 writeFileSync(outputPath, Buffer.concat([...localParts, centralDirectory, end]));
+const latestPath = resolve(root, "Aster-Network-Observatory-latest.zip");
+const installerPath = resolve(root, "Aster-Network-Observatory-install.sh");
+copyFileSync(outputPath, latestPath);
+copyFileSync(resolve(root, "network-observatory/runner/quick-install.sh"), installerPath);
+for (const path of [outputPath, latestPath, installerPath]) {
+  const digest = createHash("sha256").update(readFileSync(path)).digest("hex");
+  writeFileSync(`${path}.sha256`, `${digest}  ${path.split("/").at(-1)}\n`);
+}
 console.log(`Wrote ${outputPath}`);

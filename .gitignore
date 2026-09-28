@@ -11,6 +11,9 @@ pnpm-debug.log*
 Thumbs.db
 
 *.zip
+Aster-Network-Observatory-*.zip.sha256
+Aster-Network-Observatory-install.sh
+Aster-Network-Observatory-install.sh.sha256
 
 .idea/
 .vscode/

@@ -88,6 +88,11 @@ jobs:
           path: |
             Komari-Theme-Aster-v*.zip
             Aster-Network-Observatory-v*.zip
+            Aster-Network-Observatory-v*.zip.sha256
+            Aster-Network-Observatory-latest.zip
+            Aster-Network-Observatory-latest.zip.sha256
+            Aster-Network-Observatory-install.sh
+            Aster-Network-Observatory-install.sh.sha256
             preview.png
 
       - name: Resolve release notes
@@ -114,6 +119,11 @@ jobs:
           files: |
             Komari-Theme-Aster-v*.zip
             Aster-Network-Observatory-v*.zip
+            Aster-Network-Observatory-v*.zip.sha256
+            Aster-Network-Observatory-latest.zip
+            Aster-Network-Observatory-latest.zip.sha256
+            Aster-Network-Observatory-install.sh
+            Aster-Network-Observatory-install.sh.sha256
             preview.png
           body_path: ${{ steps.release-notes.outputs.path }}
 
@@ -124,5 +134,10 @@ jobs:
           files: |
             Komari-Theme-Aster-v*.zip
             Aster-Network-Observatory-v*.zip
+            Aster-Network-Observatory-v*.zip.sha256
+            Aster-Network-Observatory-latest.zip
+            Aster-Network-Observatory-latest.zip.sha256
+            Aster-Network-Observatory-install.sh
+            Aster-Network-Observatory-install.sh.sha256
             preview.png
           generate_release_notes: true

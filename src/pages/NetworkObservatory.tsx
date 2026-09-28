@@ -14,6 +14,8 @@ import {
 } from "@/services/networkObservatory";
 import "@/styles/network-observatory.css";
 
+const NODE_INSTALL_COMMAND = "curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh";
+
 const MODE_OPTIONS: { id: NetworkMode; label: string; detail: string }[] = [
   { id: "https", label: "HTTPS 可用性", detail: "轻量检查状态码、连接、TLS 和首字节时间" },
   { id: "route", label: "路径追踪", detail: "用 NextTrace 保存逐跳路由和目的地状态" },
@@ -312,12 +314,15 @@ export function NetworkObservatory() {
         {credentialError && <p className="network-form-error" role="alert">{credentialError}</p>}
         {issuedCredential && <div className="network-credential-reveal" role="status">
           <strong>{issuedCredential.name} 的一次性凭证</strong>
-          <p>请立即复制并在该节点运行安装向导。离开或刷新页面后不会再次显示；遗失时可重置凭证。</p>
+          <p>请立即复制凭证，然后在该节点的 SSH 终端运行一键安装命令。离开或刷新页面后凭证不会再次显示；遗失时可重置凭证。</p>
           <code>{issuedCredential.token}</code>
           <button type="button" className="network-secondary-button" onClick={() => {
             void navigator.clipboard?.writeText(issuedCredential.token).catch(() => setCredentialError("无法访问剪贴板，请手动复制凭证。"));
           }}>复制凭证</button>
-          <pre>sudo python3 /usr/local/libexec/aster-network-observatory/agent.py configure</pre>
+          <pre>{NODE_INSTALL_COMMAND}</pre>
+          <button type="button" className="network-secondary-button" onClick={() => {
+            void navigator.clipboard?.writeText(NODE_INSTALL_COMMAND).catch(() => setCredentialError("无法访问剪贴板，请手动复制安装命令。"));
+          }}>复制安装命令</button>
         </div>}
         {nodesError && <p className="network-form-error">无法读取 Komari 节点清单，请检查管理员权限。</p>}
         <div className="network-agent-list">
