@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { API_BASE, MODES, UUID, normalizeSchedule, normalizeConfig } = require("./model.js");
+const { API_BASE, MODES, UUID, normalizeSchedule, normalizeConfig, nextRunAt } = require("./model.js");
 const { CATALOG, CATALOG_VERSION } = require("./catalog.js");
 const { makePolicy, reconcilePolicies, planId } = require("./policies.js");
 
@@ -58,9 +58,11 @@ function registerAdminRoutes(ctx) {
       const state = readState(), old = state.config.schedules.find((plan) => plan.id === id);
       if (old && old.clients[0] !== uuid) throw new Error("计划不属于当前节点");
       if (old && input.revision !== old.revision) conflict("计划已在其他页面修改，请刷新后重试");
-      if (["throughput", "tcpquality-all"].includes(input.mode) && input.trafficAccepted !== true && (!old || old.mode !== input.mode || old.target !== input.target || old.port !== input.port)) throw new Error("请确认目标授权和检测流量");
+      if (["throughput", "tcpquality-all", "tcpquality-report", "tcpquality-intl-report"].includes(input.mode) && input.trafficAccepted !== true && (!old || old.mode !== input.mode || old.target !== input.target || old.port !== input.port)) throw new Error("请确认目标授权、报告上传和检测流量");
       if (!state.inventory.some((node) => node.uuid === uuid) && !state.nodes[uuid]) throw new Error("Komari 节点不存在或尚未同步");
-      const plan = normalizeSchedule({ ...input, id, clients: [uuid], revision: (old?.revision || 0) + 1, sourcePolicy: old?.sourcePolicy || "", customized: Boolean(old?.sourcePolicy), catalogVersion: old?.catalogVersion || "", nextRunAt: old && input.intervalMinutes === old.intervalMinutes ? old.nextRunAt : Date.now() + input.intervalMinutes * 60_000 });
+      const normalized = normalizeSchedule({ ...input, id, clients: [uuid], revision: (old?.revision || 0) + 1, sourcePolicy: old?.sourcePolicy || "", customized: Boolean(old?.sourcePolicy), catalogVersion: old?.catalogVersion || "" });
+      const sameTiming = old && old.intervalMinutes === normalized.intervalMinutes && old.scheduleType === normalized.scheduleType && old.utcOffsetMinutes === normalized.utcOffsetMinutes && JSON.stringify(old.dailyTimes) === JSON.stringify(normalized.dailyTimes);
+      const plan = { ...normalized, nextRunAt: sameTiming ? old.nextRunAt : nextRunAt(normalized) };
       state.config = normalizeConfig({ schedules: [...state.config.schedules.filter((p) => p.id !== id), plan] });
       state.tasks = state.tasks.filter((t) => t.status === "running" || t.scheduleId !== id);
       save(state);
@@ -84,7 +86,7 @@ function registerAdminRoutes(ctx) {
     await withStateLock(async () => {
       const state = readState();
       if (!MODES.includes(input.mode)) throw new Error("检测类型无效");
-      if (["throughput", "tcpquality-all"].includes(input.mode) && input.trafficAccepted !== true) throw new Error("请确认目标授权和检测流量");
+      if (["throughput", "tcpquality-all", "tcpquality-report", "tcpquality-intl-report"].includes(input.mode) && input.trafficAccepted !== true) throw new Error("请确认目标授权、报告上传和检测流量");
       const plan = normalizeSchedule({ ...input, id: crypto.randomUUID().replace(/-/g, ""), clients: [uuid], enabled: true });
       if (state.tasks.some((task) => task.nodeUuid === uuid)) throw new Error("当前节点仍有任务，请等待完成");
       queueSchedule(state, plan); save(state);

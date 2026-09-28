@@ -9,6 +9,8 @@ export const NetworkModeSchema = z.enum([
   "tcpquality-route",
   "tcpquality-intl",
   "tcpquality-all",
+  "tcpquality-report",
+  "tcpquality-intl-report",
 ]);
 export const NetworkScheduleSchema = z.object({
   id: z.string(),
@@ -20,6 +22,9 @@ export const NetworkScheduleSchema = z.object({
   region: z.string(),
   port: z.number(),
   intervalMinutes: z.number(),
+  scheduleType: z.enum(["interval", "daily"]).default("interval"),
+  dailyTimes: z.array(z.string()).default([]),
+  utcOffsetMinutes: z.number().default(0),
   clients: z.array(z.string()),
   nextRunAt: z.number(),
   revision: z.number().default(0),
@@ -42,6 +47,7 @@ export const NetworkResultSchema = z.object({
   nodeName: z.string(),
   carrier: z.string(),
   region: z.string(),
+  reportImages: z.array(z.enum(["ipv4", "ipv6", "intl"])).default([]),
 });
 export const NetworkAgentSchema = z.object({
   uuid: z.string(),
@@ -121,16 +127,18 @@ export function revokeNetworkObservatoryToken(nodeUuid: string): Promise<{ regis
 }
 
 const InventoryNodeSchema = z.object({ uuid: z.string(), name: z.string(), group: z.string() });
-const PolicySettingsSchema = z.object({ target: z.string(), port: z.number(), intervalMinutes: z.number() });
+const PolicySettingsSchema = z.object({ target: z.string(), port: z.number(), intervalMinutes: z.number(), scheduleType: z.enum(["interval", "daily"]).default("interval"), dailyTimes: z.array(z.string()).default([]), utcOffsetMinutes: z.number().default(0), targetIds: z.array(z.string()).default([]) });
 const PolicySchema = z.object({
   id: z.string(), name: z.string(), presetId: z.string(), catalogVersion: z.string(),
   clients: z.array(z.string()), groups: z.array(z.string()), enabled: z.boolean(),
   settings: PolicySettingsSchema, revision: z.number(), trafficAccepted: z.boolean(),
+  items: z.array(z.object({ id: z.string(), target: z.string() })).optional(),
 });
 const PresetSchema = z.object({
   id: z.string(), name: z.string(), description: z.string(), source: z.string(), requirement: z.string(),
-  customTarget: z.boolean().optional(), traffic: z.boolean().optional(),
-  items: z.array(z.object({ id: z.string(), name: z.string(), mode: NetworkModeSchema, target: z.string(), port: z.number().optional(), intervalMinutes: z.number() })),
+  customTarget: z.boolean().optional(), traffic: z.boolean().optional(), reportUpload: z.boolean().optional(), selectableTargets: z.boolean().optional(), defaultTargetIds: z.array(z.string()).optional(),
+  targets: z.array(z.object({ region: z.string(), target: z.string(), port: z.number(), provider: z.string() })).optional(),
+  items: z.array(z.object({ id: z.string(), name: z.string(), mode: NetworkModeSchema, target: z.string(), carrier: z.string().optional(), region: z.string().optional(), port: z.number().optional(), intervalMinutes: z.number() })),
 });
 const CatalogSchema = z.object({
   apiVersion: z.literal(2), version: z.string(), presets: z.array(PresetSchema), policies: z.array(PolicySchema),
@@ -146,7 +154,9 @@ export type NetworkPolicy = z.infer<typeof PolicySchema>;
 export type NodeNetworkStatus = z.infer<typeof NodeStatusSchema>;
 export type NetworkHistory = z.infer<typeof HistorySchema>;
 export type NetworkPreset = z.infer<typeof PresetSchema>;
-export type ApplyNetworkPolicies = { presetIds: string[]; clients: string[]; groups: string[]; inherit: boolean; settingsByPreset?: Record<string, { target?: string; port?: number; intervalMinutes?: number }>; settings?: { target?: string; port?: number; intervalMinutes?: number }; trafficAccepted: boolean };
+export type NetworkTiming = { intervalMinutes: number; scheduleType?: "interval" | "daily"; dailyTimes?: string[]; utcOffsetMinutes?: number };
+export type NetworkPolicySettings = NetworkTiming & { target?: string; port?: number; targetIds?: string[] };
+export type ApplyNetworkPolicies = { presetIds: string[]; clients: string[]; groups: string[]; inherit: boolean; settingsByPreset?: Record<string, Partial<NetworkPolicySettings>>; settings?: Partial<NetworkPolicySettings>; trafficAccepted: boolean };
 const PreviewNodeSchema = InventoryNodeSchema.extend({ state: z.string(), planCount: z.number() });
 const PreviewSchema = z.object({ planCount: z.number(), added: z.number(), unchanged: z.number(), nodes: z.array(PreviewNodeSchema) });
 export type NetworkPreview = z.infer<typeof PreviewSchema>;

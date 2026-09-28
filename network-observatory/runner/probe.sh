@@ -13,7 +13,7 @@ TARGET="${2:-}"
 PORT="${3:-5201}"
 EXIT_CODE=0
 
-case "$MODE" in tcpquality-route|tcpquality-intl|tcpquality-all) TARGET=default ;; esac
+case "$MODE" in tcpquality-route|tcpquality-intl|tcpquality-all|tcpquality-report|tcpquality-intl-report) TARGET=default ;; esac
 
 case "$MODE" in
   https)
@@ -42,7 +42,7 @@ case "$MODE" in
       printf '%s\n' '无效的路径追踪目标。' >"$TEMP_OUTPUT"
       EXIT_CODE=64
     else
-      timeout 60s nexttrace --traceroute --json --no-rdns --max-hops 16 --queries 1 "$TARGET" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+      timeout 60s nexttrace --json --no-rdns --max-hops 16 --queries 1 "$TARGET" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
     fi
     ;;
   throughput)
@@ -55,10 +55,10 @@ case "$MODE" in
       printf '%s\n' '无效的 iperf3 目标。' >"$TEMP_OUTPUT"
       EXIT_CODE=64
     else
-      timeout 15s iperf3 --client "$TARGET" --port "$PORT" --time 10 --json >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+      timeout 15s iperf3 --client "$TARGET" --port "$PORT" --time 10 --bitrate 100M --json >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
     fi
     ;;
-  tcpquality-route|tcpquality-intl|tcpquality-all)
+  tcpquality-route|tcpquality-intl|tcpquality-all|tcpquality-report|tcpquality-intl-report)
     TCPQUALITY_BIN="${ASTER_TCPQUALITY_BIN:-/usr/local/libexec/tcpquality/runTcpQuality.sh}"
     TCPQUALITY_CORE="$(dirname "$TCPQUALITY_BIN")/runTcpQuality-core.sh"
     if [ ! -x "$TCPQUALITY_BIN" ] || [ ! -s "$TCPQUALITY_CORE" ]; then
@@ -69,12 +69,16 @@ case "$MODE" in
         tcpquality-route) TCPQUALITY_LIMIT=180s ;;
         tcpquality-intl) TCPQUALITY_LIMIT=300s ;;
         tcpquality-all) TCPQUALITY_LIMIT=480s ;;
+        tcpquality-report) TCPQUALITY_LIMIT=480s ;;
+        tcpquality-intl-report) TCPQUALITY_LIMIT=300s ;;
       esac
       # Every permitted option is a fixed literal; user input is never evaluated.
       case "$MODE" in
         tcpquality-route) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --route --route-protocol both --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
         tcpquality-intl) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
         tcpquality-all) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --all --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-report) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-intl-report) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
       esac
     fi
     ;;
@@ -87,7 +91,15 @@ case "$MODE" in
 esac
 
 if [ -s "$TEMP_OUTPUT" ]; then
-  OUTPUT="$(head -c "$MAX_OUTPUT_BYTES" "$TEMP_OUTPUT" | base64 | tr -d '\n')"
+  case "$MODE" in
+    tcpquality-report|tcpquality-intl-report)
+      if [ "$(wc -c <"$TEMP_OUTPUT")" -gt "$MAX_OUTPUT_BYTES" ]; then
+        OUTPUT="$( { head -c 24000 "$TEMP_OUTPUT"; printf '\n[中间输出已截断]\n'; tail -c 11000 "$TEMP_OUTPUT"; } | base64 | tr -d '\n')"
+      else
+        OUTPUT="$(base64 <"$TEMP_OUTPUT" | tr -d '\n')"
+      fi ;;
+    *) OUTPUT="$(head -c "$MAX_OUTPUT_BYTES" "$TEMP_OUTPUT" | base64 | tr -d '\n')" ;;
+  esac
 else
   OUTPUT=""
 fi

@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const { CATALOG, CATALOG_VERSION } = require("./catalog.js");
-const { normalizeSchedule, normalizeConfig, UUID } = require("./model.js");
+const { normalizeSchedule, normalizeConfig, nextRunAt, UUID } = require("./model.js");
 const stableId = (value) => crypto.createHash("sha256").update(value).digest("hex").slice(0, 28);
 const clean = (value, length = 100) => typeof value === "string" ? value.trim().slice(0, length) : "";
 
@@ -16,13 +16,29 @@ function makePolicy(input, previous) {
   const clients = [...new Set((Array.isArray(input.clients) ? input.clients : []).filter((uuid) => UUID.test(uuid)))].sort();
   const groups = [...new Set((Array.isArray(input.groups) ? input.groups : []).map((s) => clean(s)).filter(Boolean))].sort();
   if (!clients.length && !groups.length) throw new Error("请选择 VPS 或继承分组");
-  const settings = { target: clean(input.settings?.target, 253).toLowerCase(), port: Number(input.settings?.port || preset.items[0].port || 0), intervalMinutes: Number(input.settings?.intervalMinutes || preset.items[0].intervalMinutes) };
+  const oldIds = previous?.items?.map((item) => preset.items.find((candidate) => candidate.target === item.target)?.id).filter(Boolean);
+  const requestedIds = input.settings?.targetIds;
+  const selectedIds = preset.selectableTargets
+    ? (Array.isArray(requestedIds) && (requestedIds.length || !previous || previous.settings?.targetIds?.length) ? requestedIds : oldIds?.length ? oldIds : preset.defaultTargetIds)
+    : preset.items.map((item) => item.id);
+  const items = preset.items.filter((item) => selectedIds.includes(item.id));
+  if (!items.length || items.length > 24 || items.length !== new Set(selectedIds).size) throw new Error("请选择 1–24 个有效探测目标");
+  const scheduleType = input.settings?.scheduleType === "daily" ? "daily" : "interval";
+  const settings = {
+    target: clean(input.settings?.target, 253).toLowerCase(),
+    port: Number(input.settings?.port || preset.items[0].port || 0),
+    intervalMinutes: Number(input.settings?.intervalMinutes || preset.items[0].intervalMinutes),
+    scheduleType,
+    dailyTimes: scheduleType === "daily" ? input.settings?.dailyTimes : [],
+    utcOffsetMinutes: scheduleType === "daily" ? input.settings?.utcOffsetMinutes : 0,
+    targetIds: preset.selectableTargets ? items.map((item) => item.id) : [],
+  };
   const id = clean(input.id, 48) || stableId(JSON.stringify([preset.id, clients, groups, preset.customTarget ? settings.target : ""]));
   if (!/^[a-z0-9_-]{3,48}$/i.test(id)) throw new Error("方案 ID 无效");
   if (preset.traffic && input.trafficAccepted !== true && !previous?.trafficAccepted) throw new Error("请确认测速端点授权和流量预算");
   // Validate once with a real-shaped UUID; bindings are expanded only by the server.
-  preset.items.forEach((item) => normalizeSchedule({ ...item, ...settings, target: preset.customTarget ? settings.target : item.target, id: item.id, enabled: true, clients: ["00000000-0000-4000-8000-000000000001"] }));
-  return { id, name: clean(input.name, 64) || preset.name, presetId: preset.id, catalogVersion: CATALOG_VERSION, items: preset.items.map((item) => ({ ...item })), settings, clients, groups, enabled: input.enabled !== false, trafficAccepted: preset.traffic ? true : false, exclusions: previous?.exclusions || [], revision: (previous?.revision || 0) + 1 };
+  items.forEach((item) => normalizeSchedule({ ...item, ...settings, target: preset.customTarget ? settings.target : item.target, id: item.id, enabled: true, clients: ["00000000-0000-4000-8000-000000000001"] }));
+  return { id, name: clean(input.name, 64) || preset.name, presetId: preset.id, catalogVersion: CATALOG_VERSION, items: items.map((item) => ({ ...item })), settings, clients, groups, enabled: input.enabled !== false, trafficAccepted: preset.traffic ? true : false, exclusions: previous?.exclusions || [], revision: (previous?.revision || 0) + 1 };
 }
 
 function planId(policy, nodeUuid, item) {
@@ -48,7 +64,7 @@ function reconcilePolicies(state, inventory, now = Date.now()) {
           target: preset.customTarget ? policy.settings.target : item.target,
           id, name: `${node.name || node.uuid} · ${item.name}`.slice(0, 64),
           enabled: policy.enabled, clients: [node.uuid], sourcePolicy: policy.id,
-          catalogVersion: policy.catalogVersion, nextRunAt: now + 60_000 + offset,
+          catalogVersion: policy.catalogVersion, nextRunAt: policy.settings.scheduleType === "daily" ? nextRunAt(policy.settings, now) : now + 60_000 + offset,
         }));
       }
     }
@@ -59,8 +75,8 @@ function reconcilePolicies(state, inventory, now = Date.now()) {
     expected.delete(old.id);
     if (!old.sourcePolicy || old.customized) { schedules.push(old); continue; }
     if (!desired) continue;
-    const fields = ["name", "target", "port", "mode", "enabled", "intervalMinutes", "catalogVersion", "sourcePolicy"];
-    const changed = fields.some((key) => old[key] !== desired[key]);
+    const fields = ["name", "target", "port", "mode", "enabled", "intervalMinutes", "scheduleType", "utcOffsetMinutes", "catalogVersion", "sourcePolicy"];
+    const changed = fields.some((key) => old[key] !== desired[key]) || JSON.stringify(old.dailyTimes) !== JSON.stringify(desired.dailyTimes);
     schedules.push({ ...desired, revision: old.revision + (changed ? 1 : 0), nextRunAt: changed ? desired.nextRunAt : old.nextRunAt });
   }
   schedules.push(...expected.values());

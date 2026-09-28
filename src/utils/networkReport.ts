@@ -27,7 +27,7 @@ export function parseNetworkReport(result: Pick<NetworkResult, "mode" | "rawOutp
       if (finite(sent.retransmits)) measurements.push({ label: "TCP 重传", value: sent.retransmits, unit: "次" });
       if (finite(sent.bytes)) measurements.push({ label: "上传数据", value: sent.bytes / 1e6, unit: "MB" });
       if (finite(sent.seconds)) measurements.push({ label: "持续时间", value: sent.seconds, unit: "s" });
-      note = "10 秒单连接上传，结果取决于本机、路径和服务端；此项目没有测量下载速度。";
+      note = "10 秒单连接上传，客户端限速 100 Mbit/s；结果反映限速条件下的吞吐，不代表链路峰值，也没有测量下载速度。";
     } else {
       // NextTrace's traditional JSON exports time.Duration RTT in nanoseconds.
       const rows = Array.isArray(parsed.Hops) ? parsed.Hops : [];

@@ -9,6 +9,8 @@ const MODES = Object.freeze([
   "tcpquality-route",
   "tcpquality-intl",
   "tcpquality-all",
+  "tcpquality-report",
+  "tcpquality-intl-report",
 ]);
 const INTERVALS = Object.freeze([1, 5, 15, 60, 360, 720, 1440]);
 const TCPQUALITY_INTERVALS = Object.freeze([1440]);
@@ -19,7 +21,24 @@ const MODE_INTERVALS = Object.freeze({
   "tcpquality-route": TCPQUALITY_INTERVALS,
   "tcpquality-intl": TCPQUALITY_INTERVALS,
   "tcpquality-all": TCPQUALITY_INTERVALS,
+  "tcpquality-report": TCPQUALITY_INTERVALS,
+  "tcpquality-intl-report": TCPQUALITY_INTERVALS,
 });
+const DAILY_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function nextRunAt(schedule, now = Date.now()) {
+  if (schedule.scheduleType !== "daily") return now + schedule.intervalMinutes * 60_000;
+  const offset = schedule.utcOffsetMinutes * 60_000;
+  const localDay = Math.floor((now + offset) / 86_400_000) * 86_400_000;
+  for (const day of [localDay, localDay + 86_400_000]) {
+    for (const time of schedule.dailyTimes) {
+      const [hour, minute] = time.split(":").map(Number);
+      const candidate = day + (hour * 60 + minute) * 60_000 - offset;
+      if (candidate > now) return candidate;
+    }
+  }
+  throw new Error("每日时刻无效");
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
@@ -52,6 +71,9 @@ function normalizeSchedule(input, index = 0) {
   const id = clampText(input.id, 48);
   const mode = input.mode;
   const intervalMinutes = Number(input.intervalMinutes);
+  const scheduleType = input.scheduleType === "daily" ? "daily" : "interval";
+  const dailyTimes = scheduleType === "daily" ? [...new Set(Array.isArray(input.dailyTimes) ? input.dailyTimes : [])].sort() : [];
+  const utcOffsetMinutes = scheduleType === "daily" ? Number(input.utcOffsetMinutes) : 0;
   const enabled = input.enabled === true;
   const name = clampText(input.name, 64);
   const isTcpQuality = mode?.startsWith("tcpquality-");
@@ -67,6 +89,9 @@ function normalizeSchedule(input, index = 0) {
   if (!MODES.includes(mode)) throw new Error(`${name || id}：检测类型无效`);
   if (!MODE_INTERVALS[mode].includes(intervalMinutes)) {
     throw new Error(`${name || id}：检测间隔无效`);
+  }
+  if (scheduleType === "daily" && (!dailyTimes.length || dailyTimes.length > 8 || !dailyTimes.every((time) => typeof time === "string" && DAILY_TIME.test(time)) || !Number.isInteger(utcOffsetMinutes) || utcOffsetMinutes < -720 || utcOffsetMinutes > 840 || utcOffsetMinutes % 15 !== 0)) {
+    throw new Error(`${name || id}：每天检测时刻或 UTC 时区无效（最多 8 个时刻）`);
   }
   if (!name || (!isTcpQuality && !isHost(target))) throw new Error(`${name || id}：请填写有效的目标主机名或 IP 地址`);
   if (["https", "throughput"].includes(mode) && (!Number.isInteger(port) || port < 1 || port > 65535)) {
@@ -84,6 +109,9 @@ function normalizeSchedule(input, index = 0) {
     region,
     port: ["https", "throughput"].includes(mode) ? port : 0,
     intervalMinutes,
+    scheduleType,
+    dailyTimes,
+    utcOffsetMinutes,
     clients,
     nextRunAt: Number.isFinite(Number(input.nextRunAt)) ? Number(input.nextRunAt) : 0,
     revision: Number.isSafeInteger(input.revision) ? input.revision : 0,
@@ -146,7 +174,7 @@ function createDueRuns(config, now = Date.now()) {
   const schedule = config.schedules.find((item) => item.enabled && item.nextRunAt <= now);
   if (!schedule) return { due: [], config };
   const schedules = config.schedules.map((item) => item.id === schedule.id
-    ? { ...item, nextRunAt: now + item.intervalMinutes * 60_000 }
+    ? { ...item, nextRunAt: nextRunAt(item, now) }
     : item);
   return { due: [schedule], config: { schedules } };
 }
@@ -161,6 +189,7 @@ module.exports = {
   INTERVALS,
   MODES,
   TASK_OUTPUT_LIMIT,
+  nextRunAt,
   createDueRuns,
   isHost,
   normalizeConfig,

@@ -1,4 +1,4 @@
-import type { NetworkResult } from "@/services/networkObservatory";
+import { NETWORK_OBSERVATORY_API, type NetworkResult } from "@/services/networkObservatory";
 import { cleanNetworkOutput, parseNetworkReport } from "@/utils/networkReport";
 import { formatNetworkTime, modeName } from "./shared";
 export function NetworkReport({ result, previous }: { result: NetworkResult; previous?: NetworkResult }) {
@@ -13,6 +13,8 @@ export function NetworkReport({ result, previous }: { result: NetworkResult; pre
       return <div key={item.label}><small>{item.label}</small><strong>{item.value.toLocaleString(undefined, { maximumFractionDigits: 2 })} <em>{item.unit}</em></strong>{old && item.unit && <small>较上次 {item.value - old.value >= 0 ? "+" : ""}{(item.value - old.value).toFixed(2)} {item.unit}</small>}</div>;
     })}</div>
     <p className="network-help">{report.note}</p>
+    {result.reportImages.length > 0 && <div className="network-report-images">{result.reportImages.map((section) => <figure key={section}><figcaption>{section === "intl" ? "国际互联" : section === "ipv6" ? "三网 IPv6" : "三网 IPv4"} · 已保存图片</figcaption><img loading="lazy" alt={`${modeName(result.mode)} ${section} 检测报告`} src={`${NETWORK_OBSERVATORY_API}/reports/${encodeURIComponent(result.nodeUuid)}/${encodeURIComponent(result.taskId || "")}/${section}`} /></figure>)}</div>}
+    {["tcpquality-report", "tcpquality-intl-report"].includes(result.mode) && !result.reportImages.length && <p className="network-inline-note">未缓存到报告图片。可在完整诊断输出中检查 TcpQuality 的上传结果；报告服务不可用时仍保留文本。</p>}
     {pathChanged !== null && <p>与上一条同目标路径相比：{pathChanged ? "路径响应有变化" : "逐跳地址一致"}（不代表线路质量评级）</p>}
     {report.hops.length > 0 && <div className="network-table-scroll"><table><thead><tr><th>跳数</th><th>地址</th><th>ASN</th><th>时延</th></tr></thead><tbody>{report.hops.map((hop, i) => <tr key={i}><td>{hop.ttl}</td><td>{hop.address}</td><td>{hop.asn || "—"}</td><td>{hop.rtt === null ? "—" : `${hop.rtt.toFixed(2)} ms`}</td></tr>)}</tbody></table></div>}
     <details open={report.measurements.length === 0 && report.hops.length === 0} className="network-result-details"><summary>完整诊断输出</summary><pre>{cleanNetworkOutput(result.rawOutput) || "没有输出"}</pre></details>

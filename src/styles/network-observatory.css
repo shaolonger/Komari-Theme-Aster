@@ -693,6 +693,15 @@
 .network-measurements small { color: var(--text-secondary); font-size: 11px; }
 .network-measurements em { font-style: normal; font-size: 12px; }
 .network-report { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.network-report-images { display: grid; gap: 16px; margin: 16px 0; }
+.network-report-images figure { margin: 0; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface); }
+.network-report-images figcaption { margin-bottom: 8px; font-weight: 600; }
+.network-report-images img { display: block; width: 100%; height: auto; }
+.network-timing-fields, .network-daily-times { display: grid; gap: 10px; }
+.network-daily-time-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.network-daily-time-list label { display: flex; align-items: center; gap: 8px; }
+.network-target-options { display: grid; max-height: 260px; overflow: auto; gap: 5px; margin: 8px 0; }
+.network-target-picker { min-width: 0; }
 .network-table-scroll { overflow: auto; margin: 14px 0; }
 .network-report table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
 .network-report td, .network-report th { padding: 9px; border-bottom: 1px solid var(--border-subtle); }

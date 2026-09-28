@@ -8,6 +8,7 @@ const vm = require("node:vm");
 const {
   API_BASE,
   createDueRuns,
+  nextRunAt,
   isHost,
   normalizeConfig,
   parseProbeOutput,
@@ -55,6 +56,17 @@ test("keeps throughput and each TcpQuality suite at daily cadence", () => {
   assert.equal(quality.schedules[0].target, "default");
   assert.equal(quality.schedules[0].port, 0);
   assert.throws(() => normalizeConfig({ schedules: [schedule({ mode: "tcpquality-intl", intervalMinutes: 60 })] }), /间隔无效/);
+  assert.equal(normalizeConfig({ schedules: [schedule({ mode: "tcpquality-report", target: "", intervalMinutes: 1440 })] }).schedules[0].target, "default");
+});
+
+test("daily schedules accept multiple exact times at a fixed UTC offset", () => {
+  const timing = { scheduleType: "daily", dailyTimes: ["18:30", "06:15", "18:30"], utcOffsetMinutes: 480 };
+  const plan = normalizeConfig({ schedules: [schedule(timing)] }).schedules[0];
+  assert.deepEqual(plan.dailyTimes, ["06:15", "18:30"]);
+  assert.equal(nextRunAt(plan, Date.parse("2026-01-01T09:00:00Z")), Date.parse("2026-01-01T10:30:00Z"));
+  assert.equal(nextRunAt(plan, Date.parse("2026-01-01T11:00:00Z")), Date.parse("2026-01-01T22:15:00Z"));
+  assert.throws(() => normalizeConfig({ schedules: [schedule({ ...timing, dailyTimes: ["25:00"] })] }), /时刻/);
+  assert.throws(() => normalizeConfig({ schedules: [schedule({ ...timing, dailyTimes: Array.from({ length: 9 }, (_, hour) => `0${hour}:00`) })] }), /时刻/);
 });
 
 test("normalizes only the fixed probe types and approved schedule intervals", () => {
@@ -102,7 +114,7 @@ test("runner wraps an installed traceroute tool in a bounded structured result",
     fs.mkdirSync(fakeBin);
     fs.writeFileSync(path.join(fakeBin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n");
     fs.chmodSync(path.join(fakeBin, "timeout"), 0o755);
-    fs.writeFileSync(path.join(fakeBin, "nexttrace"), "#!/bin/sh\nprintf '%s' '{\"hops\":[]}'\n");
+    fs.writeFileSync(path.join(fakeBin, "nexttrace"), "#!/bin/sh\ncase \" $* \" in *--traceroute*) exit 64 ;; esac\nprintf '%s' '{\"Hops\":[]}'\n");
     fs.chmodSync(path.join(fakeBin, "nexttrace"), 0o755);
     const runner = path.resolve(__dirname, "../../runner/probe.sh");
     const process = spawnSync("/bin/sh", [runner, "route", "route.example.net"], {
@@ -114,7 +126,7 @@ test("runner wraps an installed traceroute tool in a bounded structured result",
     assert.equal(result.mode, "route");
     assert.equal(result.target, "route.example.net");
     assert.equal(result.exitCode, 0);
-    assert.equal(result.rawOutput, '{"hops":[]}');
+    assert.equal(result.rawOutput, '{"Hops":[]}');
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -154,6 +166,26 @@ test("runner selects fixed TcpQuality commands and rejects floating code install
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("report probes opt into upstream upload and iperf3 is rate-limited", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-report-probe-"));
+  try {
+    const bin = path.join(temp, "bin"), quality = path.join(temp, "quality");
+    fs.mkdirSync(bin); fs.mkdirSync(quality);
+    fs.writeFileSync(path.join(bin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "iperf3"), "#!/bin/sh\nprintf '%s\\n' \"$*\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(quality, "runTcpQuality.sh"), "#!/bin/sh\nprintf '%s\\n' \"$*\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(quality, "runTcpQuality-core.sh"), "# pinned core\n");
+    const runner = path.resolve(__dirname, "../../runner/probe.sh");
+    const env = { ...global.process.env, PATH: `${bin}:/usr/bin:/bin`, ASTER_TCPQUALITY_BIN: path.join(quality, "runTcpQuality.sh") };
+    const report = parseProbeOutput(spawnSync("/bin/sh", [runner, "tcpquality-report", "default"], { encoding: "utf8", env }).stdout);
+    assert.equal(report.rawOutput.trim(), "--no-rootfs");
+    const intl = parseProbeOutput(spawnSync("/bin/sh", [runner, "tcpquality-intl-report", "default"], { encoding: "utf8", env }).stdout);
+    assert.equal(intl.rawOutput.trim(), "--no-rootfs --intl");
+    const throughput = parseProbeOutput(spawnSync("/bin/sh", [runner, "throughput", "speed.example.net", "5201"], { encoding: "utf8", env }).stdout);
+    assert.match(throughput.rawOutput, /--bitrate 100M/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
 test("plugin queues admin plans for per-node HTTPS workers using only read-only inventory RPC", async () => {

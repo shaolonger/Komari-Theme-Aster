@@ -6,6 +6,8 @@ const {
   API_BASE,
   HISTORY_LIMIT,
   MODES,
+  nextRunAt,
+  UUID,
   normalizeConfig,
   parseProbeOutput,
   readAdminPrincipal,
@@ -13,6 +15,7 @@ const {
 
 const { normalizeInventory, reconcilePolicies } = require("./src/policies.js");
 const { registerAdminRoutes } = require("./src/admin.js");
+const { cacheReportImages, imagePath, pruneReportImages } = require("./src/report-images.js");
 const storageDir = __storageDir__;
 const statePath = path.join(storageDir, "state.json");
 const TASK_LEASE_MS = 12 * 60_000;
@@ -171,17 +174,24 @@ function appendHistory(state, record) {
   let bytes = 0;
   let start = rows.length;
   while (start > 0) {
-    const size = Buffer.byteLength(JSON.stringify(rows[start - 1]), "utf8");
+    const size = Buffer.from(JSON.stringify(rows[start - 1]), "utf8").length;
     if (bytes + size > 2 * 1024 * 1024) break;
     bytes += size;
     start--;
   }
   const file = path.join(storageDir, `history-${record.nodeUuid}.json`);
+  const kept = rows.slice(start);
+  const retainedImages = pruneReportImages(storageDir, record.nodeUuid, kept);
   fs.mkdirSync(storageDir, { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(rows.slice(start)), { mode: 0o600 });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(kept), { mode: 0o600 });
   fs.renameSync(`${file}.tmp`, file);
   state.history.push(record);
   state.history = state.history.slice(-HISTORY_LIMIT);
+  for (const row of state.history) {
+    if (row.nodeUuid !== record.nodeUuid || !Array.isArray(row.reportImages)) continue;
+    row.reportImages = row.reportImages.filter((section) => retainedImages.has(`${row.taskId}-${section}.png`));
+    if (!row.reportImages.length) delete row.reportImages;
+  }
 }
 
 function finishFailedTask(state, task, message, status = "timeout") {
@@ -296,7 +306,7 @@ async function tick() {
         if (queued >= 32 || state.tasks.length >= QUEUE_LIMIT) break;
         if (!nodeReady(state.nodes[plan.clients[0]], plan.mode, now) || state.tasks.some((task) => task.scheduleId === plan.id)) continue;
         queueSchedule(state, plan);
-        plan.nextRunAt = now + plan.intervalMinutes * 60_000;
+        plan.nextRunAt = nextRunAt(plan, now);
         queued++;
       }
       state.updatedAt = new Date().toISOString();
@@ -333,6 +343,24 @@ function load() {
         registeredNodes: safeNodeList(state.nodes),
       });
     });
+  });
+
+  server.route("GET", `${API_BASE}/reports/:uuid/:taskId/:section`, (req, res) => {
+    if (!authorized(req, res)) return;
+    const parts = apiPath(req).slice(`${API_BASE}/reports/`.length).split("/");
+    const [uuid, taskId, section] = parts;
+    if (parts.length !== 3 || !UUID.test(uuid) || !UUID.test(taskId) || !["ipv4", "ipv6", "intl"].includes(section)) {
+      respond(res, 400, { error: "报告图片标识无效" }); return;
+    }
+    const record = nodeHistory(readState(), uuid).find((row) => row.taskId === taskId && row.reportImages?.includes(section));
+    if (!record) { respond(res, 404, { error: "报告图片不存在或已过保留期" }); return; }
+    const file = imagePath(storageDir, uuid, taskId, section);
+    if (!fs.existsSync(file)) { respond(res, 404, { error: "报告图片不存在或已过保留期" }); return; }
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.write(fs.readFileSync(file));
+    res.end();
   });
 
   server.route("POST", `${API_BASE}/nodes/:uuid/token`, async (req, res) => {
@@ -486,6 +514,7 @@ function load() {
         record.nodeName = task.nodeName;
         record.carrier = task.carrier;
         record.region = task.region;
+        await cacheReportImages(storageDir, record);
         appendHistory(current, record);
       } catch (error) {
         finishFailedTask(current, task, `节点结果校验失败：${String(error?.message || error)}`, "failed");
@@ -513,7 +542,7 @@ function load() {
         const oldById = new Map(current.config.schedules.map((item) => [item.id, item]));
         incoming.schedules = incoming.schedules.map((item) => ({
           ...item,
-          nextRunAt: oldById.get(item.id)?.nextRunAt || Date.now() + item.intervalMinutes * 60_000,
+          nextRunAt: oldById.get(item.id)?.nextRunAt || nextRunAt(item),
         }));
         current.config = incoming;
         current.updatedAt = new Date().toISOString();

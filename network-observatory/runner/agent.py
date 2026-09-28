@@ -26,7 +26,7 @@ API_BASE = "/api/aster-network-observatory/v1"
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 PROBE_PATH = Path("/usr/local/libexec/aster-network-observatory/probe.sh")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.2.0"
+RUNNER_VERSION = "1.3.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 TASK_TIMEOUT = 600
@@ -37,6 +37,8 @@ MODES = {
     "tcpquality-route",
     "tcpquality-intl",
     "tcpquality-all",
+    "tcpquality-report",
+    "tcpquality-intl-report",
 }
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.I)

@@ -15,20 +15,25 @@ fi
 command -v systemctl >/dev/null 2>&1 || fail '需要 systemd/systemctl 的 Linux VPS。'
 command -v curl >/dev/null 2>&1 || fail '缺少 curl；请先安装 curl 后重新运行一键命令。'
 
-if ! command -v python3 >/dev/null 2>&1; then
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y python3
-  elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y python3
-  elif command -v yum >/dev/null 2>&1; then
-    yum install -y python3
-  elif command -v zypper >/dev/null 2>&1; then
-    zypper --non-interactive install python3
-  else
-    fail '缺少 Python 3，且未找到支持的系统包管理器（apt、dnf、yum、zypper）。'
-  fi
-fi
+package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then printf apt;
+  elif command -v dnf >/dev/null 2>&1; then printf dnf;
+  elif command -v yum >/dev/null 2>&1; then printf yum;
+  elif command -v zypper >/dev/null 2>&1; then printf zypper;
+  else fail '未找到受支持的系统包管理器（apt、dnf、yum、zypper）。'; fi
+}
+
+install_packages() {
+  [ "$#" -gt 0 ] || return 0
+  case "$(package_manager)" in
+    apt) apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || fail 'apt 安装网络检测依赖失败；请检查软件源或包管理器锁。' ;;
+    dnf) dnf install -y "$@" || fail 'dnf 安装网络检测依赖失败。' ;;
+    yum) yum install -y "$@" || fail 'yum 安装网络检测依赖失败。' ;;
+    zypper) zypper --non-interactive install "$@" || fail 'zypper 安装网络检测依赖失败。' ;;
+  esac
+}
+
+if ! command -v python3 >/dev/null 2>&1; then install_packages python3; fi
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
@@ -98,6 +103,71 @@ for name in expected:
 
 print(f"已下载并验证网络观测 runner v{manifest['version']}。")
 PY
+
+install_probe_dependencies() {
+  packages=''
+  command -v timeout >/dev/null 2>&1 || packages="$packages coreutils"
+  command -v bash >/dev/null 2>&1 || packages="$packages bash"
+  command -v iperf3 >/dev/null 2>&1 || packages="$packages iperf3"
+  command -v jq >/dev/null 2>&1 || packages="$packages jq"
+  command -v traceroute >/dev/null 2>&1 || packages="$packages traceroute"
+  command -v nmap >/dev/null 2>&1 || packages="$packages nmap"
+  command -v ping >/dev/null 2>&1 || packages="$packages iputils-ping"
+  command -v ip >/dev/null 2>&1 || packages="$packages iproute2"
+  case "$(package_manager)" in
+    dnf|yum) packages=$(printf '%s' "$packages" | sed 's/iputils-ping/iputils/g; s/iproute2/iproute/g') ;;
+    zypper) packages=$(printf '%s' "$packages" | sed 's/iputils-ping/iputils/g') ;;
+  esac
+  # Word splitting is intentional for this fixed, internal package-name list.
+  [ -z "$packages" ] || install_packages $packages
+  command -v iperf3 >/dev/null 2>&1 || fail 'iperf3 安装后仍不可用。'
+  command -v timeout >/dev/null 2>&1 || fail 'timeout 安装后仍不可用。'
+  command -v nping >/dev/null 2>&1 || fail 'nmap 安装后 nping 仍不可用；请检查系统软件源中的 nmap 包。'
+}
+
+install_nexttrace() {
+  if command -v nexttrace >/dev/null 2>&1; then
+    printf '%s\n' '已检测到 nexttrace，保留现有安装。'
+    return 0
+  fi
+  case "$(uname -s)/$(uname -m)" in
+    Linux/x86_64|Linux/amd64) arch=amd64; digest=aa75440fcdee46c16d941f48f9dabee1eb4c35bea6b739b0960fcf8307088c29 ;;
+    Linux/aarch64|Linux/arm64) arch=arm64; digest=4fbf436e2d4737e4a491e71ce3cd140a7a268d43ec94fb9ac9497aec7eda080e ;;
+    Linux/armv7l) arch=armv7; digest=d7741bd54a5cae13acf5decb6576216fb355f9dfbcb830b29aea092e08606979 ;;
+    Linux/riscv64) arch=riscv64; digest=d6d30f2b747c92391d86da32475346b4e1829ee94032f189e08bb8208a58b8e7 ;;
+    *) fail '当前 Linux CPU 架构尚无已校验的 NextTrace 安装文件。' ;;
+  esac
+  binary="$TEMP_DIR/nexttrace"
+  curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 180 \
+    "https://github.com/nxtrace/NTrace-core/releases/download/v1.7.3/nexttrace_linux_$arch" -o "$binary" || fail '无法下载 NextTrace v1.7.3。'
+  actual=$(sha256sum "$binary" | cut -d ' ' -f 1)
+  [ "$actual" = "$digest" ] || fail 'NextTrace SHA-256 校验失败。'
+  install -m 0755 "$binary" /usr/local/bin/nexttrace
+  printf '%s\n' '已安装并校验 NextTrace v1.7.3。'
+}
+
+install_tcpquality() {
+  quality_dir=/usr/local/libexec/tcpquality
+  if [ -s "$quality_dir/runTcpQuality-core.sh" ] && [ -x "$quality_dir/runTcpQuality.sh" ]; then
+    printf '%s\n' '已检测到本地 TcpQuality，保留现有安装。'
+    return 0
+  fi
+  source_base=https://raw.githubusercontent.com/ibsgss/TcpQuality/c2295ae096437859ce4bbc36f170428fcac47be9
+  curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 \
+    "$source_base/runTcpQuality.sh" -o "$TEMP_DIR/runTcpQuality.sh" || fail '无法从上游下载 TcpQuality 入口。'
+  curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 \
+    "$source_base/runTcpQuality-core.sh" -o "$TEMP_DIR/runTcpQuality-core.sh" || fail '无法从上游下载 TcpQuality core。'
+  [ "$(sha256sum "$TEMP_DIR/runTcpQuality.sh" | cut -d ' ' -f 1)" = b5fbc67029e6c9371a3fc4cc0c191661c419b5e5c06fe475831ca748f94e675f ] || fail 'TcpQuality 入口 SHA-256 校验失败。'
+  [ "$(sha256sum "$TEMP_DIR/runTcpQuality-core.sh" | cut -d ' ' -f 1)" = a7274458ddd785d637b526e2d337b80326aac1d1663414490f2a20ee161ba5c0 ] || fail 'TcpQuality core SHA-256 校验失败。'
+  install -d -m 0755 "$quality_dir"
+  install -m 0755 "$TEMP_DIR/runTcpQuality.sh" "$quality_dir/runTcpQuality.sh"
+  install -m 0644 "$TEMP_DIR/runTcpQuality-core.sh" "$quality_dir/runTcpQuality-core.sh"
+  printf '%s\n' '已从上游固定提交安装并校验 TcpQuality。'
+}
+
+install_probe_dependencies
+install_nexttrace
+install_tcpquality
 
 sh "$TEMP_DIR/runner/install.sh"
 if [ -r /dev/tty ]; then

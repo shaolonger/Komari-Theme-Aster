@@ -6,6 +6,8 @@ const vm = require('node:vm');
 const crypto = require('node:crypto');
 const { test } = require('node:test');
 const { makePolicy, reconcilePolicies, normalizeInventory } = require('../src/policies.js');
+const { CATALOG } = require('../src/catalog.js');
+const { cacheReportImages, imagePath, pruneReportImages } = require('../src/report-images.js');
 
 const A = 'c388e74d-a922-4ae1-bd10-1fb30e2e53de';
 const B = '59d6e276-1d4b-4657-9021-908460853ba3';
@@ -44,7 +46,8 @@ function fixture(initial, { gojaErrno = 0 } = {}) {
     }
   };
   const pluginRequire = (name) => name === 'server' ? server : name === 'fs' ? pluginFs : ['path', 'crypto'].includes(name) ? require(name) : require(path.resolve(__dirname, '..', name));
-  const runtime = { require: pluginRequire, __storageDir__: dir, Buffer, console: { error(...args) { errors.push(args); } } };
+  // Komari 1.4.3 implements Buffer.from but not the Node Buffer.byteLength static.
+  const runtime = { require: pluginRequire, __storageDir__: dir, Buffer: { from: Buffer.from.bind(Buffer) }, console: { error(...args) { errors.push(args); } } };
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../script.js'), 'utf8'), runtime);
   runtime.load();
   async function invoke(method, route, { body, role = 'admin', token } = {}) {
@@ -54,13 +57,47 @@ function fixture(initial, { gojaErrno = 0 } = {}) {
       return verb === method && new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`).test(endpoint);
     })?.[1];
     assert.ok(handler, `missing ${method} ${route}`);
-    const res = { statusCode: 200, setHeader() {}, end(content) { this.json = JSON.parse(content); } };
+    const res = { statusCode: 200, headers: {}, setHeader(name, value) { this.headers[name] = value; }, write(bytes) { this.bytes = Buffer.from(bytes); }, end(content) { if (content !== undefined) this.json = JSON.parse(content); } };
     await handler({ url: route, body: body === undefined ? '' : JSON.stringify(body), headers: token ? { authorization: `Bearer ${token}` } : {}, context: { principal: { type: 'user', roles: [role] } } }, res);
     return res;
   }
   const state = () => JSON.parse(fs.readFileSync(path.join(dir, 'state.json')));
   return { invoke, state, cron, calls, errors, writeState(value) { fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(value)); }, setInventory(value) { clientList = value; }, cleanup() { fs.rmSync(dir, { recursive: true, force: true }); } };
 }
+
+test('NextTrace targets are selectable and public iperf3 candidates require consent', () => {
+  const routes = CATALOG.find((item) => item.id === 'china-route');
+  assert.ok(routes.items.length >= 40);
+  assert.equal(new Set(routes.items.map((item) => item.target)).size, routes.items.length);
+  const chosen = routes.items.find((item) => item.target === 'ipv6.sha-4837.endpoint.nxtrace.org');
+  const policy = makePolicy({ presetId: 'china-route', clients: [A], settings: { targetIds: [chosen.id], scheduleType: 'daily', dailyTimes: ['06:00', '18:00'], utcOffsetMinutes: 480 } });
+  assert.equal(policy.items.length, 1);
+  const state = { config: { schedules: [] }, policies: [policy], tasks: [] };
+  reconcilePolicies(state, normalizeInventory(inventory()), Date.parse('2026-01-01T00:00:00Z'));
+  assert.equal(state.config.schedules.length, 1);
+  assert.deepEqual(state.config.schedules[0].dailyTimes, ['06:00', '18:00']);
+  assert.equal(state.config.schedules[0].target, chosen.target);
+  const throughput = CATALOG.find((item) => item.id === 'throughput');
+  assert.ok(throughput.targets.length >= 6);
+  assert.throws(() => makePolicy({ presetId: 'throughput', clients: [A], settings: { target: throughput.targets[0].target } }), /授权/);
+});
+
+test('uploaded TcpQuality PNG is cached locally, bounded, and pruned', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-report-cache-'));
+  const originalFetch = global.fetch;
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlK4RAAAAAASUVORK5CYII=', 'base64');
+  const calls = [];
+  global.fetch = async (url) => { calls.push(url); return { ok: true, headers: { get(name) { return name === 'content-type' ? 'image/png' : String(png.length); } }, async arrayBuffer() { return png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength); } }; };
+  try {
+    const row = { nodeUuid: A, taskId: 'd7d488ff-a122-4ae1-bd10-1fb30e2e53de', mode: 'tcpquality-report', status: 'success', rawOutput: '报告链接 https://tcpquality.ibsgss.uk/r/hUETeLqqyF' };
+    await cacheReportImages(dir, row);
+    assert.deepEqual(row.reportImages, ['ipv4', 'ipv6']);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(fs.readFileSync(imagePath(dir, A, row.taskId, 'ipv4')), png);
+    pruneReportImages(dir, A, []);
+    assert.equal(fs.existsSync(imagePath(dir, A, row.taskId, 'ipv4')), false);
+  } finally { global.fetch = originalFetch; fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 test('group inheritance is idempotent, follows new VPSes, and keeps single-node overrides', () => {
   const policy = makePolicy({ presetId: 'basic', groups: ['East'] });
