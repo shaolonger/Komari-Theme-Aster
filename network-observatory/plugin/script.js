@@ -33,6 +33,13 @@ function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
+function isMissingFile(error, file) {
+  if (error?.code === "ENOENT") return true;
+  // Komari 1.4.3 wraps fs errors as Go PathError values, without a Node error code.
+  const pathError = error?.value;
+  return pathError?.Path === file && pathError?.Op === "lstat" && pathError?.Err === 2;
+}
+
 function readState() {
   try {
     const saved = JSON.parse(fs.readFileSync(statePath, "utf8"));
@@ -71,7 +78,7 @@ function readState() {
       updatedAt: typeof saved.updatedAt === "string" ? saved.updatedAt : "",
     };
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (!isMissingFile(error, statePath)) throw error;
     return { config: { schedules: [] }, nodes: {}, tasks: [], history: [], policies: [], inventory: [], inventoryAt: "", inventoryError: "", updatedAt: "" };
   }
 }
@@ -146,8 +153,9 @@ function authenticateNode(req, res, state, action) {
 
 function nodeHistory(state, uuid) {
   if (!/^[0-9a-f-]{36}$/i.test(uuid)) throw new Error("节点 UUID 无效");
-  try { return JSON.parse(fs.readFileSync(path.join(storageDir, `history-${uuid}.json`), "utf8")); }
-  catch (error) { if (error.code !== "ENOENT") throw error; return state.history.filter((row) => row.nodeUuid === uuid); }
+  const file = path.join(storageDir, `history-${uuid}.json`);
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); }
+  catch (error) { if (!isMissingFile(error, file)) throw error; return state.history.filter((row) => row.nodeUuid === uuid); }
 }
 
 function appendHistory(state, record) {

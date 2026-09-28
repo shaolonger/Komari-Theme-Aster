@@ -1,15 +1,15 @@
 # Aster 网络检测：从安装到批量巡检
 
-Aster v1.3.0 将网络检测放在每台 VPS 的**实例详情 → 节点诊断 → 网络检测**中。配置、任务状态和报告都在此处；旧 `/network-observatory` 地址只提供跳转到实例页的节点列表。Komari 1.4.3 及以上可用，不需要修改 Komari 或 komari-agent 源码，也不需要开启 Agent Web SSH。检测由每台 VPS 上独立的 systemd 探测器经出站 HTTPS 领取任务，浏览器关闭后仍会运行。
+Aster v1.3.1 将网络检测放在每台 VPS 的**实例详情 → 节点诊断 → 网络检测**中。配置、任务状态和报告都在此处；旧 `/network-observatory` 地址只提供跳转到实例页的节点列表。Komari 1.4.3 及以上可用，不需要修改 Komari 或 komari-agent 源码，也不需要开启 Agent Web SSH。检测由每台 VPS 上独立的 systemd 探测器经出站 HTTPS 领取任务，浏览器关闭后仍会运行。
 
 ## 1. 更新主题和插件
 
-1. 从 [最新 GitHub Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载 `Komari-Theme-Aster-v1.3.0.zip` 与 `Aster-Network-Observatory-v1.2.0.zip`。
+1. 从 [最新 GitHub Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载 `Komari-Theme-Aster-v1.3.1.zip` 与 `Aster-Network-Observatory-v1.2.1.zip`。
 2. 在 Komari 后台分别更新主题和插件，启用插件。插件要求 Komari **≥1.4.3**，不是 ≥1.5.1。
 3. 批准插件的 **API 路由**和**系统 RPC**权限。v1.2.0 新增系统 RPC 权限是为了在浏览器关闭时读取 Komari 节点清单和分组，完成自动继承；插件代码只调用 `admin:listClients`，不会调用远程命令执行。此权限在 Komari 层面较宽，管理员应安装自己信任的插件版本。
 4. 用管理员账号刷新 Aster 页面，进入任意 VPS 实例详情，点「网络检测」。若显示插件未就绪，检查插件是否启用、权限是否批准、反向代理是否转发 `/api/aster-network-observatory/`。旧版主题与新版插件应同时升级，才能使用批量方案和实例页。
 
-升级会保留插件原有凭证、手动计划和旧历史；无需为了升级重发探测器密钥。若已有 VPS 探测器，建议重新运行第 2 步的一键安装命令，升级到 v1.2.0 runner 后才会在页面显示工具状态和持续心跳。
+升级会保留插件原有凭证、手动计划和旧历史；无需为了升级重发探测器密钥。仅从插件 v1.2.0 升至 v1.2.1，无需重装 VPS 探测器。若探测器仍低于 v1.2.0，建议重新运行第 2 步的一键安装命令；v1.2.0 runner 才会上报工具状态和持续心跳。
 
 ## 2. 为第一台 VPS 接入探测器
 
@@ -72,7 +72,8 @@ HTTPS 检测使用 HEAD 请求，不下载正文；读取 HTTP 状态、DNS、�
 
 - **「Komari 节点 UUID 无效」**：36 位带连字符的值才是 UUID。实例页已自动填入安装命令。64 位十六进制值是探测器密钥，不能填进 UUID 栏。
 - **「节点凭证无效」**：检查它属于当前实例 UUID；若刚重置过，请用新值重新运行向导。重置后旧值立即失效。
-- **「无法同步 Komari 分组」**：确认插件 v1.2.0 已启用且批准系统 RPC 权限，重试方案面板。同步失败时保留已有计划和凭证，待恢复后继续继承。
+- **「无法同步 Komari 分组」**：确认插件 v1.2.1 已启用且批准系统 RPC 权限，重试方案面板。同步失败时保留已有计划和凭证，待恢复后继续继承。
+- **日志出现 `lstat .../state.json`、`Err:2`**：这是旧版插件首次读取尚不存在的状态文件时未识别 Komari 文件系统错误。升级插件到 v1.2.1 后重新启用即可自动建立状态文件；无需手工创建 `state.json`，已有数据不会清除。若仍报错，保留完整日志检查路径及错误码，不要覆盖已有状态文件。
 - **「等待首次连接」或「探测器离线」**：检查上面的 systemctl/journalctl、VPS 到面板的出站 HTTPS、反向代理的 `Authorization` 转发。单独调用凭证验证接口不代表 systemd 服务已在线。
 - **已保存计划但没有结果**：看实例页的「等待接入 / 安装依赖 / 探测器上线」提示；计划默认错峰启动。可在就绪后立即运行，任务状态每 10 秒更新。
 - **工具显示缺失**：确认依赖安装在 systemd 服务 PATH，TcpQuality 入口与 core 脚本相邻且入口可执行。升级 runner 以显示工具状态；旧 runner 可能显示「待检测」。

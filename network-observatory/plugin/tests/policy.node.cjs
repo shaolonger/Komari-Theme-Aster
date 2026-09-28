@@ -15,18 +15,26 @@ const inventory = () => [{ uuid: A, name: 'Tokyo', group: 'East', token: 'MUST_N
 const later = () => [...inventory(), { uuid: C, name: 'Osaka', group: 'East' }];
 const sleep = (ms = 15) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function fixture(initial) {
+function fixture(initial, { gojaErrno = 0 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-policy-'));
   if (initial) fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(initial));
-  const routes = new Map(), cron = [], calls = [];
+  const routes = new Map(), cron = [], calls = [], errors = [];
   let clientList = inventory();
   const server = {
     route(method, route, handler) { routes.set(`${method} ${route}`, handler); },
     cron(expression, handler) { cron.push(handler); },
     async call(method) { calls.push(method); assert.equal(method, 'admin:listClients'); return clientList; },
   };
-  const pluginRequire = (name) => name === 'server' ? server : ['fs', 'path', 'crypto'].includes(name) ? require(name) : require(path.resolve(__dirname, '..', name));
-  const runtime = { require: pluginRequire, __storageDir__: dir, Buffer, console };
+  const pluginFs = Object.create(fs);
+  pluginFs.readFileSync = (file, encoding) => {
+    try { return fs.readFileSync(file, encoding); }
+    catch (error) {
+      if (!gojaErrno || error.code !== 'ENOENT') throw error;
+      throw { value: { Op: 'lstat', Path: file, Err: gojaErrno } };
+    }
+  };
+  const pluginRequire = (name) => name === 'server' ? server : name === 'fs' ? pluginFs : ['path', 'crypto'].includes(name) ? require(name) : require(path.resolve(__dirname, '..', name));
+  const runtime = { require: pluginRequire, __storageDir__: dir, Buffer, console: { error(...args) { errors.push(args); } } };
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../script.js'), 'utf8'), runtime);
   runtime.load();
   async function invoke(method, route, { body, role = 'admin', token } = {}) {
@@ -41,7 +49,7 @@ function fixture(initial) {
     return res;
   }
   const state = () => JSON.parse(fs.readFileSync(path.join(dir, 'state.json')));
-  return { invoke, state, cron, calls, writeState(value) { fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(value)); }, setInventory(value) { clientList = value; }, cleanup() { fs.rmSync(dir, { recursive: true, force: true }); } };
+  return { invoke, state, cron, calls, errors, writeState(value) { fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(value)); }, setInventory(value) { clientList = value; }, cleanup() { fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 test('group inheritance is idempotent, follows new VPSes, and keeps single-node overrides', () => {
@@ -70,9 +78,11 @@ test('group inheritance is idempotent, follows new VPSes, and keeps single-node 
 });
 
 test('two online VPSes receive scheduled work independently and save isolated reports', async () => {
-  const f = fixture();
+  const f = fixture(undefined, { gojaErrno: 2 });
   try {
     await sleep();
+    assert.equal(f.errors.length, 0, 'initial scheduler must accept Komari 1.4.3 missing-file errors');
+    assert.deepEqual(f.state().config.schedules, []);
     const tokenA = (await f.invoke('POST', `${BASE}/nodes/${A}/token`, { body: {} })).json.token;
     const tokenB = (await f.invoke('POST', `${BASE}/nodes/${B}/token`, { body: {} })).json.token;
     const input = { presetIds: ['basic'], clients: [A, B], groups: [], inherit: true, trafficAccepted: false };
@@ -105,6 +115,17 @@ test('two online VPSes receive scheduled work independently and save isolated re
       assert.equal(history[0].nodeUuid, uuid);
       assert.equal(history[0].runnerVersion, '1.2.0');
     }
+    assert.equal(f.errors.length, 0);
+  } finally { f.cleanup(); }
+});
+
+test('does not overwrite state when Komari reports a filesystem error other than missing file', async () => {
+  const f = fixture(undefined, { gojaErrno: 13 });
+  try {
+    await sleep();
+    assert.equal(f.errors.length, 1);
+    await assert.rejects(f.invoke('GET', `${BASE}/status`), (error) => error?.value?.Err === 13);
+    assert.throws(f.state, /ENOENT/);
   } finally { f.cleanup(); }
 });
 
