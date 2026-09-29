@@ -20,6 +20,7 @@ PLUGIN_FILES = {
     "runner/agent.py": b"agent",
     "runner/install.sh": b"installer",
     "runner/probe.sh": b"probe",
+    "runner/speedtest.py": b"speedtest",
     "runner/aster-network-observatory-agent.service": b"service",
 }
 

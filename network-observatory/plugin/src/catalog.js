@@ -1,5 +1,5 @@
 // Curated, versioned metadata. Never execute commands or download target lists from these sources.
-const CATALOG_VERSION = "2026-09-28.2";
+const CATALOG_VERSION = "2026-09-28.3";
 const routeSource = "https://github.com/nxtrace/NTrace-core/blob/7ff73b2c51f9f37a9bc1d6139b7053948f0250db/fast_trace/basic.go";
 const regions = { pek: "北京", sha: "上海", can: "广州", hgh: "杭州", hfe: "合肥" };
 const carriers = { 4134: "电信 163", 4809: "电信 CN2", 4837: "联通 169", 9929: "联通 9929", 9808: "移动 CMNET", 58807: "移动 CMIN2", 4538: "教育网", 7497: "科技网" };
@@ -63,6 +63,9 @@ const CATALOG = [
   ] },
   { id: "throughput", name: "授权 iperf3 吞吐测速", description: "自建端点或服务商公开端点；10 秒单连接上传，限速 100 Mbit/s。", source: "https://kb.leaseweb.com/kb/network/network-link-speeds/", requirement: "iperf3", customTarget: true, traffic: true, targets: throughputTargets, items: [
     { id: "upload", name: "iperf3 限速上传", mode: "throughput", target: "", port: 5201, intervalMinutes: 1440 },
+  ] },
+  { id: "speedtest", name: "全速双向测速 · iperf3", description: "TCP 不限速，上传和下载各 10 秒、4 条并行流；优先使用自有测速端。", source: "https://software.es.net/iperf/invoking.html", requirement: "speedtest", customTarget: true, traffic: true, targets: throughputTargets, items: [
+    { id: "bidirectional", name: "全速双向测速", mode: "speedtest", target: "", port: 5201, intervalMinutes: 1440 },
   ] },
 ];
 module.exports = { CATALOG, CATALOG_VERSION };

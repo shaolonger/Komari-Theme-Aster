@@ -13,6 +13,7 @@ const files = [
   ["src/model.js", resolve(plugin, "src/model.js")],
   ...["catalog", "policies", "admin", "report-images"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
+  ["runner/speedtest.py", resolve(root, "network-observatory/runner/speedtest.py")],
   ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
   ["runner/install.sh", resolve(root, "network-observatory/runner/install.sh")],
   ["runner/quick-install.sh", resolve(root, "network-observatory/runner/quick-install.sh")],

@@ -1260,6 +1260,9 @@ try {
   await waitUntil(cdp, `document.querySelector('.network-capabilities')?.textContent.includes('curl')`, 2_000);
   await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
   await waitUntil(cdp, `document.querySelectorAll('.network-preset-grid .network-preset').length === 1`, 2_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-steps button')).find(b => b.textContent.includes('范围与预览')).click()`);
+  failGate(await cdp.value(`document.querySelector('.network-editor-intro')?.textContent.includes('Scale Node 0')`), "instance scope did not default to the current VPS");
+  await cdp.value(`Array.from(document.querySelectorAll('.network-editor-intro button')).find(b => b.textContent.includes('扩展到更多')).click()`);
   await cdp.value(`Array.from(document.querySelectorAll('.network-node-picker label')).find(e => e.textContent.includes('Scale Node 1')).querySelector('input').click()`);
   await cdp.value(`Array.from(document.querySelectorAll('.network-policy-panel button')).find(b => b.textContent.includes('预览应用范围')).click()`);
   await waitUntil(cdp, `document.querySelector('.network-preview')?.textContent.includes('4 条计划')`, 2_000);
@@ -1270,6 +1273,10 @@ try {
   await waitUntil(cdp, `document.querySelectorAll('.network-instance-plan').length === 2`, 3_000);
   await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1`), "network workspace overflows mobile viewport");
+  await cdp.value(`document.querySelector('.floating-controls-trigger').click()`);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  failGate(await cdp.value(`['主题设置', '管理'].every(label => { const action = document.querySelector('.floating-controls-actions [aria-label="' + label + '"]'); const bounds = document.querySelector('.floating-controls-actions').getBoundingClientRect(); const rect = action?.getBoundingClientRect(); return rect && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1; })`), "floating controls clip settings or admin on mobile");
+  await cdp.value(`document.querySelector('.floating-controls-trigger').click()`);
   await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
   await waitUntil(cdp, `document.querySelector('.network-drawer[open]') !== null`, 2_000);
   failGate(await cdp.value(`document.querySelector('.network-drawer').getBoundingClientRect().width <= innerWidth + 1`), "network configuration drawer overflows mobile viewport");
@@ -1285,6 +1292,7 @@ try {
   await waitUntil(cdp, `Array.from(document.querySelectorAll('.home-command-action')).some(b => b.textContent.includes('网络检测'))`, 6_000);
   await cdp.value(`Array.from(document.querySelectorAll('.home-command-action')).find(b => b.textContent.includes('网络检测')).click()`);
   await waitUntil(cdp, `document.querySelector('.network-drawer[open] .network-preset-grid') !== null`, 4_000);
+  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-steps button')).find(b => b.textContent.includes('范围与预览')).click()`);
   failGate(await cdp.value(`document.querySelectorAll('.network-drawer .network-node-picker label').length === 3`), "Home batch launcher did not load the VPS inventory");
   await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
   results.push({ networkWorkspace: "deep link, structured report, per-node credential, two-node preset preview/apply, mobile drawer, node switch, Home batch launcher" });

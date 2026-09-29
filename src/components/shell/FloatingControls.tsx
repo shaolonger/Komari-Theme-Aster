@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Activity, AlertTriangle, ChevronLeft, ChevronRight, LayoutGrid, List, Monitor, Rows3, Settings, SlidersHorizontal, Sun, Moon } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -38,6 +38,15 @@ function FloatingControlsInner() {
   const themeSettings = useThemeSettings();
   const { failureStreak } = useNodeStoreStatus();
   const [collapsed, setCollapsed] = useState(true);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (collapsed) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setCollapsed(true); };
+    const onPointerDown = (event: PointerEvent) => { if (event.target instanceof Node && !controlsRef.current?.contains(event.target)) setCollapsed(true); };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); document.removeEventListener("pointerdown", onPointerDown); };
+  }, [collapsed]);
   const settingsReady = themeSettings.isReady;
   const showAdmin = settingsReady && themeSettings.enableAdminButton;
   const showThemeManage = Boolean(me?.logged_in);
@@ -47,6 +56,7 @@ function FloatingControlsInner() {
 
   return (
     <div
+      ref={controlsRef}
       className={clsx(
         "floating-controls",
         collapsed && "is-collapsed",
@@ -56,8 +66,12 @@ function FloatingControlsInner() {
       <div className="floating-controls-inner">
         <div className="floating-controls-row">
           <div className="floating-controls-actions" aria-hidden={collapsed}>
+            {(showThemeManage || showAdmin) && <div className="floating-controls-shortcuts">
+              {showThemeManage && <Link to="/?view=theme-manage" aria-label="主题设置" title="主题设置" tabIndex={hiddenTabIndex} className="control-button grid h-9 w-9 place-items-center"><SlidersHorizontal size={16} /></Link>}
+              {showAdmin && <a href="/admin" aria-label={me?.logged_in ? "管理" : "后台登录"} title={me?.logged_in ? "管理" : "后台登录"} tabIndex={hiddenTabIndex} className="control-button grid h-9 w-9 place-items-center"><Settings size={16} /></a>}
+            </div>}
             {settingsReady && (
-              <>
+              <div className="floating-controls-preferences">
                 <div
                   className="control-group"
                   role="group"
@@ -100,29 +114,7 @@ function FloatingControlsInner() {
                     </button>
                   ))}
                 </div>
-              </>
-            )}
-            {showThemeManage && (
-              <Link
-                to="/?view=theme-manage"
-                aria-label="主题设置"
-                title="主题设置"
-                tabIndex={hiddenTabIndex}
-                className="control-button grid h-9 w-9 place-items-center"
-              >
-                <SlidersHorizontal size={16} />
-              </Link>
-            )}
-            {showAdmin && (
-              <a
-                href="/admin"
-                aria-label={me?.logged_in ? "管理" : "后台登录"}
-                title={me?.logged_in ? "管理" : "后台登录"}
-                tabIndex={hiddenTabIndex}
-                className="control-button grid h-9 w-9 place-items-center"
-              >
-                <Settings size={16} />
-              </a>
+              </div>
             )}
           </div>
           <button

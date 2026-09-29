@@ -3,6 +3,7 @@ export const MODES: { id: NetworkMode; name: string; tool: string; intervals: nu
   { id: "https", name: "HTTPS 可用性", tool: "curl", intervals: [1, 5, 15, 60, 360, 720, 1440] },
   { id: "route", name: "路径追踪", tool: "nexttrace", intervals: [360, 720, 1440] },
   { id: "throughput", name: "iperf3 限速上传", tool: "iperf3", intervals: [1440] },
+  { id: "speedtest", name: "全速双向测速", tool: "speedtest", intervals: [1440] },
   { id: "tcpquality-route", name: "三网回程", tool: "tcpquality", intervals: [1440] },
   { id: "tcpquality-intl", name: "国际互联", tool: "tcpquality", intervals: [1440] },
   { id: "tcpquality-all", name: "TcpQuality 综合巡检", tool: "tcpquality", intervals: [1440] },

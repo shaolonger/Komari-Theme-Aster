@@ -22,24 +22,25 @@ function plan(mode: NetworkSchedule["mode"]): NetworkSchedule {
 }
 
 describe("单机检测的公开目标入口", () => {
-  it("在路径追踪中显示 NextTrace 目标，并保留手动主机输入", () => {
+  it("在路径追踪编辑时明确提供公开候选与自定义切换", () => {
     const html = renderToStaticMarkup(createElement(NetworkPlanEditor, { uuid, name: "Tokyo", initial: plan("route"), catalog, pending: false, onSave: () => {} }));
-    expect(html).toContain("NextTrace 公开目标");
-    expect(html).toContain("北京 电信 163 · IPv4");
+    expect(html).toContain("公开候选");
+    expect(html).toContain("自定义主机");
     expect(html).toContain("value=\"custom.example.net\"");
-    expect(html).toContain("手动填写目标主机");
   });
 
-  it("在限速测速中显示服务商候选节点", () => {
+  it("在限速与全速测速中显示候选入口和对应流量说明", () => {
     const html = renderToStaticMarkup(createElement(NetworkPlanEditor, { uuid, name: "Tokyo", initial: plan("throughput"), catalog, pending: false, onSave: () => {} }));
-    expect(html).toContain("公开 iperf3 候选节点");
-    expect(html).toContain("speedtest.hkg12.hk.leaseweb.net");
+    expect(html).toContain("公开候选");
+    expect(html).toContain("10 秒限速上传");
     expect(html).toContain("目标主机");
+    const speedtest = renderToStaticMarkup(createElement(NetworkPlanEditor, { uuid, name: "Tokyo", initial: plan("speedtest"), catalog, pending: false, onSave: () => {} }));
+    expect(speedtest).toContain("全速双向测试不限制传输速率");
   });
 
   it("目录不可用时保留手动输入并提示升级插件", () => {
     const html = renderToStaticMarkup(createElement(NetworkPlanEditor, { uuid, name: "Tokyo", initial: plan("route"), pending: false, onSave: () => {} }));
-    expect(html).toContain("网络观测插件 v1.3.0");
+    expect(html).toContain("公开目录暂不可用");
     expect(html).toContain("value=\"custom.example.net\"");
   });
 });

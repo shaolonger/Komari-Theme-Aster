@@ -70,6 +70,7 @@ expected = {
     "runner/agent.py",
     "runner/install.sh",
     "runner/probe.sh",
+    "runner/speedtest.py",
     "runner/aster-network-observatory-agent.service",
 }
 files = {}

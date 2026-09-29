@@ -65,7 +65,7 @@ function readState() {
           tokenHash: node.tokenHash,
           tokenIssuedAt: typeof node.tokenIssuedAt === "string" ? node.tokenIssuedAt : "",
           lastSeenAt: typeof node.lastSeenAt === "string" ? node.lastSeenAt : "",
-          capabilities: Array.isArray(node.capabilities) ? node.capabilities.filter((v) => ["curl", "nexttrace", "iperf3", "tcpquality", "timeout"].includes(v)) : null,
+          capabilities: Array.isArray(node.capabilities) ? node.capabilities.filter((v) => ["curl", "nexttrace", "iperf3", "speedtest", "tcpquality", "timeout"].includes(v)) : null,
           runnerVersion: typeof node.runnerVersion === "string" ? node.runnerVersion.slice(0, 30) : "",
           capabilitiesAt: typeof node.capabilitiesAt === "string" ? node.capabilitiesAt : "",
         };
@@ -258,11 +258,12 @@ function queueSchedule(state, schedule) {
   if (state.tasks.some((task) => task.scheduleId === schedule.id)) throw new Error("已有节点检测任务排队或运行，请等待完成");
   if (state.tasks.length >= QUEUE_LIMIT) throw new Error("任务队列已满，请稍后重试");
   if (!state.nodes[schedule.clients[0]]) throw new Error("请先为所选节点生成并安装网络观测凭证");
+  if (schedule.mode === "speedtest" && !state.nodes[schedule.clients[0]].capabilities?.includes("speedtest")) throw new Error("该 VPS 探测器尚不支持全速双向测速，请重新运行一键安装命令并等待工具状态更新");
   state.tasks.push(createTask(schedule));
 }
 
 function requiredTool(mode) {
-  return mode === "https" ? "curl" : mode === "route" ? "nexttrace" : mode === "throughput" ? "iperf3" : "tcpquality";
+  return mode === "https" ? "curl" : mode === "route" ? "nexttrace" : mode === "throughput" ? "iperf3" : mode === "speedtest" ? "speedtest" : "tcpquality";
 }
 
 function nodeReady(node, mode, now) {
@@ -429,7 +430,7 @@ function load() {
       const state = readState(), node = state.nodes[identity.uuid];
       if (!node || node.tokenHash !== identity.node.tokenHash) { respond(res, 401, { error: "节点凭证无效" }); return; }
       if (!Array.isArray(input.capabilities)) { respond(res, 400, { error: "工具状态格式无效" }); return; }
-      node.capabilities = [...new Set(input.capabilities.filter((name) => ["curl", "nexttrace", "iperf3", "tcpquality", "timeout"].includes(name)))];
+      node.capabilities = [...new Set(input.capabilities.filter((name) => ["curl", "nexttrace", "iperf3", "speedtest", "tcpquality", "timeout"].includes(name)))];
       node.runnerVersion = typeof input.runnerVersion === "string" ? input.runnerVersion.slice(0, 30) : "";
       node.lastSeenAt = node.capabilitiesAt = new Date().toISOString();
       writeState(state); respond(res, 200, { ok: true });
@@ -453,7 +454,8 @@ function load() {
       const active = current.tasks.filter((item) => item.status === "running");
       let task = active.length < GLOBAL_CONCURRENCY && !active.some((item) => item.nodeUuid === identity.uuid)
         ? current.tasks.find((item) => item.nodeUuid === identity.uuid && item.status === "queued" &&
-          !(item.mode === "throughput" && active.some((running) => running.mode === "throughput" && running.target === item.target && running.port === item.port))) : null;
+          !(item.mode === "speedtest" && active.some((running) => running.mode === "speedtest")) &&
+          !(["throughput", "speedtest"].includes(item.mode) && active.some((running) => ["throughput", "speedtest"].includes(running.mode) && running.target === item.target && running.port === item.port))) : null;
       if (task) {
         task.status = "running";
         task.startedAt = now;

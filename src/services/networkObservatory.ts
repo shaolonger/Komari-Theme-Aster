@@ -6,6 +6,7 @@ export const NetworkModeSchema = z.enum([
   "https",
   "route",
   "throughput",
+  "speedtest",
   "tcpquality-route",
   "tcpquality-intl",
   "tcpquality-all",

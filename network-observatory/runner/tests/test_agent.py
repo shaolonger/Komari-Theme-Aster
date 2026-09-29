@@ -27,6 +27,8 @@ class AgentValidationTests(unittest.TestCase):
         self.assertEqual(AGENT.validate_task({**TASK, "target": "2001:db8::1"})["target"], "2001:db8::1")
         quality = {**TASK, "mode": "tcpquality-route", "target": "default"}
         self.assertEqual(AGENT.validate_task(quality)["mode"], "tcpquality-route")
+        speedtest = {**TASK, "mode": "speedtest", "port": 5201}
+        self.assertEqual(AGENT.validate_task(speedtest)["mode"], "speedtest")
 
     def test_rejects_shell_text_unknown_modes_and_bad_tcpquality_targets(self):
         for value in (

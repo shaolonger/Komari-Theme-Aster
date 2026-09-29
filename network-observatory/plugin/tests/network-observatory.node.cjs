@@ -52,6 +52,8 @@ test("rejects shell text and schedules that would run one batch across many VPSe
 
 test("keeps throughput and each TcpQuality suite at daily cadence", () => {
   assert.throws(() => normalizeConfig({ schedules: [schedule({ mode: "throughput", intervalMinutes: 5, port: 5201 })] }), /间隔无效/);
+  assert.throws(() => normalizeConfig({ schedules: [schedule({ mode: "speedtest", intervalMinutes: 5, port: 5201 })] }), /间隔无效/);
+  assert.equal(normalizeConfig({ schedules: [schedule({ mode: "speedtest", intervalMinutes: 1440, port: 5201 })] }).schedules[0].port, 5201);
   const quality = normalizeConfig({ schedules: [schedule({ mode: "tcpquality-route", target: "", port: 0, intervalMinutes: 1440 })] });
   assert.equal(quality.schedules[0].target, "default");
   assert.equal(quality.schedules[0].port, 0);
@@ -185,6 +187,27 @@ test("report probes opt into upstream upload and iperf3 is rate-limited", () => 
     assert.equal(intl.rawOutput.trim(), "--no-rootfs --intl");
     const throughput = parseProbeOutput(spawnSync("/bin/sh", [runner, "throughput", "speed.example.net", "5201"], { encoding: "utf8", env }).stdout);
     assert.match(throughput.rawOutput, /--bitrate 100M/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("runner emits one compact full-speed result for both uncapped TCP directions", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-speedtest-"));
+  try {
+    const bin = path.join(temp, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "iperf3"), '#!/bin/sh\ncase " $* " in *" --reverse "*) rate=800000000 ;; *) rate=900000000 ;; esac\nprintf \'{"end":{"sum_received":{"bits_per_second":%s,"bytes":1000000000,"seconds":10},"sum_sent":{"retransmits":2}}}\' "$rate"\n', { mode: 0o755 });
+    const runner = path.resolve(__dirname, "../../runner/probe.sh");
+    const process = spawnSync("/bin/sh", [runner, "speedtest", "speed.example.net", "5201"], {
+      encoding: "utf8", env: { ...global.process.env, PATH: `${bin}:${global.process.env.PATH}` },
+    });
+    assert.equal(process.status, 0, process.stderr);
+    const result = parseProbeOutput(process.stdout);
+    assert.equal(result.status, "success", result.rawOutput);
+    const summary = JSON.parse(result.rawOutput);
+    assert.equal(summary.upload.bitsPerSecond, 900_000_000);
+    assert.equal(summary.download.bitsPerSecond, 800_000_000);
+    assert.ok(result.rawOutput.length < 1_000);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 

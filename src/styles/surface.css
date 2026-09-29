@@ -160,6 +160,7 @@ body::after {
   display: flex;
   justify-content: flex-end;
   pointer-events: none;
+  max-width: calc(100vw - 2rem);
 }
 
 .floating-controls-inner {
@@ -176,13 +177,15 @@ body::after {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  min-width: 0;
 }
 
 .floating-controls-actions {
-  display: inline-flex;
-  max-width: 340px;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  width: min(356px, calc(100vw - 5rem));
+  max-width: min(356px, calc(100vw - 5rem));
+  justify-items: end;
+  gap: 6px;
   overflow: hidden;
   opacity: 1;
   transform: translateX(0) scale(1);
@@ -195,10 +198,22 @@ body::after {
 
 .floating-controls.is-collapsed .floating-controls-actions {
   max-width: 0;
+  width: 0;
   opacity: 0;
   pointer-events: none;
   transform: translateX(18px) scale(0.96);
 }
+
+.floating-controls-shortcuts,
+.floating-controls-preferences {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.floating-controls-shortcuts { padding: 0 1px; }
 
 .floating-controls-trigger {
   position: relative;

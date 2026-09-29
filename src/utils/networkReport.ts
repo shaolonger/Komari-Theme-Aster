@@ -18,10 +18,20 @@ export function parseNetworkReport(result: Pick<NetworkResult, "mode" | "rawOutp
     if (finite(values.tls_seconds) && values.tls_seconds >= values.connect_seconds) measurements.push({ label: "TLS 握手", value: (values.tls_seconds - values.connect_seconds) * 1000, unit: "ms" });
     if (finite(values.ttfb_seconds)) measurements.push({ label: "首字节累计", value: values.ttfb_seconds * 1000, unit: "ms" });
     note = "探测网站根路径。首字节为从请求开始计时的累计耗时；新版探测器使用 HEAD，不下载正文。";
-  } else if (result.mode === "throughput" || result.mode === "route") {
+  } else if (result.mode === "throughput" || result.mode === "speedtest" || result.mode === "route") {
     let parsed: Record<string, unknown> = {};
     try { parsed = object(JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1))); } catch { /* Preserve the report when a tool changes its format. */ }
-    if (result.mode === "throughput") {
+    if (result.mode === "speedtest") {
+      const upload = object(parsed.upload), download = object(parsed.download);
+      if (parsed.schema === "aster-speedtest-v1") {
+        if (finite(upload.bitsPerSecond)) measurements.push({ label: "上传速度", value: upload.bitsPerSecond / 1e6, unit: "Mbps" });
+        if (finite(download.bitsPerSecond)) measurements.push({ label: "下载速度", value: download.bitsPerSecond / 1e6, unit: "Mbps" });
+        if (finite(upload.bytes)) measurements.push({ label: "上传数据", value: upload.bytes / 1e6, unit: "MB" });
+        if (finite(download.bytes)) measurements.push({ label: "下载数据", value: download.bytes / 1e6, unit: "MB" });
+        if (finite(upload.retransmits)) measurements.push({ label: "上传 TCP 重传", value: upload.retransmits, unit: "次" });
+        note = `TCP 不限速；${finite(parsed.streams) ? parsed.streams : 4} 条并行流，上传和下载分别测试。结果反映当前 VPS 到指定测速端的路径及两端负载。`;
+      } else note = "双向测速没有返回完整结果，请查看诊断输出。";
+    } else if (result.mode === "throughput") {
       const end = object(parsed.end), received = object(end.sum_received), sent = object(end.sum_sent);
       if (finite(received.bits_per_second)) measurements.push({ label: "上传吞吐（接收端）", value: received.bits_per_second / 1e6, unit: "Mbps" });
       if (finite(sent.retransmits)) measurements.push({ label: "TCP 重传", value: sent.retransmits, unit: "次" });

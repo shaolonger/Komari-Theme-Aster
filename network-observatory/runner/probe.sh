@@ -45,7 +45,7 @@ case "$MODE" in
       timeout 60s nexttrace --json --no-rdns --max-hops 16 --queries 1 "$TARGET" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
     fi
     ;;
-  throughput)
+  throughput|speedtest)
     if ! command -v iperf3 >/dev/null 2>&1; then
       printf '%s\n' '缺少 iperf3；请按部署文档安装。' >"$TEMP_OUTPUT"
       EXIT_CODE=127
@@ -55,7 +55,16 @@ case "$MODE" in
       printf '%s\n' '无效的 iperf3 目标。' >"$TEMP_OUTPUT"
       EXIT_CODE=64
     else
-      timeout 15s iperf3 --client "$TARGET" --port "$PORT" --time 10 --bitrate 100M --json >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+      if [ "$MODE" = speedtest ]; then
+        if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$(dirname "$0")/speedtest.py" ]; then
+          printf '%s\n' '缺少全速测速组件 speedtest.py 或 python3；请重新运行一键安装命令。' >"$TEMP_OUTPUT"
+          EXIT_CODE=127
+        else
+          timeout 50s python3 "$(dirname "$0")/speedtest.py" "$TARGET" "$PORT" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+        fi
+      else
+        timeout 15s iperf3 --client "$TARGET" --port "$PORT" --time 10 --bitrate 100M --json >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+      fi
     fi
     ;;
   tcpquality-route|tcpquality-intl|tcpquality-all|tcpquality-report|tcpquality-intl-report)

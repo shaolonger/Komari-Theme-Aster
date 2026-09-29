@@ -166,6 +166,30 @@ test('two online VPSes receive scheduled work independently and save isolated re
   } finally { f.cleanup(); }
 });
 
+test('full-speed tasks require an upgraded runner and run one at a time', async () => {
+  const f = fixture();
+  try {
+    await sleep();
+    const tokenA = (await f.invoke('POST', `${BASE}/nodes/${A}/token`, { body: {} })).json.token;
+    const tokenB = (await f.invoke('POST', `${BASE}/nodes/${B}/token`, { body: {} })).json.token;
+    const plan = { id: 'speedtest_daily', name: '双向测速', mode: 'speedtest', enabled: true, target: 'speed.example.net', port: 5201, intervalMinutes: 1440, clients: [A], nextRunAt: 0 };
+    await f.invoke('POST', `${BASE}/nodes/${A}/heartbeat`, { token: tokenA, body: { capabilities: ['iperf3', 'timeout'], runnerVersion: '1.3.0' } });
+    assert.equal((await f.invoke('POST', `${BASE}/nodes/${A}/test`, { body: { ...plan, trafficAccepted: true } })).statusCode, 400);
+    for (const [uuid, token] of [[A, tokenA], [B, tokenB]]) {
+      await f.invoke('POST', `${BASE}/nodes/${uuid}/heartbeat`, { token, body: { capabilities: ['iperf3', 'speedtest', 'timeout'], runnerVersion: '1.4.0' } });
+    }
+    assert.ok((await f.invoke('GET', `${BASE}/nodes/${A}/status`)).json.node.capabilities.includes('speedtest'));
+    assert.equal((await f.invoke('POST', `${BASE}/nodes/${A}/test`, { body: { ...plan, trafficAccepted: true } })).statusCode, 202);
+    assert.equal((await f.invoke('POST', `${BASE}/nodes/${B}/test`, { body: { ...plan, clients: [B], trafficAccepted: true } })).statusCode, 202);
+    const first = (await f.invoke('GET', `${BASE}/nodes/${A}/poll`, { token: tokenA })).json.task;
+    assert.equal(first.mode, 'speedtest');
+    assert.equal((await f.invoke('GET', `${BASE}/nodes/${B}/poll`, { token: tokenB })).json.task, null);
+    const output = Buffer.from(JSON.stringify({ schema: 'aster-speedtest-v1', upload: { bitsPerSecond: 900_000_000 }, download: { bitsPerSecond: 800_000_000 } })).toString('base64');
+    assert.equal((await f.invoke('POST', `${BASE}/nodes/${A}/result`, { token: tokenA, body: { taskId: first.taskId, output: `ASTER_NETWORK_RESULT_V1\tspeedtest\tspeed.example.net\t0\t${output}` } })).statusCode, 200);
+    assert.equal((await f.invoke('GET', `${BASE}/nodes/${B}/poll`, { token: tokenB })).json.task.mode, 'speedtest');
+  } finally { f.cleanup(); }
+});
+
 test('does not overwrite state when Komari reports a filesystem error other than missing file', async () => {
   const f = fixture(undefined, { gojaErrno: 13 });
   try {

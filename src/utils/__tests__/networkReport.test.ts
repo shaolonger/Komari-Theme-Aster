@@ -20,6 +20,12 @@ describe('network report interpretation', () => {
     expect(parseNetworkReport({ mode: 'tcpquality-route', rawOutput: 'new upstream format' }).measurements).toEqual([]);
     expect(cleanNetworkOutput('\u001b[31mfailed\u001b[0m')).toBe('failed');
   });
+  it('reports uncapped upload and download separately without changing legacy throughput', () => {
+    const report = parseNetworkReport({ mode: 'speedtest', rawOutput: JSON.stringify({ schema: 'aster-speedtest-v1', streams: 4, upload: { bitsPerSecond: 900_000_000, bytes: 1_125_000_000, retransmits: 3 }, download: { bitsPerSecond: 810_000_000, bytes: 1_012_500_000 } }) });
+    expect(report.measurements.find((row) => row.label === '上传速度')?.value).toBe(900);
+    expect(report.measurements.find((row) => row.label === '下载速度')?.value).toBe(810);
+    expect(report.note).toContain('不限速');
+  });
   it('escapes installation arguments without embedding the secret', () => {
     expect(quoteShell("host'other")).toBe("'host'\"'\"'other'");
     const command = installCommand('id-123', 'https://host.example.net');

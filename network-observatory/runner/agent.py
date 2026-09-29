@@ -26,7 +26,7 @@ API_BASE = "/api/aster-network-observatory/v1"
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 PROBE_PATH = Path("/usr/local/libexec/aster-network-observatory/probe.sh")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.3.0"
+RUNNER_VERSION = "1.4.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 TASK_TIMEOUT = 600
@@ -34,6 +34,7 @@ MODES = {
     "https",
     "route",
     "throughput",
+    "speedtest",
     "tcpquality-route",
     "tcpquality-intl",
     "tcpquality-all",
@@ -135,7 +136,7 @@ def validate_task(task):
         except ValueError:
             if re.fullmatch(r"[0-9.]+", target) or not HOST_RE.fullmatch(target):
                 raise ValueError("检测目标必须是主机名或 IP 地址")
-    if mode in {"https", "throughput"}:
+    if mode in {"https", "throughput", "speedtest"}:
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("端口无效")
     else:
@@ -208,6 +209,8 @@ def load_config(path):
 
 def capabilities(config):
     found = [name for name in ("curl", "nexttrace", "iperf3", "timeout") if shutil.which(name)]
+    if "iperf3" in found and PROBE_PATH.with_name("speedtest.py").is_file():
+        found.append("speedtest")
     entry = Path(config.get("tcpqualityBin") or "/usr/local/libexec/tcpquality/runTcpQuality.sh")
     if os.access(entry, os.X_OK) and entry.with_name("runTcpQuality-core.sh").is_file():
         found.append("tcpquality")

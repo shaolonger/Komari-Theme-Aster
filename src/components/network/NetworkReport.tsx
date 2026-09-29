@@ -1,7 +1,8 @@
 import { NETWORK_OBSERVATORY_API, type NetworkResult } from "@/services/networkObservatory";
 import { cleanNetworkOutput, parseNetworkReport } from "@/utils/networkReport";
 import { formatNetworkTime, modeName } from "./shared";
-export function NetworkReport({ result, previous }: { result: NetworkResult; previous?: NetworkResult }) {
+import { NetworkSpeedTrend } from "./NetworkSpeedTrend";
+export function NetworkReport({ result, previous, history = [] }: { result: NetworkResult; previous?: NetworkResult; history?: NetworkResult[] }) {
   const report = parseNetworkReport(result), before = previous ? parseNetworkReport(previous) : null;
   const pathChanged = before?.hops.length && report.hops.length ? report.hops.map((h) => h.address).join("|") !== before.hops.map((h) => h.address).join("|") : null;
   return <div className="network-report">
@@ -13,6 +14,7 @@ export function NetworkReport({ result, previous }: { result: NetworkResult; pre
       return <div key={item.label}><small>{item.label}</small><strong>{item.value.toLocaleString(undefined, { maximumFractionDigits: 2 })} <em>{item.unit}</em></strong>{old && item.unit && <small>较上次 {item.value - old.value >= 0 ? "+" : ""}{(item.value - old.value).toFixed(2)} {item.unit}</small>}</div>;
     })}</div>
     <p className="network-help">{report.note}</p>
+    <NetworkSpeedTrend result={result} history={history} />
     {result.reportImages.length > 0 && <div className="network-report-images">{result.reportImages.map((section) => <figure key={section}><figcaption>{section === "intl" ? "国际互联" : section === "ipv6" ? "三网 IPv6" : "三网 IPv4"} · 已保存图片</figcaption><img loading="lazy" alt={`${modeName(result.mode)} ${section} 检测报告`} src={`${NETWORK_OBSERVATORY_API}/reports/${encodeURIComponent(result.nodeUuid)}/${encodeURIComponent(result.taskId || "")}/${section}`} /></figure>)}</div>}
     {["tcpquality-report", "tcpquality-intl-report"].includes(result.mode) && !result.reportImages.length && <p className="network-inline-note">未缓存到报告图片。可在完整诊断输出中检查 TcpQuality 的上传结果；报告服务不可用时仍保留文本。</p>}
     {pathChanged !== null && <p>与上一条同目标路径相比：{pathChanged ? "路径响应有变化" : "逐跳地址一致"}（不代表线路质量评级）</p>}

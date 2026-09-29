@@ -6,6 +6,7 @@ const MODES = Object.freeze([
   "https",
   "route",
   "throughput",
+  "speedtest",
   "tcpquality-route",
   "tcpquality-intl",
   "tcpquality-all",
@@ -18,6 +19,7 @@ const MODE_INTERVALS = Object.freeze({
   https: INTERVALS,
   route: [360, 720, 1440],
   throughput: [1440],
+  speedtest: [1440],
   "tcpquality-route": TCPQUALITY_INTERVALS,
   "tcpquality-intl": TCPQUALITY_INTERVALS,
   "tcpquality-all": TCPQUALITY_INTERVALS,
@@ -94,7 +96,7 @@ function normalizeSchedule(input, index = 0) {
     throw new Error(`${name || id}：每天检测时刻或 UTC 时区无效（最多 8 个时刻）`);
   }
   if (!name || (!isTcpQuality && !isHost(target))) throw new Error(`${name || id}：请填写有效的目标主机名或 IP 地址`);
-  if (["https", "throughput"].includes(mode) && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+  if (["https", "throughput", "speedtest"].includes(mode) && (!Number.isInteger(port) || port < 1 || port > 65535)) {
     throw new Error(`${name}：端口必须介于 1 和 65535`);
   }
   if (clients.length !== 1) throw new Error(`${name}：每个计划必须且只能选择一台 VPS`);
@@ -107,7 +109,7 @@ function normalizeSchedule(input, index = 0) {
     target,
     carrier,
     region,
-    port: ["https", "throughput"].includes(mode) ? port : 0,
+    port: ["https", "throughput", "speedtest"].includes(mode) ? port : 0,
     intervalMinutes,
     scheduleType,
     dailyTimes,
