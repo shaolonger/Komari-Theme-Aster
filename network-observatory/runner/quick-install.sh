@@ -123,6 +123,7 @@ install_probe_dependencies() {
   [ -z "$packages" ] || install_packages $packages
   command -v iperf3 >/dev/null 2>&1 || fail 'iperf3 安装后仍不可用。'
   command -v timeout >/dev/null 2>&1 || fail 'timeout 安装后仍不可用。'
+  command -v traceroute >/dev/null 2>&1 || fail 'traceroute 安装后仍不可用。'
   command -v nping >/dev/null 2>&1 || fail 'nmap 安装后 nping 仍不可用；请检查系统软件源中的 nmap 包。'
 }
 

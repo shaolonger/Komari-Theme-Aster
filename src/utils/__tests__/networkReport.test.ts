@@ -26,6 +26,16 @@ describe('network report interpretation', () => {
     expect(report.measurements.find((row) => row.label === '下载速度')?.value).toBe(810);
     expect(report.note).toContain('不限速');
   });
+  it('renders traceroute hops and explains reduced detail after a NextTrace crash', () => {
+    const rawOutput = 'Segmentation fault\nASTER_ROUTE_FALLBACK_V1 nexttrace_exit=139 (SIGSEGV); traceroute -I:\ntraceroute to 198.51.100.1, 16 hops max\n 1  192.0.2.1  1.25 ms\n 2  *\n 3  198.51.100.1  23.5 ms\n';
+    const report = parseNetworkReport({ mode: 'route', rawOutput });
+    expect(report.hops).toEqual([
+      { ttl: 1, address: '192.0.2.1', asn: '', rtt: 1.25 },
+      { ttl: 2, address: '未响应', asn: '', rtt: null },
+      { ttl: 3, address: '198.51.100.1', asn: '', rtt: 23.5 },
+    ]);
+    expect(report.note).toContain('系统 traceroute');
+  });
   it('escapes installation arguments without embedding the secret', () => {
     expect(quoteShell("host'other")).toBe("'host'\"'\"'other'");
     const command = installCommand('id-123', 'https://host.example.net');

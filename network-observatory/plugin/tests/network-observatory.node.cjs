@@ -134,6 +134,27 @@ test("runner wraps an installed traceroute tool in a bounded structured result",
   }
 });
 
+test("runner recovers from a NextTrace SIGSEGV with system traceroute", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-route-fallback-"));
+  try {
+    const bin = path.join(temp, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "nexttrace"), "#!/bin/sh\necho 'Segmentation fault' >&2\nexit 139\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, "traceroute"), "#!/bin/sh\nprintf '%s\\n' 'traceroute to 198.51.100.1, 16 hops max' ' 1  192.0.2.1  1.25 ms' ' 2  *' ' 3  198.51.100.1  23.5 ms'\n", { mode: 0o755 });
+    const runner = path.resolve(__dirname, "../../runner/probe.sh");
+    const process = spawnSync("/bin/sh", [runner, "route", "198.51.100.1"], {
+      encoding: "utf8", env: { ...global.process.env, PATH: `${bin}:/usr/bin:/bin` },
+    });
+    assert.equal(process.status, 0, process.stderr);
+    const result = parseProbeOutput(process.stdout);
+    assert.equal(result.status, "success");
+    assert.equal(result.exitCode, 0);
+    assert.match(result.rawOutput, /ASTER_ROUTE_FALLBACK_V1 nexttrace_exit=139/);
+    assert.match(result.rawOutput, / 3  198\.51\.100\.1  23\.5 ms/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
 test("runner does not invoke tools when given an unknown mode", () => {
   const runner = path.resolve(__dirname, "../../runner/probe.sh");
   const process = spawnSync("/bin/sh", [runner, "arbitrary", "example.net"], { encoding: "utf8" });
@@ -168,6 +189,30 @@ test("runner selects fixed TcpQuality commands and rejects floating code install
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("all TcpQuality modes run their local core without an inherited TERM", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "aster-network-headless-quality-"));
+  try {
+    const bin = path.join(temp, "bin"), quality = path.join(temp, "quality");
+    fs.mkdirSync(bin); fs.mkdirSync(quality);
+    fs.writeFileSync(path.join(bin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(quality, "runTcpQuality.sh"), '#!/bin/bash\nset -e\nclear\nprintf "COMPLETED TERM=%s %s\\n" "$TERM" "$*"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(quality, "runTcpQuality-core.sh"), "# pinned core\n");
+    const env = { ...global.process.env, PATH: `${bin}:/usr/bin:/bin`, ASTER_TCPQUALITY_BIN: path.join(quality, "runTcpQuality.sh") };
+    delete env.TERM;
+    const baseline = spawnSync("bash", [env.ASTER_TCPQUALITY_BIN], { encoding: "utf8", env });
+    assert.equal(baseline.status, 1);
+    assert.match(baseline.stderr, /TERM environment variable not set/);
+    const runner = path.resolve(__dirname, "../../runner/probe.sh");
+    for (const mode of ["tcpquality-route", "tcpquality-intl", "tcpquality-all", "tcpquality-report", "tcpquality-intl-report"]) {
+      const process = spawnSync("/bin/sh", [runner, mode, "default"], { encoding: "utf8", env });
+      assert.equal(process.status, 0, `${mode}: ${process.stderr}`);
+      const result = parseProbeOutput(process.stdout);
+      assert.equal(result.status, "success", `${mode}: ${result.rawOutput}`);
+      assert.match(result.rawOutput, /COMPLETED TERM=xterm/);
+    }
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
 test("report probes opt into upstream upload and iperf3 is rate-limited", () => {

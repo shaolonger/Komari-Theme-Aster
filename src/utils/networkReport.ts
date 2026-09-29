@@ -39,15 +39,23 @@ export function parseNetworkReport(result: Pick<NetworkResult, "mode" | "rawOutp
       if (finite(sent.seconds)) measurements.push({ label: "持续时间", value: sent.seconds, unit: "s" });
       note = "10 秒单连接上传，客户端限速 100 Mbit/s；结果反映限速条件下的吞吐，不代表链路峰值，也没有测量下载速度。";
     } else {
-      // NextTrace's traditional JSON exports time.Duration RTT in nanoseconds.
-      const rows = Array.isArray(parsed.Hops) ? parsed.Hops : [];
-      for (const [index, probes] of rows.entries()) {
-        const values = Array.isArray(probes) ? probes : [probes];
-        const hop = object(values.find((entry) => object(entry).Success === true) || values[0]);
-        const address = object(hop.Address), geo = object(hop.Geo);
-        hops.push({ ttl: finite(hop.TTL) ? hop.TTL : index + 1, address: typeof address.IP === "string" ? address.IP : typeof hop.Address === "string" ? hop.Address : "未响应", asn: typeof geo.Asnumber === "string" ? geo.Asnumber : "", rtt: finite(hop.RTT) ? hop.RTT / 1e6 : null });
+      if (raw.includes("ASTER_ROUTE_FALLBACK_V1")) {
+        for (const line of raw.split("\n")) {
+          const match = /^\s*(\d{1,2})\s+(\*|[0-9a-fA-F:.]+)(?:\s+([0-9]+(?:\.[0-9]+)?)\s*ms)?/.exec(line);
+          if (match) hops.push({ ttl: Number(match[1]), address: match[2] === "*" ? "未响应" : match[2], asn: "", rtt: match[3] ? Number(match[3]) : null });
+        }
+        note = "NextTrace 在该节点崩溃，已改用系统 traceroute 的 ICMP 路径结果；备用结果不包含 ASN 信息。中间跳不回应不等于终点丢包。";
+      } else {
+        // NextTrace's traditional JSON exports time.Duration RTT in nanoseconds.
+        const rows = Array.isArray(parsed.Hops) ? parsed.Hops : [];
+        for (const [index, probes] of rows.entries()) {
+          const values = Array.isArray(probes) ? probes : [probes];
+          const hop = object(values.find((entry) => object(entry).Success === true) || values[0]);
+          const address = object(hop.Address), geo = object(hop.Geo);
+          hops.push({ ttl: finite(hop.TTL) ? hop.TTL : index + 1, address: typeof address.IP === "string" ? address.IP : typeof hop.Address === "string" ? hop.Address : "未响应", asn: typeof geo.Asnumber === "string" ? geo.Asnumber : "", rtt: finite(hop.RTT) ? hop.RTT / 1e6 : null });
+        }
+        note = "中间跳不回应不等于终点丢包；运营商标签表示目标分类，不是对整条线路的评级。";
       }
-      note = "中间跳不回应不等于终点丢包；运营商标签表示目标分类，不是对整条线路的评级。";
     }
   } else note = "按本地 TcpQuality 版本保留完整报告。执行完成表示脚本已结束，网络表现请结合报告中的各项目判断。";
   return { measurements, hops, note };

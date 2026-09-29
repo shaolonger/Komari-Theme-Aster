@@ -43,6 +43,14 @@ case "$MODE" in
       EXIT_CODE=64
     else
       timeout 60s nexttrace --json --no-rdns --max-hops 16 --queries 1 "$TARGET" >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$?
+      if [ "$EXIT_CODE" -eq 139 ]; then
+        if command -v traceroute >/dev/null 2>&1; then
+          printf '\nASTER_ROUTE_FALLBACK_V1 nexttrace_exit=139 (SIGSEGV); traceroute -I:\n' >>"$TEMP_OUTPUT"
+          timeout 35s traceroute -I -n -q 1 -m 16 -w 1 "$TARGET" >>"$TEMP_OUTPUT" 2>&1 && EXIT_CODE=0 || EXIT_CODE=$?
+        else
+          printf '\nNextTrace 崩溃，且缺少 traceroute 备用工具；请重新运行一键安装命令。\n' >>"$TEMP_OUTPUT"
+        fi
+      fi
     fi
     ;;
   throughput|speedtest)
@@ -83,11 +91,11 @@ case "$MODE" in
       esac
       # Every permitted option is a fixed literal; user input is never evaluated.
       case "$MODE" in
-        tcpquality-route) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --route --route-protocol both --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
-        tcpquality-intl) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
-        tcpquality-all) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --all --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
-        tcpquality-report) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
-        tcpquality-intl-report) timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-route) TERM=xterm timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --route --route-protocol both --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-intl) TERM=xterm timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-all) TERM=xterm timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --all --no-rank-upload >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-report) TERM=xterm timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
+        tcpquality-intl-report) TERM=xterm timeout "$TCPQUALITY_LIMIT" bash "$TCPQUALITY_BIN" --no-rootfs --intl >"$TEMP_OUTPUT" 2>&1 || EXIT_CODE=$? ;;
       esac
     fi
     ;;
