@@ -101,7 +101,7 @@ for name in expected:
     target.write_bytes(files[name])
     os.chmod(target, 0o755 if name.endswith(("install.sh", "probe.sh")) else 0o644)
 
-print(f"已下载并验证网络观测 runner v{manifest['version']}。")
+print(f"已下载并验证网络观测插件包 v{manifest['version']} 中的 runner。")
 PY
 
 install_probe_dependencies() {
