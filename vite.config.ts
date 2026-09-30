@@ -21,25 +21,36 @@ export default defineConfig({
     target: ["es2020", "safari15.4", "chrome87"],
     rollupOptions: {
       output: {
-        // Split rarely-changing vendor code into stable chunks so the main app
-        // bundle stays small and these can be cached across deploys.
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, "/");
-          if (!normalized.includes("/node_modules/")) return;
-
-          if (
-            /\/node_modules\/(?:react|react-dom|react-router|react-router-dom)\//.test(
-              normalized,
-            )
-          ) {
-            return "react";
-          }
-          if (normalized.includes("/node_modules/@tanstack/react-query/")) {
-            return "query";
-          }
-          if (normalized.includes("/node_modules/zod/")) {
-            return "validation";
-          }
+        // Keep vendor dependencies stable and network-only icons lazy. Priority
+        // prevents icon groups from absorbing React or the shared icon factory.
+        codeSplitting: {
+          groups: [
+            {
+              name: "react",
+              test: /node_modules[\\/](?:react|react-dom|react-router|react-router-dom)[\\/]/,
+              priority: 40,
+            },
+            {
+              name: "query",
+              test: /node_modules[\\/]@tanstack[\\/]react-query[\\/]/,
+              priority: 30,
+            },
+            {
+              name: "validation",
+              test: /node_modules[\\/]zod[\\/]/,
+              priority: 30,
+            },
+            {
+              name: "icon-core",
+              test: /lucide-react[\\/]dist[\\/]esm[\\/](?:createLucideIcon|Icon|defaultAttributes|shared[\\/]src[\\/]utils)\.js$/,
+              priority: 20,
+            },
+            {
+              name: "network-icons",
+              test: /lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](?:radio|layers-3|file-json|book-open|terminal|globe-2)\.js$/,
+              priority: 10,
+            },
+          ],
         },
       },
     },

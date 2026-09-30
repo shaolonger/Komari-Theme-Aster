@@ -1,81 +1,881 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { applyNetworkPolicies, deleteNetworkPolicy, getNetworkCatalog, previewNetworkPolicies, updateNetworkPolicy, type ApplyNetworkPolicies, type NetworkPolicy, type NetworkPreview } from "@/services/networkObservatory";
+import {
+  applyNetworkPolicies,
+  deleteNetworkPolicy,
+  getNetworkCatalog,
+  previewNetworkPolicies,
+  updateNetworkPolicy,
+  type ApplyNetworkPolicies,
+  type NetworkPolicy,
+  type NetworkPreview,
+} from "@/services/networkObservatory";
 import { MODES, networkGuide, timingName } from "./shared";
 import { NetworkTimingFields } from "./NetworkTimingFields";
 import "@/styles/network-observatory.css";
 
-export function NetworkPolicyPanel({ initialNodes = [], primaryNode, onApplied }: { initialNodes?: string[]; primaryNode?: string; onApplied?: () => void }) {
+export function NetworkPolicyPanel({
+  initialNodes = [],
+  primaryNode,
+  onApplied,
+}: {
+  initialNodes?: string[];
+  primaryNode?: string;
+  onApplied?: () => void;
+}) {
   const { data: me } = useAuth();
   const cache = useQueryClient();
-  const catalog = useQuery({ queryKey: ["network-catalog"], queryFn: getNetworkCatalog, enabled: me?.logged_in === true, staleTime: 30_000, retry: false });
+  const catalog = useQuery({
+    queryKey: ["network-catalog"],
+    queryFn: getNetworkCatalog,
+    enabled: me?.logged_in === true,
+    staleTime: 30_000,
+    retry: false,
+  });
   const [presets, setPresets] = useState<string[]>(["basic"]);
-  const [clients, setClients] = useState(initialNodes), [groups, setGroups] = useState<string[]>([]);
-  const [inherit, setInherit] = useState(true), [search, setSearch] = useState("");
+  const [clients, setClients] = useState(initialNodes),
+    [groups, setGroups] = useState<string[]>([]);
+  const [inherit, setInherit] = useState(true),
+    [search, setSearch] = useState("");
   const [targetSearch, setTargetSearch] = useState("");
-  const [settings, setSettings] = useState<NonNullable<ApplyNetworkPolicies["settingsByPreset"]>>({});
+  const [settings, setSettings] = useState<
+    NonNullable<ApplyNetworkPolicies["settingsByPreset"]>
+  >({});
   const [trafficAccepted, setTrafficAccepted] = useState(false);
-  const [step, setStep] = useState(0), [expandScope, setExpandScope] = useState(false);
+  const [step, setStep] = useState(0),
+    [expandScope, setExpandScope] = useState(false);
   const [preview, setPreview] = useState<NetworkPreview | null>(null);
-  const [pending, setPending] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false),
+    [error, setError] = useState(""),
+    [message, setMessage] = useState("");
   const [editing, setEditing] = useState<NetworkPolicy | null>(null);
-  const resetPreview = () => { setPreview(null); setMessage(""); };
-  const toggle = (values: string[], value: string) => values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
-  async function action(operation: () => Promise<unknown>, success: string, refresh = false) {
-    setPending(true); setError("");
-    try { await operation(); if (success) setMessage(success); if (refresh) { await cache.invalidateQueries({ queryKey: ["network-catalog"] }); await cache.invalidateQueries({ queryKey: ["node-network"] }); onApplied?.(); } }
-    catch (e) { setError(e instanceof Error ? e.message : "操作失败"); }
-    finally { setPending(false); }
+  const resetPreview = () => {
+    setPreview(null);
+    setMessage("");
+  };
+  const toggle = (values: string[], value: string) =>
+    values.includes(value)
+      ? values.filter((v) => v !== value)
+      : [...values, value];
+  async function action(
+    operation: () => Promise<unknown>,
+    success: string,
+    refresh = false,
+  ) {
+    setPending(true);
+    setError("");
+    try {
+      await operation();
+      if (success) setMessage(success);
+      if (refresh) {
+        await cache.invalidateQueries({ queryKey: ["network-catalog"] });
+        await cache.invalidateQueries({ queryKey: ["node-network"] });
+        onApplied?.();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setPending(false);
+    }
   }
   if (!me?.logged_in) return <p>请以管理员身份登录后配置网络检测。</p>;
   if (catalog.isPending) return <p role="status">正在读取检测方案…</p>;
-  if (!catalog.data) return <div className="network-empty-state"><p>无法读取网络检测方案。请检查插件是否已启用、权限是否批准，并查看下方错误及插件日志。</p><p role="alert">{catalog.error?.message}</p><a href={networkGuide} target="_blank" rel="noreferrer">查看排查指南</a><button type="button" onClick={() => void catalog.refetch()}>重试</button></div>;
+  if (!catalog.data)
+    return (
+      <div className="network-empty-state">
+        <p>
+          无法读取网络检测方案。请检查插件是否已启用、权限是否批准，并查看下方错误及插件日志。
+        </p>
+        <p role="alert">{catalog.error?.message}</p>
+        <a href={networkGuide} target="_blank" rel="noreferrer">
+          查看排查指南
+        </a>
+        <button type="button" onClick={() => void catalog.refetch()}>
+          重试
+        </button>
+      </div>
+    );
   const data = catalog.data;
   const selected = data.presets.filter((preset) => presets.includes(preset.id));
   const scopedClients = primaryNode && !expandScope ? [primaryNode] : clients;
   const scopedGroups = primaryNode && !expandScope ? [] : inherit ? groups : [];
-  const input: ApplyNetworkPolicies = { presetIds: presets, clients: scopedClients, groups: scopedGroups, inherit, settingsByPreset: settings, trafficAccepted };
-  const matched = data.inventory.filter((node) => scopedClients.includes(node.uuid) || scopedGroups.includes(node.group));
-  const groupNames = [...new Set(data.inventory.map((node) => node.group).filter(Boolean))].sort();
-  const options = data.inventory.filter((node) => `${node.name} ${node.group}`.toLowerCase().includes(search.toLowerCase()));
-  const editingPreset = editing ? data.presets.find((preset) => preset.id === editing.presetId) : undefined;
-  const editTargetIds = editing?.settings.targetIds.length ? editing.settings.targetIds : editing?.items?.map((old) => editingPreset?.items.find((item) => item.target === old.target)?.id || "").filter(Boolean) || [];
-  return <div className="network-policy-panel">
-    <p className="network-help">选择方案、目标和 VPS，预览后应用。配置直接保存到网络插件。</p>
-    <div className="network-policy-steps" aria-label="配置步骤">{["选择检测", "目标与时间", "范围与预览"].map((title, index) => <button type="button" key={title} aria-current={step === index ? "step" : undefined} onClick={() => setStep(index)}><span>{index + 1}</span>{title}</button>)}</div>
-    {data.inventoryError && <p className="network-form-error" role="alert">{data.inventoryError}。请在插件管理批准系统 RPC 权限后重试同步。</p>}
-    {step === 0 && <section className="network-policy-step"><div className="network-step-heading"><h3>选择检测方案</h3><p>可同时选择多项；下一步再调整各项的目标和时间。</p></div>
-    <div className="network-preset-grid">{data.presets.map((preset) => <label className="network-preset" key={preset.id} data-selected={presets.includes(preset.id)}>
-      <input type="checkbox" checked={presets.includes(preset.id)} onChange={() => { setPresets(toggle(presets, preset.id)); resetPreview(); }} />
-      <span><strong>{preset.name}</strong><small>{preset.description}</small><small>需要 {preset.requirement} · {preset.selectableTargets ? `${preset.items.length} 个可选目标` : `${preset.items.length} 项检测`}</small></span>
-    </label>)}</div></section>}
-    {step === 1 && <section className="network-policy-step"><div className="network-step-heading"><h3>目标与执行时间</h3><p>公开目标可直接选择；有自有检测端时也可填写主机。</p></div>
-    <div className="network-form">{selected.map((preset) => <fieldset key={preset.id}><legend>{preset.name}</legend>
-      <NetworkTimingFields value={{ intervalMinutes: preset.items[0].intervalMinutes, ...settings[preset.id] }} intervals={MODES.find((m) => m.id === preset.items[0].mode)!.intervals} onChange={(next) => { setSettings({ ...settings, [preset.id]: { ...settings[preset.id], ...next } }); resetPreview(); }} />
-      {preset.selectableTargets && <fieldset className="network-target-picker"><legend>选择路径目标（最多 24 个）</legend><label>筛选地区、运营商或协议<input type="search" value={targetSearch} onChange={(event) => setTargetSearch(event.target.value)} placeholder="例如：上海 联通、IPv6" /></label><div className="network-target-options">{preset.items.filter((item) => `${item.name} ${item.target}`.toLowerCase().includes(targetSearch.toLowerCase())).map((item) => { const chosen = settings[preset.id]?.targetIds || preset.defaultTargetIds || []; return <label className="network-check" key={item.id}><input type="checkbox" checked={chosen.includes(item.id)} disabled={!chosen.includes(item.id) && chosen.length >= 24} onChange={() => { setSettings({ ...settings, [preset.id]: { ...settings[preset.id], targetIds: toggle(chosen, item.id) } }); resetPreview(); }} />{item.name}<small> · {item.target}</small></label>; })}</div><small>已选 {(settings[preset.id]?.targetIds || preset.defaultTargetIds || []).length} 个；默认北京三网 IPv4。</small></fieldset>}
-      {preset.targets && <label>公开候选节点<select value={preset.targets.some((item) => item.target === settings[preset.id]?.target) ? settings[preset.id]?.target : ""} onChange={(event) => { const chosen = preset.targets?.find((item) => item.target === event.target.value); setSettings({ ...settings, [preset.id]: { ...settings[preset.id], target: chosen?.target || "", port: chosen?.port || 5201 } }); resetPreview(); }}><option value="">选择公开节点或使用自定义主机</option>{preset.targets.map((item) => <option key={item.target} value={item.target}>{item.provider} · {item.region} · {item.target}</option>)}</select><small>公开节点可能忙碌；全速定时测速优先使用自有检测端。</small></label>}
-      {preset.customTarget && <div className="network-form-pair">{(!preset.targets || !preset.targets.some((item) => item.target === settings[preset.id]?.target)) && <label>目标主机<input placeholder="域名或 IP，不含协议和路径" value={settings[preset.id]?.target || ""} onChange={(e) => { setSettings({ ...settings, [preset.id]: { ...settings[preset.id], target: e.target.value } }); resetPreview(); }} /></label>}<label>端口<input type="number" min={1} max={65535} value={settings[preset.id]?.port || preset.items[0].port} onChange={(e) => { setSettings({ ...settings, [preset.id]: { ...settings[preset.id], port: Number(e.target.value) } }); resetPreview(); }} /></label></div>}
-      <details><summary>目标与来源 · {data.version}</summary>{!preset.selectableTargets && <ul>{preset.items.map((item) => <li key={item.id}>{item.name}：{item.target === "default" ? "本地工具默认目标集" : item.target || "自定义目标"}</li>)}</ul>}{preset.source && <a href={preset.source} target="_blank" rel="noreferrer">查看公开来源</a>}<p>目标库随插件发布。已有方案保留版本，编辑并保存时更新到当前目录版本。</p></details>
-    </fieldset>)}</div>
-    {selected.some((p) => p.traffic) && <label className="network-check network-traffic-consent"><input type="checkbox" checked={trafficAccepted} onChange={(e) => { setTrafficAccepted(e.target.checked); resetPreview(); }} />我确认有权使用所选目标并接受检测流量。全速双向测试不限制传输速率；若选了图片报告，数据还会上传至 TcpQuality。</label>}
-    </section>}
-    {step === 2 && <section className="network-policy-step"><div className="network-step-heading"><h3>选择 VPS 并预览</h3><p>应用前会列出受影响的节点和新增计划数。</p></div>
-    {primaryNode && !expandScope && <div className="network-editor-intro"><strong>{data.inventory.find((node) => node.uuid === primaryNode)?.name || "当前 VPS"}</strong><span>默认只应用到此实例</span><button type="button" onClick={() => setExpandScope(true)}>扩展到更多 VPS</button></div>}
-    {selected.some((preset) => preset.traffic) && !trafficAccepted && <p className="network-inline-note">测速或图片报告需要先在“目标与时间”确认目标授权和流量。<button type="button" onClick={() => setStep(1)}>返回确认</button></p>}
-    {(!primaryNode || expandScope) && <>
-    <label className="network-check"><input type="checkbox" checked={inherit} onChange={(e) => { setInherit(e.target.checked); resetPreview(); }} />继承方案，后续集中更新（取消后复制为独立计划）</label>
-    {inherit && <div className="network-scope-groups"><strong>自动继承 Komari 分组</strong>{groupNames.map((group) => <label className="network-check" key={group}><input type="checkbox" checked={groups.includes(group)} onChange={() => { setGroups(toggle(groups, group)); resetPreview(); }} />{group}</label>)}<p className="network-help">插件每分钟同步分组；新节点接入后自动执行。单机覆盖保留，不随方案更新。</p></div>}
-    <div className="network-form"><label>选择 VPS<input type="search" placeholder="搜索名称或分组" value={search} onChange={(e) => setSearch(e.target.value)} /></label></div>
-    <div className="network-actions"><button type="button" onClick={() => { setClients([...new Set([...clients, ...options.map((n) => n.uuid)])]); resetPreview(); }}>选择搜索结果</button><button type="button" onClick={() => { setClients([]); setGroups([]); resetPreview(); }}>清空选择</button><span>匹配 {matched.length} 台</span></div>
-    <div className="network-node-picker">{options.map((node) => <label className="network-check" key={node.uuid}><input type="checkbox" checked={clients.includes(node.uuid)} onChange={() => { setClients(toggle(clients, node.uuid)); resetPreview(); }} /><span>{node.name}<small>{node.group || "未分组"} · {data.nodes.some((n) => n.uuid === node.uuid) ? "已登记" : "未接入"}</small></span></label>)}</div>
-    {primaryNode && <button type="button" className="network-scope-reset" onClick={() => { setExpandScope(false); setClients([primaryNode]); setGroups([]); resetPreview(); }}>恢复为仅当前 VPS</button>}</>}
-    <div className="network-actions"><button type="button" disabled={pending || !presets.length || (!matched.length && !scopedGroups.length) || Boolean(data.inventoryError) || (selected.some((preset) => preset.traffic) && !trafficAccepted)} onClick={() => void action(async () => { setPreview(await previewNetworkPolicies(input)); }, "")}>预览应用范围</button>{preview && <button type="button" className="network-primary-button" disabled={pending} onClick={() => void action(async () => { const result = await applyNetworkPolicies(input); setPreview(null); setMessage(`应用成功，新增 ${result.added} 条计划。新计划将在接入且工具就绪后错峰执行。`); }, "", true)}>确认应用</button>}</div>
-    {preview && <div className="network-preview" role="status"><strong>{preview.planCount} 条计划 · 新增 {preview.added} · 已存在 {preview.unchanged}</strong><ul>{preview.nodes.map((node) => <li key={node.uuid}>{node.name} · {node.planCount} 项 · {node.state}</li>)}</ul><p>未接入或缺少依赖的节点保留配置，具备条件后再执行。</p></div>}
-    </section>}
-    <div className="network-policy-footer"><span>已选 {selected.length} 个方案 · 匹配 {matched.length} 台 VPS</span><div>{step > 0 && <button type="button" onClick={() => setStep(step - 1)}>上一步</button>}{step < 2 && <button type="button" className="network-primary-button" disabled={!selected.length} onClick={() => setStep(step + 1)}>下一步</button>}</div></div>
-    {error && <p className="network-form-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    <details className="network-policy-library"><summary>管理已有方案（{data.policies.length}）</summary>{data.policies.map((policy) => <article key={policy.id} className="network-policy-row"><div><strong>{policy.name}</strong><small>{policy.enabled ? "启用" : "暂停"} · {timingName(policy.settings)} · {policy.groups.join("、") || `${policy.clients.length} 台指定 VPS`} · {policy.catalogVersion}</small></div><div className="network-actions"><button type="button" disabled={pending} onClick={() => setEditing(policy)}>编辑</button><button type="button" disabled={pending} onClick={() => void action(() => updateNetworkPolicy({ ...policy, enabled: !policy.enabled }), "方案状态已更新", true)}>{policy.enabled ? "暂停" : "恢复"}</button><button type="button" disabled={pending} onClick={() => { if (window.confirm("删除此方案及其继承计划？单机自定义计划和历史结果会保留。")) void action(() => deleteNetworkPolicy(policy), "方案已删除", true); }}>删除</button></div></article>)}</details>
-    {editing && <form className="network-form network-policy-edit" onSubmit={(e) => { e.preventDefault(); void action(async () => { await updateNetworkPolicy(editing); setEditing(null); }, "继承计划已更新，单机覆盖保持不变", true); }}><strong>编辑 {editing.name}</strong><fieldset><legend>应用范围（VPS 与分组取并集）</legend><div className="network-scope-groups">{groupNames.map((group) => <label className="network-check" key={group}><input type="checkbox" checked={editing.groups.includes(group)} onChange={() => setEditing({ ...editing, groups: toggle(editing.groups, group) })} />{group}</label>)}</div><div className="network-node-picker">{data.inventory.map((node) => <label className="network-check" key={node.uuid}><input type="checkbox" checked={editing.clients.includes(node.uuid)} onChange={() => setEditing({ ...editing, clients: toggle(editing.clients, node.uuid) })} />{node.name}<small> · {node.group || "未分组"}</small></label>)}</div></fieldset><label>方案名称<input required value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></label><NetworkTimingFields value={editing.settings} intervals={MODES.find((m) => m.id === editingPreset!.items[0].mode)!.intervals} onChange={(next) => setEditing({ ...editing, settings: { ...editing.settings, ...next } })} label="频率" />{editingPreset?.selectableTargets && <fieldset className="network-target-picker"><legend>路径目标（最多 24 个）</legend><div className="network-target-options">{editingPreset.items.map((item) => <label className="network-check" key={item.id}><input type="checkbox" checked={editTargetIds.includes(item.id)} disabled={!editTargetIds.includes(item.id) && editTargetIds.length >= 24} onChange={() => setEditing({ ...editing, settings: { ...editing.settings, targetIds: toggle(editTargetIds, item.id) } })} />{item.name}<small> · {item.target}</small></label>)}</div></fieldset>}{editingPreset?.targets && <label>公开候选节点<select value={editingPreset.targets.some((item) => item.target === editing.settings.target) ? editing.settings.target : ""} onChange={(event) => { const chosen = editingPreset.targets?.find((item) => item.target === event.target.value); setEditing({ ...editing, settings: { ...editing.settings, target: chosen?.target || "", port: chosen?.port || 5201 } }); }}><option value="">自定义目标</option>{editingPreset.targets.map((item) => <option key={item.target} value={item.target}>{item.provider} · {item.region} · {item.target}</option>)}</select></label>}{data.presets.find((p) => p.id === editing.presetId)?.customTarget && <><label>目标<input required value={editing.settings.target} onChange={(e) => setEditing({ ...editing, settings: { ...editing.settings, target: e.target.value } })} /></label><label>端口<input type="number" min={1} max={65535} required value={editing.settings.port} onChange={(e) => setEditing({ ...editing, settings: { ...editing.settings, port: Number(e.target.value) } })} /></label></>}<div className="network-actions"><button type="submit" disabled={pending}>更新所有继承节点</button><button type="button" onClick={() => setEditing(null)}>取消编辑</button></div></form>}
-  </div>;
+  const input: ApplyNetworkPolicies = {
+    presetIds: presets,
+    clients: scopedClients,
+    groups: scopedGroups,
+    inherit,
+    settingsByPreset: settings,
+    trafficAccepted,
+  };
+  const matched = data.inventory.filter(
+    (node) =>
+      scopedClients.includes(node.uuid) || scopedGroups.includes(node.group),
+  );
+  const groupNames = [
+    ...new Set(data.inventory.map((node) => node.group).filter(Boolean)),
+  ].sort();
+  const options = data.inventory.filter((node) =>
+    `${node.name} ${node.group}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  const editingPreset = editing
+    ? data.presets.find((preset) => preset.id === editing.presetId)
+    : undefined;
+  const editTargetIds = editing?.settings.targetIds.length
+    ? editing.settings.targetIds
+    : editing?.items
+        ?.map(
+          (old) =>
+            editingPreset?.items.find((item) => item.target === old.target)
+              ?.id || "",
+        )
+        .filter(Boolean) || [];
+  return (
+    <div className="network-policy-panel">
+      <p className="network-help">
+        选择方案、目标和 VPS，预览后应用。配置直接保存到网络插件。
+      </p>
+      <div className="network-policy-steps" aria-label="配置步骤">
+        {["选择检测", "目标与时间", "范围与预览"].map((title, index) => (
+          <button
+            type="button"
+            key={title}
+            aria-current={step === index ? "step" : undefined}
+            onClick={() => setStep(index)}
+          >
+            <span>{index + 1}</span>
+            {title}
+          </button>
+        ))}
+      </div>
+      {data.inventoryError && (
+        <p className="network-form-error" role="alert">
+          {data.inventoryError}。请在插件管理批准系统 RPC 权限后重试同步。
+        </p>
+      )}
+      {step === 0 && (
+        <section className="network-policy-step">
+          <div className="network-step-heading">
+            <h3>选择检测方案</h3>
+            <p>可同时选择多项；下一步再调整各项的目标和时间。</p>
+          </div>
+          <div className="network-preset-grid">
+            {data.presets.map((preset) => (
+              <label
+                className="network-preset"
+                key={preset.id}
+                data-selected={presets.includes(preset.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={presets.includes(preset.id)}
+                  onChange={() => {
+                    setPresets(toggle(presets, preset.id));
+                    resetPreview();
+                  }}
+                />
+                <span>
+                  <strong>{preset.name}</strong>
+                  <small>{preset.description}</small>
+                  <small>
+                    需要 {preset.requirement} ·{" "}
+                    {preset.selectableTargets
+                      ? `${preset.items.length} 个可选目标`
+                      : `${preset.items.length} 项检测`}
+                  </small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+      {step === 1 && (
+        <section className="network-policy-step">
+          <div className="network-step-heading">
+            <h3>目标与执行时间</h3>
+            <p>公开目标可直接选择；有自有检测端时也可填写主机。</p>
+          </div>
+          <div className="network-form">
+            {selected.map((preset) => (
+              <fieldset key={preset.id}>
+                <legend>{preset.name}</legend>
+                <NetworkTimingFields
+                  value={{
+                    intervalMinutes: preset.items[0].intervalMinutes,
+                    ...settings[preset.id],
+                  }}
+                  intervals={
+                    MODES.find((m) => m.id === preset.items[0].mode)!.intervals
+                  }
+                  onChange={(next) => {
+                    setSettings({
+                      ...settings,
+                      [preset.id]: { ...settings[preset.id], ...next },
+                    });
+                    resetPreview();
+                  }}
+                />
+                {preset.selectableTargets && (
+                  <fieldset className="network-target-picker">
+                    <legend>选择路径目标（最多 24 个）</legend>
+                    <label>
+                      筛选地区、运营商或协议
+                      <input
+                        type="search"
+                        value={targetSearch}
+                        onChange={(event) =>
+                          setTargetSearch(event.target.value)
+                        }
+                        placeholder="例如：上海 联通、IPv6"
+                      />
+                    </label>
+                    <div className="network-target-options">
+                      {preset.items
+                        .filter((item) =>
+                          `${item.name} ${item.target}`
+                            .toLowerCase()
+                            .includes(targetSearch.toLowerCase()),
+                        )
+                        .map((item) => {
+                          const chosen =
+                            settings[preset.id]?.targetIds ||
+                            preset.defaultTargetIds ||
+                            [];
+                          return (
+                            <label className="network-check" key={item.id}>
+                              <input
+                                type="checkbox"
+                                checked={chosen.includes(item.id)}
+                                disabled={
+                                  !chosen.includes(item.id) &&
+                                  chosen.length >= 24
+                                }
+                                onChange={() => {
+                                  setSettings({
+                                    ...settings,
+                                    [preset.id]: {
+                                      ...settings[preset.id],
+                                      targetIds: toggle(chosen, item.id),
+                                    },
+                                  });
+                                  resetPreview();
+                                }}
+                              />
+                              {item.name}
+                              <small> · {item.target}</small>
+                            </label>
+                          );
+                        })}
+                    </div>
+                    <small>
+                      已选{" "}
+                      {
+                        (
+                          settings[preset.id]?.targetIds ||
+                          preset.defaultTargetIds ||
+                          []
+                        ).length
+                      }{" "}
+                      个；默认北京三网 IPv4。
+                    </small>
+                  </fieldset>
+                )}
+                {preset.targets && (
+                  <label>
+                    公开候选节点
+                    <select
+                      value={
+                        preset.targets.some(
+                          (item) => item.target === settings[preset.id]?.target,
+                        )
+                          ? settings[preset.id]?.target
+                          : ""
+                      }
+                      onChange={(event) => {
+                        const chosen = preset.targets?.find(
+                          (item) => item.target === event.target.value,
+                        );
+                        setSettings({
+                          ...settings,
+                          [preset.id]: {
+                            ...settings[preset.id],
+                            target: chosen?.target || "",
+                            port: chosen?.port || 5201,
+                          },
+                        });
+                        resetPreview();
+                      }}
+                    >
+                      <option value="">选择公开节点或使用自定义主机</option>
+                      {preset.targets.map((item) => (
+                        <option key={item.target} value={item.target}>
+                          {item.provider} · {item.region} · {item.target}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      公开节点可能忙碌；全速定时测速优先使用自有检测端。
+                    </small>
+                  </label>
+                )}
+                {preset.customTarget && (
+                  <div className="network-form-pair">
+                    {(!preset.targets ||
+                      !preset.targets.some(
+                        (item) => item.target === settings[preset.id]?.target,
+                      )) && (
+                      <label>
+                        目标主机
+                        <input
+                          placeholder="域名或 IP，不含协议和路径"
+                          value={settings[preset.id]?.target || ""}
+                          onChange={(e) => {
+                            setSettings({
+                              ...settings,
+                              [preset.id]: {
+                                ...settings[preset.id],
+                                target: e.target.value,
+                              },
+                            });
+                            resetPreview();
+                          }}
+                        />
+                      </label>
+                    )}
+                    <label>
+                      端口
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={
+                          settings[preset.id]?.port || preset.items[0].port
+                        }
+                        onChange={(e) => {
+                          setSettings({
+                            ...settings,
+                            [preset.id]: {
+                              ...settings[preset.id],
+                              port: Number(e.target.value),
+                            },
+                          });
+                          resetPreview();
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+                <details>
+                  <summary>目标与来源 · {data.version}</summary>
+                  {!preset.selectableTargets && (
+                    <ul>
+                      {preset.items.map((item) => (
+                        <li key={item.id}>
+                          {item.name}：
+                          {item.target === "default"
+                            ? "本地工具默认目标集"
+                            : item.target || "自定义目标"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {preset.source && (
+                    <a href={preset.source} target="_blank" rel="noreferrer">
+                      查看公开来源
+                    </a>
+                  )}
+                  <p>
+                    目标库随插件发布。已有方案保留版本，编辑并保存时更新到当前目录版本。
+                  </p>
+                </details>
+              </fieldset>
+            ))}
+          </div>
+          {selected.some((p) => p.traffic) && (
+            <label className="network-check network-traffic-consent">
+              <input
+                type="checkbox"
+                checked={trafficAccepted}
+                onChange={(e) => {
+                  setTrafficAccepted(e.target.checked);
+                  resetPreview();
+                }}
+              />
+              我确认有权使用所选目标并接受检测流量。全速双向测试不限制传输速率；若选了图片报告，数据还会上传至
+              TcpQuality。
+            </label>
+          )}
+        </section>
+      )}
+      {step === 2 && (
+        <section className="network-policy-step">
+          <div className="network-step-heading">
+            <h3>选择 VPS 并预览</h3>
+            <p>应用前会列出受影响的节点和新增计划数。</p>
+          </div>
+          {primaryNode && !expandScope && (
+            <div className="network-editor-intro">
+              <strong>
+                {data.inventory.find((node) => node.uuid === primaryNode)
+                  ?.name || "当前 VPS"}
+              </strong>
+              <span>默认只应用到此实例</span>
+              <button type="button" onClick={() => setExpandScope(true)}>
+                扩展到更多 VPS
+              </button>
+            </div>
+          )}
+          {selected.some((preset) => preset.traffic) && !trafficAccepted && (
+            <p className="network-inline-note">
+              测速或图片报告需要先在“目标与时间”确认目标授权和流量。
+              <button type="button" onClick={() => setStep(1)}>
+                返回确认
+              </button>
+            </p>
+          )}
+          {(!primaryNode || expandScope) && (
+            <>
+              <label className="network-check">
+                <input
+                  type="checkbox"
+                  checked={inherit}
+                  onChange={(e) => {
+                    setInherit(e.target.checked);
+                    resetPreview();
+                  }}
+                />
+                继承方案，后续集中更新（取消后复制为独立计划）
+              </label>
+              {inherit && (
+                <div className="network-scope-groups">
+                  <strong>自动继承 Komari 分组</strong>
+                  {groupNames.map((group) => (
+                    <label className="network-check" key={group}>
+                      <input
+                        type="checkbox"
+                        checked={groups.includes(group)}
+                        onChange={() => {
+                          setGroups(toggle(groups, group));
+                          resetPreview();
+                        }}
+                      />
+                      {group}
+                    </label>
+                  ))}
+                  <p className="network-help">
+                    插件每分钟同步分组；新节点接入后自动执行。单机覆盖保留，不随方案更新。
+                  </p>
+                </div>
+              )}
+              <div className="network-form">
+                <label>
+                  选择 VPS
+                  <input
+                    type="search"
+                    placeholder="搜索名称或分组"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="network-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClients([
+                      ...new Set([...clients, ...options.map((n) => n.uuid)]),
+                    ]);
+                    resetPreview();
+                  }}
+                >
+                  选择搜索结果
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClients([]);
+                    setGroups([]);
+                    resetPreview();
+                  }}
+                >
+                  清空选择
+                </button>
+                <span>匹配 {matched.length} 台</span>
+              </div>
+              <div className="network-node-picker">
+                {options.map((node) => (
+                  <label className="network-check" key={node.uuid}>
+                    <input
+                      type="checkbox"
+                      checked={clients.includes(node.uuid)}
+                      onChange={() => {
+                        setClients(toggle(clients, node.uuid));
+                        resetPreview();
+                      }}
+                    />
+                    <span>
+                      {node.name}
+                      <small>
+                        {node.group || "未分组"} ·{" "}
+                        {data.nodes.some((n) => n.uuid === node.uuid)
+                          ? "已登记"
+                          : "未接入"}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {primaryNode && (
+                <button
+                  type="button"
+                  className="network-scope-reset"
+                  onClick={() => {
+                    setExpandScope(false);
+                    setClients([primaryNode]);
+                    setGroups([]);
+                    resetPreview();
+                  }}
+                >
+                  恢复为仅当前 VPS
+                </button>
+              )}
+            </>
+          )}
+          <div className="network-actions">
+            <button
+              type="button"
+              disabled={
+                pending ||
+                !presets.length ||
+                (!matched.length && !scopedGroups.length) ||
+                Boolean(data.inventoryError) ||
+                (selected.some((preset) => preset.traffic) && !trafficAccepted)
+              }
+              onClick={() =>
+                void action(async () => {
+                  setPreview(await previewNetworkPolicies(input));
+                }, "")
+              }
+            >
+              预览应用范围
+            </button>
+            {preview && (
+              <button
+                type="button"
+                className="network-primary-button"
+                disabled={pending}
+                onClick={() =>
+                  void action(
+                    async () => {
+                      const result = await applyNetworkPolicies(input);
+                      setPreview(null);
+                      setMessage(
+                        `应用成功，新增 ${result.added} 条计划。新计划将在接入且工具就绪后错峰执行。`,
+                      );
+                    },
+                    "",
+                    true,
+                  )
+                }
+              >
+                确认应用
+              </button>
+            )}
+          </div>
+          {preview && (
+            <div className="network-preview" role="status">
+              <strong>
+                {preview.planCount} 条计划 · 新增 {preview.added} · 已存在{" "}
+                {preview.unchanged}
+              </strong>
+              <ul>
+                {preview.nodes.map((node) => (
+                  <li key={node.uuid}>
+                    {node.name} · {node.planCount} 项 · {node.state}
+                  </li>
+                ))}
+              </ul>
+              <p>未接入或缺少依赖的节点保留配置，具备条件后再执行。</p>
+            </div>
+          )}
+        </section>
+      )}
+      <div className="network-policy-footer">
+        <span>
+          已选 {selected.length} 个方案 · 匹配 {matched.length} 台 VPS
+        </span>
+        <div>
+          {step > 0 && (
+            <button type="button" onClick={() => setStep(step - 1)}>
+              上一步
+            </button>
+          )}
+          {step < 2 && (
+            <button
+              type="button"
+              className="network-primary-button"
+              disabled={!selected.length}
+              onClick={() => setStep(step + 1)}
+            >
+              下一步
+            </button>
+          )}
+        </div>
+      </div>
+      {error && (
+        <p className="network-form-error" role="alert">
+          {error}
+        </p>
+      )}
+      {message && <p role="status">{message}</p>}
+      <details className="network-policy-library">
+        <summary>管理已有方案（{data.policies.length}）</summary>
+        {data.policies.map((policy) => (
+          <article key={policy.id} className="network-policy-row">
+            <div>
+              <strong>{policy.name}</strong>
+              <small>
+                {policy.enabled ? "启用" : "暂停"} ·{" "}
+                {timingName(policy.settings)} ·{" "}
+                {policy.groups.join("、") ||
+                  `${policy.clients.length} 台指定 VPS`}{" "}
+                · {policy.catalogVersion}
+              </small>
+            </div>
+            <div className="network-actions">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setEditing(policy)}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  void action(
+                    () =>
+                      updateNetworkPolicy({
+                        ...policy,
+                        enabled: !policy.enabled,
+                      }),
+                    "方案状态已更新",
+                    true,
+                  )
+                }
+              >
+                {policy.enabled ? "暂停" : "恢复"}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "删除此方案及其继承计划？单机自定义计划和历史结果会保留。",
+                    )
+                  )
+                    void action(
+                      () => deleteNetworkPolicy(policy),
+                      "方案已删除",
+                      true,
+                    );
+                }}
+              >
+                删除
+              </button>
+            </div>
+          </article>
+        ))}
+      </details>
+      {editing && (
+        <form
+          className="network-form network-policy-edit"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action(
+              async () => {
+                await updateNetworkPolicy(editing);
+                setEditing(null);
+              },
+              "继承计划已更新，单机覆盖保持不变",
+              true,
+            );
+          }}
+        >
+          <strong>编辑 {editing.name}</strong>
+          <fieldset>
+            <legend>应用范围（VPS 与分组取并集）</legend>
+            <div className="network-scope-groups">
+              {groupNames.map((group) => (
+                <label className="network-check" key={group}>
+                  <input
+                    type="checkbox"
+                    checked={editing.groups.includes(group)}
+                    onChange={() =>
+                      setEditing({
+                        ...editing,
+                        groups: toggle(editing.groups, group),
+                      })
+                    }
+                  />
+                  {group}
+                </label>
+              ))}
+            </div>
+            <div className="network-node-picker">
+              {data.inventory.map((node) => (
+                <label className="network-check" key={node.uuid}>
+                  <input
+                    type="checkbox"
+                    checked={editing.clients.includes(node.uuid)}
+                    onChange={() =>
+                      setEditing({
+                        ...editing,
+                        clients: toggle(editing.clients, node.uuid),
+                      })
+                    }
+                  />
+                  {node.name}
+                  <small> · {node.group || "未分组"}</small>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label>
+            方案名称
+            <input
+              required
+              value={editing.name}
+              onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+            />
+          </label>
+          <NetworkTimingFields
+            value={editing.settings}
+            intervals={
+              MODES.find((m) => m.id === editingPreset!.items[0].mode)!
+                .intervals
+            }
+            onChange={(next) =>
+              setEditing({
+                ...editing,
+                settings: { ...editing.settings, ...next },
+              })
+            }
+            label="频率"
+          />
+          {editingPreset?.selectableTargets && (
+            <fieldset className="network-target-picker">
+              <legend>路径目标（最多 24 个）</legend>
+              <div className="network-target-options">
+                {editingPreset.items.map((item) => (
+                  <label className="network-check" key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={editTargetIds.includes(item.id)}
+                      disabled={
+                        !editTargetIds.includes(item.id) &&
+                        editTargetIds.length >= 24
+                      }
+                      onChange={() =>
+                        setEditing({
+                          ...editing,
+                          settings: {
+                            ...editing.settings,
+                            targetIds: toggle(editTargetIds, item.id),
+                          },
+                        })
+                      }
+                    />
+                    {item.name}
+                    <small> · {item.target}</small>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          {editingPreset?.targets && (
+            <label>
+              公开候选节点
+              <select
+                value={
+                  editingPreset.targets.some(
+                    (item) => item.target === editing.settings.target,
+                  )
+                    ? editing.settings.target
+                    : ""
+                }
+                onChange={(event) => {
+                  const chosen = editingPreset.targets?.find(
+                    (item) => item.target === event.target.value,
+                  );
+                  setEditing({
+                    ...editing,
+                    settings: {
+                      ...editing.settings,
+                      target: chosen?.target || "",
+                      port: chosen?.port || 5201,
+                    },
+                  });
+                }}
+              >
+                <option value="">自定义目标</option>
+                {editingPreset.targets.map((item) => (
+                  <option key={item.target} value={item.target}>
+                    {item.provider} · {item.region} · {item.target}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {data.presets.find((p) => p.id === editing.presetId)
+            ?.customTarget && (
+            <>
+              <label>
+                目标
+                <input
+                  required
+                  value={editing.settings.target}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      settings: { ...editing.settings, target: e.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                端口
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  required
+                  value={editing.settings.port}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      settings: {
+                        ...editing.settings,
+                        port: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
+          <div className="network-actions">
+            <button type="submit" disabled={pending}>
+              更新所有继承节点
+            </button>
+            <button type="button" onClick={() => setEditing(null)}>
+              取消编辑
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
 }

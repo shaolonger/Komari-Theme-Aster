@@ -1116,7 +1116,7 @@ export function ThemeManage() {
         <AssetEditor nodes={sortedClients} excluded={normalizeCostIgnoredNodes(draftCostIgnoredText)} onExcludedChange={value => setDraftCostIgnoredText(value.join('\n'))} showSummary={draftShowCostSummary} onSummaryChange={setDraftShowCostSummary} showShortcut={draftShowCostSummaryFloatingButton} onShortcutChange={setDraftShowCostSummaryFloatingButton} rateUrl={draftCostRateApiUrl} onRateUrlChange={setDraftCostRateApiUrl} invalid={draftCostRateApiUrlInvalid}/>
       </StudioPanel>
 
-      <StudioPanel title="网络检测方案" description="批量套用方案和管理分组继承；操作直接保存到网络插件。检测结果位于各 VPS 实例详情。"><NativePlanPanel initialNodes={[]} /><details><summary>高级工具方案与旧计划</summary><NetworkPolicyPanel /></details></StudioPanel>
+      <StudioPanel title="网络检测方案" description="批量套用方案和管理分组继承；操作直接保存到网络插件。检测结果位于各 VPS 实例详情。"><NativePlanPanel initialNodes={[]} /><details className="network-advanced-tools"><summary>高级工具方案与旧计划</summary><NetworkPolicyPanel /></details></StudioPanel>
       <StudioPanel
         title="主页延迟检测"
         description={

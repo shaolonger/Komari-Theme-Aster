@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Network, Gauge, Globe2, Download, FileJson } from "lucide-react";
+import { NetworkBadge } from "./NetworkUi";
 import { useQuery } from "@tanstack/react-query";
 import {
   nativeReports,
@@ -20,7 +22,12 @@ function provenance(r: NativeRecord) {
     r.source.city,
     r.source.carrier,
     r.source.name,
-    r.source.provider,
+    (
+      { controlled: "自有测量点", runner: "VPS 探测器" } as Record<
+        string,
+        string
+      >
+    )[r.source.provider] || r.source.provider,
     r.source.accessType,
     r.source.asn ? `AS${r.source.asn}` : "",
     r.source.network,
@@ -133,39 +140,107 @@ function Trend({
             : (s.ok / Math.max(1, s.samples)) * 100,
       s,
     })),
-    max = Math.max(1, ...points.map((p) => p.value));
+    speedKeys = [...new Set(rows.flatMap((row) => Object.keys(row.speed)))],
+    series =
+      record.data.kind === "speed"
+        ? speedKeys.map((key) => ({
+            label: `${key.startsWith("source-to-target") ? "大陆→VPS" : "VPS→大陆"} · ${key.split(":").at(-1)} 流`,
+            color: key.startsWith("source-to-target")
+              ? "var(--accent-500)"
+              : "var(--status-success)",
+            dashed: !key.endsWith(":1"),
+            values: rows.map((row) =>
+              row.speed[key]
+                ? row.speed[key].sum / row.speed[key].count / 1e6
+                : null,
+            ),
+          }))
+        : [
+            {
+              label:
+                record.data.kind === "website"
+                  ? "平均首字节耗时"
+                  : "完成测量比例",
+              color: "var(--accent-500)",
+              dashed: false,
+              values: points.map((p) => p.value),
+            },
+          ],
+    max = Math.max(
+      1,
+      ...series.flatMap((line) =>
+        line.values.filter((v): v is number => v !== null),
+      ),
+    ),
+    x = (i: number) => 50 + (i * 530) / Math.max(1, points.length - 1),
+    y = (value: number) => 128 - (value / max) * 105;
   return (
     <div className="native-trend">
       <strong>同端点、来源、协议与参数 · 最近 {rows.length} 天</strong>
       <svg viewBox="0 0 600 150" role="img" aria-label="每日汇总趋势">
-        <polyline
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3"
-          points={points
-            .map(
-              (p, i) =>
-                `${15 + (i * 570) / Math.max(1, points.length - 1)},${130 - (p.value / max) * 110}`,
-            )
-            .join(" ")}
-        />
-        {points.map((p, i) => (
-          <circle
-            key={p.day}
-            cx={15 + (i * 570) / Math.max(1, points.length - 1)}
-            cy={130 - (p.value / max) * 110}
-            r="4"
-          >
-            <title>
-              {p.day} · {p.value.toFixed(1)}
-            </title>
-          </circle>
+        {[0, 0.5, 1].map((ratio) => (
+          <g key={ratio}>
+            <line
+              x1="50"
+              x2="580"
+              y1={y(max * ratio)}
+              y2={y(max * ratio)}
+              className="native-chart-grid"
+            />
+            <text
+              x="40"
+              y={y(max * ratio) + 4}
+              textAnchor="end"
+              className="native-chart-label"
+            >
+              {(max * ratio).toFixed(max < 10 ? 1 : 0)}
+            </text>
+          </g>
+        ))}
+        {series.map((line) => (
+          <g key={line.label}>
+            <path
+              fill="none"
+              stroke={line.color}
+              strokeWidth="2.5"
+              strokeDasharray={line.dashed ? "6 4" : undefined}
+              d={line.values
+                .map((value, i) =>
+                  value === null
+                    ? ""
+                    : `${i === 0 || line.values[i - 1] === null ? "M" : "L"}${x(i)},${y(value)}`,
+                )
+                .join(" ")}
+            />
+            {line.values.map((value, i) =>
+              value === null ? null : (
+                <circle key={i} cx={x(i)} cy={y(value)} r="3" fill={line.color}>
+                  <title>
+                    {points[i].day} · {line.label} · {value.toFixed(1)}
+                  </title>
+                </circle>
+              ),
+            )}
+          </g>
         ))}
       </svg>
+      <div className="native-chart-legend">
+        {series.map((line) => (
+          <span key={line.label}>
+            <i
+              style={{
+                background: line.color,
+                opacity: line.dashed ? 0.55 : 1,
+              }}
+            />
+            {line.label}
+          </span>
+        ))}
+      </div>
       <small>
         {points[0].day} — {points.at(-1)?.day} ·{" "}
         {record.data.kind === "speed"
-          ? "各连接配置与方向中的最高日均吞吐（Mbps），非双向平均"
+          ? "各流量方向与连接配置的日均吞吐（Mbps）"
           : record.data.kind === "website"
             ? "平均首字节耗时（ms）"
             : "完成测量比例（%），非业务可用率"}
@@ -373,6 +448,13 @@ export function NativeWorkspace({
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
           >
+            {t.id === "routes" ? (
+              <Network size={16} aria-hidden="true" />
+            ) : t.id === "speed" ? (
+              <Gauge size={16} aria-hidden="true" />
+            ) : (
+              <Globe2 size={16} aria-hidden="true" />
+            )}
             {t.name}
           </button>
         ))}
@@ -406,10 +488,42 @@ export function NativeWorkspace({
                 data-state={r.data.state}
                 onClick={() => setSelected(r)}
               >
-                <span>
-                  {r.direction} · {r.source.carrier || r.target}
-                </span>
-                <strong>{headline(r)}</strong>
+                <div className="native-result-top">
+                  <span>
+                    {r.data.kind === "website"
+                      ? r.target
+                      : r.source.carrier || r.direction}
+                  </span>
+                  <NetworkBadge state={r.data.state}>
+                    {labels[r.data.state] || r.data.state}
+                  </NetworkBadge>
+                </div>
+                {r.data.kind === "speed" && r.data.runs?.length ? (
+                  <div className="native-speed-mini">
+                    {r.data.runs.map((run, i) => (
+                      <div key={i}>
+                        <span>
+                          {run.direction === "source-to-target"
+                            ? "大陆→VPS"
+                            : "VPS→大陆"}{" "}
+                          · {run.streams} 流
+                        </span>
+                        <strong>
+                          {run.state === "ok"
+                            ? `${(Number(run.bitsPerSecond) / 1e6).toFixed(1)} Mbps`
+                            : "失败"}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <strong>{headline(r)}</strong>
+                )}
+                {r.data.kind !== "website" && (
+                  <small>
+                    {r.direction} · {r.target || "缺少目标"}
+                  </small>
+                )}
                 <small>{provenance(r)}</small>
                 <time>
                   {formatNetworkTime(r.completedAt)}
@@ -489,7 +603,11 @@ export function NativeWorkspace({
               <span>
                 {r.direction} · {r.target}
               </span>
-              <strong>{headline(r)}</strong>
+              <strong title={headline(r)}>
+                {r.data.kind === "speed"
+                  ? "单 / 多连接 · 查看测速"
+                  : headline(r)}
+              </strong>
             </button>
           ))}
         </details>
@@ -499,7 +617,20 @@ export function NativeWorkspace({
         <NetworkDrawer title="原生网络报告" onClose={() => setSelected(null)}>
           <div className="network-form">
             <div className="native-report-heading">
-              <strong>{headline(selected)}</strong>
+              <div className="native-report-meta">
+                <NetworkBadge state={selected.data.state}>
+                  {labels[selected.data.state] || selected.data.state}
+                </NetworkBadge>
+                <NetworkBadge>
+                  IPv{String(selected.options.family || "auto")}
+                </NetworkBadge>
+                <NetworkBadge>{selected.direction}</NetworkBadge>
+              </div>
+              <strong>
+                {selected.data.kind === "speed"
+                  ? "大陆双向吞吐测量"
+                  : headline(selected)}
+              </strong>
               <p>
                 {selected.direction} · {selected.target}
               </p>
@@ -515,8 +646,12 @@ export function NativeWorkspace({
                   : "来源由工具/提供方返回"}
               </p>
               <div className="network-actions">
-                <button onClick={() => exportReport(selected)}>导出 PNG</button>
+                <button onClick={() => exportReport(selected)}>
+                  <Download size={14} aria-hidden="true" />
+                  导出 PNG
+                </button>
                 <button onClick={() => jsonReport(selected)}>
+                  <FileJson size={14} aria-hidden="true" />
                   导出完整 JSON
                 </button>
               </div>
@@ -621,7 +756,7 @@ export function NativeWorkspace({
               </>
             )}
             <Trend record={selected} summaries={data.summaries} />
-            <details>
+            <details className="network-disclosure native-report-diagnostics">
               <summary>完整诊断与测量参数</summary>
               <pre className="network-raw-output">
                 {selected.data.diagnostic || "无额外诊断"}
