@@ -1,3 +1,4 @@
+import { WebsiteTargetPicker } from "./WebsiteTargetPicker";
 import { useState } from "react";
 import {
   Network,
@@ -345,36 +346,23 @@ export function NativePlanPanel({
                   <NetworkSectionHeading
                     icon={Globe2}
                     title="网站目标"
-                    description="推荐目标已选好；勾选调整，或展开下方自定义域名。"
+                    description="按网站 / API 与 CDN 分组选择，预设资源路径会自动带入。"
                   />
-                  <div className="native-check-grid">
-                    {data.websites.map((site) => (
-                      <label key={site}>
-                        <input
-                          type="checkbox"
-                          checked={(
-                            sites ?? data.websites.slice(0, 6)
-                          ).includes(site)}
-                          onChange={() =>
-                            toggle(
-                              sites ?? data.websites.slice(0, 6),
-                              site,
-                              setSites,
-                            )
-                          }
-                        />
-                        <span className="network-choice-title" title={site}>
-                          {site}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <WebsiteTargetPicker
+                    catalog={data}
+                    value={sites ?? data.websites.slice(0, 6)}
+                    onChange={(value) => {
+                      setSites(value);
+                      setPreview(null);
+                    }}
+                  />
                   <details className="network-disclosure">
                     <summary>自定义网站目标</summary>
                     <label>
-                      自定义网站（域名，每行一个；最多 24 个）
+                      全部已选目标（域名，每行一个；最多 {data.websiteLimit}{" "}
+                      个）
                       <textarea
-                        value={sites?.join("\n") || ""}
+                        value={(sites ?? data.websites.slice(0, 6)).join("\n")}
                         onChange={(e) => {
                           setSites(
                             e.target.value.trim()
@@ -388,8 +376,9 @@ export function NativePlanPanel({
                     </label>
                   </details>
                   <p className="network-help">
-                    网站体验使用正常 DNS；附近 CDN
-                    可达不能代表美国或欧洲骨干互联。
+                    HTTPS 使用正常 DNS；新探测器另对连接 IP 做 10 次 TCP
+                    建连。401/403 等应用响应单独展示；附近 CDN
+                    可达不能代表跨洲骨干互联。
                   </p>
                 </section>
               ) : (

@@ -2,20 +2,11 @@ const crypto = require("crypto");
 const { UUID, isHost } = require("./model.js");
 const tz = require("./timezones.json");
 const { CATALOG } = require("./catalog.js");
-const WEBSITES = [
-  "www.google.com",
-  "www.youtube.com",
-  "github.com",
-  "www.cloudflare.com",
-  "www.wikipedia.org",
-  "www.microsoft.com",
-  "www.apple.com",
-  "www.amazon.com",
-  "www.netflix.com",
-  "www.reddit.com",
-  "www.openai.com",
-  "www.bing.com",
-];
+const {
+  WEBSITE_CATALOG,
+  WEBSITES,
+  RECOMMENDED,
+} = require("./website-catalog.js");
 const CARRIERS = [
   { name: "电信", asn: 4134 },
   { name: "联通", asn: 4837 },
@@ -104,8 +95,8 @@ function normalizePolicy(input) {
     (!sources.length || input.trafficAccepted !== true)
   )
     throw new Error("全速测速需选择授权大陆探针并确认流量");
-  let sites = (input.sites || WEBSITES.slice(0, 6)).map(host);
-  if (!sites.length || sites.length > 24) throw new Error("网站数量需为 1–24");
+  const sites = [...new Set((input.sites || RECOMMENDED).map(host))];
+  if (!sites.length || sites.length > 64) throw new Error("网站数量需为 1–64");
   const family = input.family || "4",
     protocol = input.protocol || "tcp";
   if (!["4", "6"].includes(family) || !["tcp", "icmp"].includes(protocol))
@@ -124,6 +115,11 @@ function normalizePolicy(input) {
     streams.some((x) => ![1, 4, 8].includes(x))
   )
     throw new Error("测速参数无效");
+  const schedule = timing(input.timing, input.kind);
+  const dailyRuns =
+    schedule.type === "daily" ? schedule.times.length : 1440 / schedule.minutes;
+  if (input.kind === "websites" && dailyRuns * sites.length > 9000)
+    throw new Error("本方案网站报告超过每日安全容量，请减少目标或降低检测频率");
   return {
     id: UUID.test(input.id || "") ? input.id : crypto.randomUUID(),
     name:
@@ -142,7 +138,7 @@ function normalizePolicy(input) {
     protocol,
     seconds,
     streams,
-    timing: timing(input.timing, input.kind),
+    timing: schedule,
     publicSources: input.publicSources !== false,
     enabled: input.enabled !== false,
     inherit: input.inherit !== false,
@@ -200,6 +196,16 @@ function planJobs(policy, uuid, endpoint, probes) {
         target,
         { provider: "runner", name: "当前 VPS" },
         "VPS→网站",
+        {
+          options: {
+            path: WEBSITE_CATALOG.find((x) => x.host === target)?.path || "/",
+            tcpSamples: 10,
+            websiteName:
+              WEBSITE_CATALOG.find((x) => x.host === target)?.name || target,
+            websiteGroup:
+              WEBSITE_CATALOG.find((x) => x.host === target)?.group || "自定义",
+          },
+        },
       );
   if (policy.kind === "routes") {
     for (const id of policy.sources) {
@@ -329,10 +335,38 @@ function validateResult(data, kind) {
           h.ttl > 64 ||
           typeof h.address !== "string" ||
           typeof h.asn !== "string" ||
+          [
+            "asnStatus",
+            "asnSource",
+            "asnQueriedAt",
+            "network",
+            "location",
+            "prefix",
+            "registryCountry",
+          ].some((k) => h[k] !== undefined && typeof h[k] !== "string") ||
           (h.rttMs !== null && !number(h.rttMs)),
       ))
   )
     bad();
+  if (kind === "website" && data.tcpQuality != null) {
+    const q = data.tcpQuality;
+    if (
+      typeof q.method !== "string" ||
+      typeof q.address !== "string" ||
+      !["ok", "partial", "failed", "unavailable"].includes(q.state) ||
+      !Number.isInteger(q.sent) ||
+      q.sent < 0 ||
+      q.sent > 10 ||
+      !Number.isInteger(q.received) ||
+      q.received < 0 ||
+      q.received > q.sent ||
+      ["failurePercent", "avgMs", "minMs", "maxMs", "stdevMs"].some(
+        (k) => q[k] !== null && !number(q[k]),
+      ) ||
+      (q.failurePercent !== null && q.failurePercent > 100)
+    )
+      bad();
+  }
   if (
     kind === "website" &&
     ["ok", "application"].includes(data.state) &&
@@ -368,6 +402,7 @@ function validateResult(data, kind) {
 module.exports = {
   validateResult,
   WEBSITES,
+  WEBSITE_CATALOG,
   CARRIERS,
   TIMEZONES,
   offset,

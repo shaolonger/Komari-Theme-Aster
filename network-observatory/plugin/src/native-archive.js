@@ -30,7 +30,8 @@ function archive(root, missing) {
     fs.mkdirSync(dir, { recursive: true });
     const rows = read(file, []);
     const duplicate = rows.some((x) => x.id === record.id);
-    if (rows.length >= 10000 && !duplicate) throw new Error("当日原生报告达到容量上限");
+    if (rows.length >= 10000 && !duplicate)
+      throw new Error("当日原生报告达到容量上限");
     if (!duplicate) {
       rows.push(record);
       write(file, rows);
@@ -96,10 +97,16 @@ function archive(root, missing) {
       .filter((x) => /^\d{4}-\d{2}-\d{2}\.json$/.test(x))
       .sort()
       .reverse();
-    const records = [];
+    // Website catalogues can produce many more rows than daily speed/route
+    // jobs. Give each category its own window so website traffic cannot evict
+    // the latest route or throughput report from the response.
+    const buckets = { website: [], route: [], speed: [] };
     for (const file of files) {
-      records.push(...read(path.join(dir, file), []).slice().reverse());
-      if (records.length >= 200) break;
+      for (const row of read(path.join(dir, file), []).slice().reverse()) {
+        const bucket = buckets[row.data?.kind];
+        if (bucket && bucket.length < 200) bucket.push(row);
+      }
+      if (Object.values(buckets).every((b) => b.length >= 200)) break;
     }
     const summaries = fs
       .readdirSync(dir)
@@ -108,7 +115,9 @@ function archive(root, missing) {
       .reverse()
       .flatMap((file) => Object.values(read(path.join(dir, file), {})));
     return {
-      records: records.slice(0, 200),
+      records: Object.values(buckets)
+        .flat()
+        .sort((a, b) => b.completedAt.localeCompare(a.completedAt)),
       summaries: summaries.slice(0, 10000),
     };
   }

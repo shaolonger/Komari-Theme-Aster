@@ -5,6 +5,7 @@ const { UUID } = require("./model.js");
 const M = require("./native-model.js"),
   G = require("./globalping.js");
 const { archive } = require("./native-archive.js");
+const { createEnricher } = require("./route-enrichment.js");
 const BASE = "/api/aster-network-observatory/v2";
 function registerNativeController(ctx) {
   const {
@@ -17,7 +18,8 @@ function registerNativeController(ctx) {
     readState,
   } = ctx;
   const file = path.join(storageDir, "native-state.json"),
-    reports = archive(storageDir, isMissingFile);
+    reports = archive(storageDir, isMissingFile),
+    enricher = createEnricher(ctx.enrichmentOptions);
   let queue = Promise.resolve(),
     busy = false;
   const lock = (fn) => {
@@ -65,13 +67,15 @@ function registerNativeController(ctx) {
     fs.writeFileSync(file + ".tmp", JSON.stringify(s), { mode: 0o600 });
     fs.renameSync(file + ".tmp", file);
   }
-  function route(method, suffix, admin, fn) {
+  function route(method, suffix, admin, fn, prepare) {
     server.route(method, BASE + suffix, async (req, res) => {
       if (admin && !authorized(req, res)) return;
       try {
+        const prepared = prepare ? await prepare(req, res) : undefined;
+        if (prepared === null) return;
         await lock(async () => {
           const s = read();
-          await fn(req, res, s);
+          await fn(req, res, s, prepared);
         });
       } catch (e) {
         respond(res, 400, { error: String(e.message || e) });
@@ -178,7 +182,7 @@ function registerNativeController(ctx) {
         id: crypto.randomUUID(),
         phase: "queued",
         queuedAt: Date.now(),
-        expiresAt: Date.now() + 20 * 60000,
+        expiresAt: Date.now() + (job.operation === "website" ? 90 : 20) * 60000,
       });
     }
   }
@@ -212,6 +216,8 @@ function registerNativeController(ctx) {
     respond(res, 200, {
       ...safe(s),
       websites: M.WEBSITES,
+      websiteCatalog: M.WEBSITE_CATALOG,
+      websiteLimit: 64,
       timezones: M.TIMEZONES,
       retention: { detailDays: 7, summaryDays: 90 },
       nextRuns: s.policies.map((p) => ({ id: p.id, at: p.nextAt })),
@@ -516,52 +522,75 @@ function registerNativeController(ctx) {
           .map((j) => j.id),
       });
     });
-    route("POST", `/workers/${role}/:id/result`, false, async (req, res, s) => {
-      const w = auth(req, res, s);
-      if (!w) return;
-      const b = readBody(req),
-        j = s.jobs.find((x) => x.id === b.id);
-      if (!j) {
-        respond(res, 409, { error: "任务已结束" });
-        return;
-      }
-      if (
-        j.phase === "listening" &&
-        w.key === "node:" + j.nodeUuid &&
-        j.operation === "benchmark"
-      ) {
-        if (
-          b.data?.state === "ready" &&
-          typeof b.data.publicKey === "string" &&
-          b.data.publicKey.startsWith("-----BEGIN PUBLIC KEY-----") &&
-          b.data.publicKey.length < 4096 &&
-          ["oaep", "pkcs1"].includes(b.data.scheme)
-        ) {
-          j.publicKey = b.data.publicKey;
-          j.scheme = b.data.scheme;
-          j.phase = "ready";
-        } else
-          finish(s, j, {
-            kind: "speed",
-            state: "failed",
-            diagnostic: M.text(b.data?.diagnostic, 4000) || "测速监听失败",
-          });
-      } else {
-        if (j.executor !== w.key || j.phase !== "running") {
-          respond(res, 409, { error: "任务不属于该测量端或阶段不正确" });
+    route(
+      "POST",
+      `/workers/${role}/:id/result`,
+      false,
+      async (req, res, s, prepared) => {
+        const w = auth(req, res, s);
+        if (!w) return;
+        const b = prepared || readBody(req),
+          j = s.jobs.find((x) => x.id === b.id);
+        if (!j) {
+          respond(res, 409, { error: "任务已结束" });
           return;
         }
-        const data = b.data,
-          kind = j.operation === "benchmark" ? "speed" : j.operation;
-        M.validateResult(data, kind);
-        finish(s, j, data, {
-          ...j.source,
-          runnerVersion: s.workers[w.key]?.version || "",
-        });
-      }
-      save(s);
-      respond(res, 200, { ok: true });
-    });
+        if (
+          j.phase === "listening" &&
+          w.key === "node:" + j.nodeUuid &&
+          j.operation === "benchmark"
+        ) {
+          if (
+            b.data?.state === "ready" &&
+            typeof b.data.publicKey === "string" &&
+            b.data.publicKey.startsWith("-----BEGIN PUBLIC KEY-----") &&
+            b.data.publicKey.length < 4096 &&
+            ["oaep", "pkcs1"].includes(b.data.scheme)
+          ) {
+            j.publicKey = b.data.publicKey;
+            j.scheme = b.data.scheme;
+            j.phase = "ready";
+          } else
+            finish(s, j, {
+              kind: "speed",
+              state: "failed",
+              diagnostic: M.text(b.data?.diagnostic, 4000) || "测速监听失败",
+            });
+        } else {
+          if (j.executor !== w.key || j.phase !== "running") {
+            respond(res, 409, { error: "任务不属于该测量端或阶段不正确" });
+            return;
+          }
+          const data = b.data,
+            kind = j.operation === "benchmark" ? "speed" : j.operation;
+          M.validateResult(data, kind);
+          finish(s, j, data, {
+            ...j.source,
+            runnerVersion: s.workers[w.key]?.version || "",
+          });
+        }
+        save(s);
+        respond(res, 200, { ok: true });
+      },
+      async (req, res) => {
+        // Check credentials and ownership before any external lookup, then check
+        // again under the state lock after enrichment. No network wait holds it.
+        const s = read(),
+          w = auth(req, res, s);
+        if (!w) return null;
+        const b = readBody(req),
+          j = s.jobs.find((x) => x.id === b.id);
+        if (
+          j?.operation === "route" &&
+          j.executor === w.key &&
+          j.phase === "running"
+        ) {
+          M.validateResult(b.data, "route");
+          b.data = await enricher.enrich(b.data);
+        }
+        return b;
+      },
+    );
   }
   async function tick(refreshProvider = false) {
     if (busy) return;
@@ -637,6 +666,7 @@ function registerNativeController(ctx) {
             out.push({
               id: j.id,
               measurementId: j.measurementId,
+              job: { ...j },
               operation: "poll",
             });
           } else if (
@@ -664,7 +694,7 @@ function registerNativeController(ctx) {
       });
       await Promise.all(
         actions.map(async (a) => {
-          let result, e;
+          let result, e, normalized;
           try {
             result =
               a.operation === "probes"
@@ -676,6 +706,10 @@ function registerNativeController(ctx) {
                     );
           } catch (err) {
             e = err;
+          }
+          if (!e && a.operation === "poll" && result.status === "finished") {
+            normalized = G.normalize(a.job, result)[0];
+            normalized.data = await enricher.enrich(normalized.data);
           }
           await lock(async () => {
             const s = read();
@@ -716,7 +750,7 @@ function registerNativeController(ctx) {
                 j.expiresAt = Date.now() + 180000;
               }
             } else if (result.status === "finished") {
-              const row = G.normalize(j, result)[0];
+              const row = normalized || G.normalize(j, result)[0];
               finish(s, j, row.data, row.source);
             }
             save(s);

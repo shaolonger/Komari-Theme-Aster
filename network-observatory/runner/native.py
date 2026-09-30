@@ -11,6 +11,8 @@ import tempfile
 import time
 import threading
 import socket
+import statistics
+import sys
 from pathlib import Path
 
 HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.I)
@@ -48,6 +50,29 @@ def family_args(options):
     return [] if value == "auto" else ["-" + value]
 
 
+def tcp_connect_quality(address, port, count):
+    """Full TCP handshakes to one observed IP; failures are not packet loss."""
+    count = integer(count, 1, 10, "TCP 样本数")
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return {"method": "TCP connect", "state": "unavailable", "address": "", "addressScope": "unknown", "sent": 0, "received": 0, "failurePercent": None, "avgMs": None, "minMs": None, "maxMs": None, "stdevMs": None}
+    samples = []
+    family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+    for i in range(count):
+        started = time.monotonic()
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as connection:
+                connection.settimeout(1.5)
+                connection.connect((str(ip), port))
+                samples.append((time.monotonic() - started) * 1000)
+        except OSError:
+            pass
+        if i + 1 < count:
+            time.sleep(0.1)
+    return {"method": "TCP connect", "state": "ok" if len(samples) == count else "partial" if samples else "failed", "address": str(ip), "addressScope": "public" if ip.is_global and not ip.is_multicast else "non-public", "sent": count, "received": len(samples), "failurePercent": 100 * (count - len(samples)) / count, "avgMs": statistics.mean(samples) if samples else None, "minMs": min(samples) if samples else None, "maxMs": max(samples) if samples else None, "stdevMs": statistics.pstdev(samples) if samples else None}
+
+
 def website(target, options):
     target = host(target)
     port = integer(options.get("port", 443), 1, 65535, "端口")
@@ -72,6 +97,17 @@ def website(target, options):
     status = data.get("httpStatus", 0)
     responded = isinstance(status, int) and status > 0
     stage = "response" if responded else "dns" if code == 6 else "tls" if code in {35, 51, 60} else "response" if data.get("tls", 0) > 0 else "tls" if data.get("connect", 0) > 0 else "connect"
+    tcp_address = data.get("remoteIp", "")
+    if "tcpSamples" in options and not tcp_address and code != 6:
+        # A failed curl connect may omit remote_ip. Resolve with the same OS
+        # resolver in a bounded child; Python's getaddrinfo has no timeout.
+        resolver = "import socket,sys,json; f={'4':socket.AF_INET,'6':socket.AF_INET6}.get(sys.argv[2],socket.AF_UNSPEC); print(json.dumps([r[4][0] for r in socket.getaddrinfo(sys.argv[1],None,f,socket.SOCK_STREAM)][:4]))"
+        resolve_code, resolved, _ = execute([sys.executable, "-c", resolver, target, options.get("family", "auto")], 3)
+        try:
+            candidates = json.loads(resolved) if resolve_code == 0 else []
+            tcp_address = candidates[0] if isinstance(candidates, list) and candidates else ""
+        except (ValueError, TypeError):
+            pass
     return {
         "kind": "website", "target": target, "family": options.get("family", "auto"),
         "state": "ok" if responded and 200 <= status < 400 else "application" if responded else "failed",
@@ -79,6 +115,8 @@ def website(target, options):
         "httpStatus": status, "resolvedIp": data.get("remoteIp", ""), "localIp": data.get("localIp", ""),
         "timingsMs": {"dns": 1000 * data.get("dns", 0), "connect": 1000 * max(0, data.get("connect", 0) - data.get("dns", 0)), "tls": 1000 * max(0, data.get("tls", 0) - data.get("connect", 0)), "ttfb": 1000 * data.get("ttfb", 0), "total": 1000 * data.get("total", 0)},
         "tlsVerified": data.get("tlsVerify") == 0 and data.get("tls", 0) > 0,
+        "path": resource,
+        "tcpQuality": tcp_connect_quality(tcp_address, port, options["tcpSamples"]) if "tcpSamples" in options else None,
         "diagnostic": diagnostic,
     }
 
@@ -111,7 +149,14 @@ def route(target, options):
                 probes = probes if isinstance(probes, list) else [probes]
                 value = next((p for p in probes if p.get("Success")), probes[0] if probes else {})
                 address, geo = value.get("Address") or {}, value.get("Geo") or {}
-                hops.append({"ttl": value.get("TTL", index + 1), "address": address.get("IP", "") if isinstance(address, dict) else address, "asn": str(geo.get("asnumber", "")), "rttMs": value.get("RTT", 0) / 1e6 if value.get("Success") else None})
+                if not isinstance(geo, dict):
+                    geo = {}
+                if not geo.get("asnumber"):
+                    # Queries at one TTL can hit different routers. Reuse metadata
+                    # only from another response for the same IP, never an ECMP peer.
+                    geo = next((p["Geo"] for p in probes if p.get("Address") == value.get("Address") and isinstance(p.get("Geo"), dict) and p["Geo"].get("asnumber")), geo)
+                asn = re.sub(r"^AS", "", str(geo.get("asnumber") or "")).strip()
+                hops.append({"ttl": value.get("TTL", index + 1), "address": address.get("IP", "") if isinstance(address, dict) else address, "asn": asn, "rttMs": value.get("RTT", 0) / 1e6 if value.get("Success") else None, "network": str(geo.get("owner") or geo.get("isp") or "")[:160], "location": " · ".join(str(geo.get(k) or "") for k in ("country", "prov", "city") if geo.get(k))[:160], "prefix": str(geo.get("prefix") or "")[:80], "asnSource": "NextTrace / " + str(geo.get("source") or "GeoIP") if asn else "", "asnStatus": "available" if asn else "lookup-failed" if geo.get("source") in {"timeout", "pending"} else "not-provided"})
             stop_reason = (payload.get("StopReason") or {}).get("reason", "unknown")
         except (ValueError, TypeError, KeyError):
             pass

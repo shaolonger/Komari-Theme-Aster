@@ -21,7 +21,7 @@ const draft = (x = {}) => ({
   revision: 0,
   ...x,
 });
-function fixture() {
+function fixture(enrichmentOptions) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-native-")),
     routes = new Map();
   let inventory = [
@@ -58,6 +58,7 @@ function fixture() {
     authorized,
     readBody: (r) => JSON.parse(r.body),
     readState: () => legacy,
+    enrichmentOptions,
   });
   async function invoke(method, url, body = {}, authToken, admin = true) {
     const key = [...routes.keys()].find((k) => {
@@ -533,4 +534,72 @@ test("provider request omits ipVersion for IP targets; 422 and 429 are distinct 
   } finally {
     global.fetch = original;
   }
+});
+
+test("international catalogue covers TcpQuality website/API and CDN groups, resource paths and legacy defaults", async () => {
+  assert.equal(M.WEBSITE_CATALOG.filter(x => x.reference === "TcpQuality").length, 39);
+  assert.equal(M.WEBSITE_CATALOG.filter(x => x.group === "静态资源 CDN").length, 8);
+  const p = M.normalizePolicy(draft({ sites: M.WEBSITE_CATALOG.map(x => x.host) }));
+  const jobs = M.planJobs(p, A, null, {});
+  assert.equal(jobs.length, 48);
+  const cdn = jobs.find(x => x.target === "cdnjs.cloudflare.com");
+  assert.equal(cdn.options.path, "/ajax/libs/jquery/3.7.1/jquery.min.js");
+  assert.equal(cdn.options.tcpSamples, 10);
+  assert.equal(M.normalizePolicy(draft()).sites.length, 6);
+  assert.throws(() => M.normalizePolicy(draft({ sites: M.WEBSITES, timing: {type:"interval",minutes:5} })), /每日安全容量/);
+  assert.throws(() => M.normalizePolicy(draft({ sites: Array.from({length:65}, (_,i)=>`site${i}.example.net`) })), /1–64/);
+  const f = fixture();
+  try {
+    const response = await f.invoke("GET", "/catalog");
+    assert.equal(response.body.websites[0], "www.google.com");
+    assert.equal(response.body.websiteCatalog.length, 48);
+    assert.equal(response.body.websiteLimit, 64);
+  } finally { f.close(); }
+});
+test("website volume cannot displace recent route and throughput reports", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-archive-volume-"));
+  try {
+    const dir = path.join(root, "native-reports", A);
+    fs.mkdirSync(dir, {recursive:true});
+    const row = (kind, completedAt) => ({ id: kind+completedAt, nodeUuid:A, fingerprint:kind, completedAt, data:{kind,state:"ok"} });
+    fs.writeFileSync(path.join(dir,"2026-09-30.json"), JSON.stringify(Array.from({length:500}, (_,i)=>row("website",`2026-09-30T12:${String(i%60).padStart(2,'0')}:00Z`))));
+    fs.writeFileSync(path.join(dir,"2026-09-29.json"), JSON.stringify([row("route","2026-09-29T12:00:00Z"),row("speed","2026-09-29T11:00:00Z")]));
+    const h = archive(root, missing).history(A);
+    assert.equal(h.records.filter(x=>x.data.kind==="website").length,200);
+    assert.equal(h.records.filter(x=>x.data.kind==="route").length,1);
+    assert.equal(h.records.filter(x=>x.data.kind==="speed").length,1);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test("authenticated route upload enriches outside the state lock and stores provenance", async () => {
+  let release;
+  const gate = new Promise(resolve=>release=resolve), calls=[];
+  const f = fixture({fetcher:async url=>{
+    calls.push(url); await gate;
+    const name=new URL(url).searchParams.get('name');
+    const text=name.startsWith('AS')?'15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US':'15169 | 8.8.8.0/24 | US | arin | 1992-12-01';
+    return {ok:true,text:async()=>JSON.stringify({Status:0,Answer:[{type:16,name:name+'.',TTL:60,data:JSON.stringify(text)}]})};
+  }});
+  try {
+    await f.c.tick();
+    await f.mutate(s=>{
+      s.workers['node:'+A]={version:'1.6.0',seenAt:Date.now(),tools:['curl','nexttrace']};
+      s.jobs=[{id:B,nodeUuid:A,policyId:A,executor:'node:'+A,operation:'route',phase:'running',target:'8.8.8.8',source:{provider:'runner'},direction:'VPS→大陆',options:{family:'4'},expiresAt:Date.now()+180000}];
+    });
+    const body={id:B,data:{kind:'route',state:'ok',hops:[{ttl:1,address:'8.8.8.8',asn:'',rttMs:20}]}};
+    assert.equal((await f.invoke('POST',`/workers/node/${A}/result`,body,'b'.repeat(64),false)).status,401);
+    assert.equal(calls.length,0);
+    const pending=f.invoke('POST',`/workers/node/${A}/result`,body,token,false);
+    for(let i=0; !calls.length&&i<20;i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(calls.length,1);
+    const heartbeat=await f.invoke('POST',`/workers/node/${A}/heartbeat`,{version:'1.6.0',tools:['curl','nexttrace']},token,false);
+    assert.equal(heartbeat.status,200);
+    release();
+    assert.equal((await pending).status,200);
+    const report=f.c.reports.history(A).records[0];
+    assert.equal(report.data.hops[0].asn,'15169');
+    assert.equal(report.data.hops[0].network,'GOOGLE - Google LLC, US');
+    assert.equal(report.source.runnerVersion,'1.6.0');
+    assert.equal(f.c.read().jobs.length,0);
+  } finally { release();f.close(); }
 });

@@ -2680,3 +2680,11 @@
   height: 8px;
   border-radius: 3px;
 }
+
+.native-site-picker { display: grid; gap: 14px; }
+.native-site-picker-list { display: grid; gap: 16px; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.native-site-picker-list > section { display: grid; gap: 12px; }
+.native-site-picker h4 { margin: 0; }
+.native-site-picker .network-choice-title { display: grid; gap: 4px; }
+.native-site-picker .network-choice-title strong { font-size: inherit; font-weight: 600; }
+.native-site-picker .network-choice-title small { overflow-wrap: anywhere; color: var(--text-secondary); font-size: 11px; }

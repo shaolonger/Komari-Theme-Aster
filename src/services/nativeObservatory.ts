@@ -100,6 +100,23 @@ export const record = z.object({
         })
         .optional(),
       tlsVerified: z.boolean().optional(),
+      path: z.string().optional(),
+      tcpQuality: z
+        .object({
+          method: z.string(),
+          state: z.string(),
+          address: z.string(),
+          addressScope: z.string().optional(),
+          sent: z.number(),
+          received: z.number(),
+          failurePercent: z.number().nullable(),
+          avgMs: z.number().nullable(),
+          minMs: z.number().nullable(),
+          maxMs: z.number().nullable(),
+          stdevMs: z.number().nullable(),
+        })
+        .nullable()
+        .optional(),
       complete: z.boolean().optional(),
       method: z.string().optional(),
       protocol: z.string().optional(),
@@ -109,6 +126,13 @@ export const record = z.object({
             ttl: z.number(),
             address: z.string(),
             asn: z.string(),
+            asnStatus: z.string().optional(),
+            asnSource: z.string().optional(),
+            asnQueriedAt: z.string().optional(),
+            network: z.string().optional(),
+            location: z.string().optional(),
+            prefix: z.string().optional(),
+            registryCountry: z.string().optional(),
             rttMs: z.number().nullable(),
           }),
         )
@@ -181,6 +205,19 @@ const catalog = z.object({
     ),
   }),
   websites: z.array(z.string()),
+  websiteLimit: z.number().default(24),
+  websiteCatalog: z
+    .array(
+      z.object({
+        name: z.string(),
+        host: z.string(),
+        group: z.string(),
+        provider: z.string(),
+        path: z.string(),
+        reference: z.string(),
+      }),
+    )
+    .default([]),
   timezones: z.array(z.string()),
   retention: z.object({ detailDays: z.number(), summaryDays: z.number() }),
 });

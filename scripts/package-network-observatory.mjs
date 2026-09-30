@@ -11,7 +11,7 @@ const files = [
   ["komari-plugin.json", resolve(plugin, "komari-plugin.json")],
   ["script.js", resolve(plugin, "script.js")],
   ["src/model.js", resolve(plugin, "src/model.js")],
-  ...["catalog", "policies", "admin", "report-images", "native-model", "native-controller", "native-archive", "globalping"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
+  ...["catalog", "policies", "admin", "report-images", "native-model", "native-controller", "native-archive", "globalping", "route-enrichment", "website-catalog"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
   ["src/timezones.json", resolve(plugin, "src/timezones.json")],
   ["runner/native.py", resolve(root, "network-observatory/runner/native.py")],

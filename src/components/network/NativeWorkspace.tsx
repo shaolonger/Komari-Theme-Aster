@@ -54,6 +54,28 @@ function headline(r: NativeRecord) {
     d.state
   );
 }
+function asnLabel(asn: string) {
+  return asn.replace(/\b(?:AS)?(\d+)\b/g, "AS$1");
+}
+function hopAttribution(
+  h: NonNullable<NativeRecord["data"]["hops"]>[number],
+  r: NativeRecord,
+) {
+  if (!h.address) return "未响应，无法查询归属";
+  if (h.asn) return [asnLabel(h.asn), h.network].filter(Boolean).join(" · ");
+  const reasons: Record<string, string> = {
+    "non-public": "非公网地址，无公网 BGP 归属",
+    "lookup-failed": "ASN 查询暂不可用",
+    "not-found": "BGP 数据库未返回归属",
+    "not-provided": "工具未提供 ASN",
+  };
+  return (
+    reasons[h.asnStatus || ""] ||
+    (r.data.method === "Globalping"
+      ? "旧公共报告未记录跳点 ASN"
+      : "报告未记录 ASN")
+  );
+}
 function exportReport(r: NativeRecord) {
   const canvas = document.createElement("canvas");
   canvas.width = 1600;
@@ -76,8 +98,13 @@ function exportReport(r: NativeRecord) {
       .slice(0, 16)
       .map(
         (h) =>
-          `${h.ttl}. ${h.address || "*"} ${h.asn ? "AS" + h.asn : ""} ${h.rttMs === null ? "" : h.rttMs.toFixed(1) + " ms"}`,
+          `${h.ttl}. ${h.address || "*"} ${hopAttribution(h, r)} ${h.rttMs === null ? "" : h.rttMs.toFixed(1) + " ms"}`,
       ),
+    ...(r.data.tcpQuality
+      ? [
+          `TCP 建连 ${r.data.tcpQuality.received}/${r.data.tcpQuality.sent} · 均值 ${r.data.tcpQuality.avgMs?.toFixed(1) ?? "—"} ms · 失败率 ${r.data.tcpQuality.failurePercent ?? "—"}%（非包级丢包）`,
+        ]
+      : []),
     ...(r.data.runs || []).map(
       (x) =>
         `${x.direction === "source-to-target" ? "大陆→VPS" : "VPS→大陆"} · ${x.streams} 连接 · ${x.state === "ok" ? (Number(x.bitsPerSecond) / 1e6).toFixed(1) + " Mbps" : x.diagnostic || "失败"}`,
@@ -288,6 +315,8 @@ function Trend({
   );
 }
 function Hops({ r }: { r: NativeRecord }) {
+  const answered = (r.data.hops || []).filter((h) => h.address);
+  const attributed = answered.filter((h) => h.asn);
   return (
     <section>
       <h4>
@@ -297,6 +326,10 @@ function Hops({ r }: { r: NativeRecord }) {
         {provenance(r)} ·{" "}
         {r.data.complete ? "目标已响应" : "只展示已观测的跳点，路径不完整"}
       </p>
+      <p className="network-help">
+        ASN 归属覆盖 {attributed.length} / {answered.length} 个响应跳点。ASN
+        是响应 IP 的网络归属资料；位置为数据库标注，不保证路由器物理位置。
+      </p>
       <ol className="native-path">
         {(r.data.hops || []).map((h, i) => (
           <li key={i}>
@@ -304,9 +337,22 @@ function Hops({ r }: { r: NativeRecord }) {
             <div>
               <strong>{h.address || "未响应"}</strong>
               <small>
-                {h.asn ? `观测 ASN ${h.asn}` : "无 ASN 证据"} ·{" "}
+                {hopAttribution(h, r)} ·{" "}
                 {h.rttMs === null ? "—" : `${h.rttMs.toFixed(1)} ms`}
               </small>
+              {(h.location || h.prefix) && (
+                <small>
+                  {[h.location, h.prefix].filter(Boolean).join(" · ")}
+                </small>
+              )}
+              {h.asnSource && (
+                <small>
+                  归属来源：{h.asnSource}
+                  {h.asnQueriedAt
+                    ? ` · 查询于 ${formatNetworkTime(h.asnQueriedAt)}`
+                    : ""}
+                </small>
+              )}
             </div>
           </li>
         ))}
@@ -323,7 +369,8 @@ function Hops({ r }: { r: NativeRecord }) {
         </p>
       )}
       <small>
-        中间跳不响应、限速或单个 ASN 不足以判定业务丢包或整条线路等级。
+        中间跳不响应、限速或单个 ASN 不足以判定业务丢包、GIA 等级或完整 BGP
+        AS_PATH。Team Cymru 的国家码是注册信息，不用作跳点位置。
       </small>
     </section>
   );
@@ -470,7 +517,7 @@ export function NativeWorkspace({
             ? "大陆→VPS 与 VPS→大陆分别实测。公共去程/回程目标为独立样本；自有同端点测量才按双向对照展示。"
             : tab === "speed"
               ? "大陆端主动连接 VPS，单连接和多连接、两个流量方向分别全速测试。结果代表两端当时条件。"
-              : "按 VPS 正常 DNS 检测网站 HTTPS。401/403 等应用响应与网络连接失败分开显示；实际 CDN IP 保留。"}
+              : "网站 / API 与 CDN 分组检测。保留实际 DNS/CDN IP、TCP 建连样本与 HTTPS 阶段耗时；401/403 等应用响应单独显示。"}
         </p>
         <div className="native-coverage-grid">
           {latest.map((r) => {
@@ -491,7 +538,7 @@ export function NativeWorkspace({
                 <div className="native-result-top">
                   <span>
                     {r.data.kind === "website"
-                      ? r.target
+                      ? String(r.options.websiteName || r.target)
                       : r.source.carrier || r.direction}
                   </span>
                   <NetworkBadge state={r.data.state}>
@@ -518,6 +565,22 @@ export function NativeWorkspace({
                   </div>
                 ) : (
                   <strong>{headline(r)}</strong>
+                )}
+                {r.data.kind === "website" && (
+                  <>
+                    <small>
+                      {r.target} · {String(r.options.websiteGroup || "网站")}
+                    </small>
+                    {r.data.tcpQuality && (
+                      <small>
+                        TCP 均值 {r.data.tcpQuality.avgMs?.toFixed(1) ?? "—"} ms
+                        · 建连失败率 {r.data.tcpQuality.failurePercent ?? "—"}%
+                      </small>
+                    )}
+                    {r.data.tcpQuality?.addressScope === "non-public" && (
+                      <small>连接目标为非公网 IP · 请检查 DNS / 代理</small>
+                    )}
+                  </>
                 )}
                 {r.data.kind !== "website" && (
                   <small>
@@ -658,6 +721,60 @@ export function NativeWorkspace({
             </div>
             {selected.data.kind === "website" && (
               <>
+                {selected.data.tcpQuality ? (
+                  <section className="network-section">
+                    <h4>
+                      TCP 连接质量 · {selected.data.tcpQuality.received} /{" "}
+                      {selected.data.tcpQuality.sent} 次成功
+                    </h4>
+                    <div className="native-metrics">
+                      <article>
+                        <small>建连均值</small>
+                        <strong>
+                          {selected.data.tcpQuality.avgMs?.toFixed(1) ?? "—"} ms
+                        </strong>
+                      </article>
+                      <article>
+                        <small>最小 / 最大</small>
+                        <strong>
+                          {selected.data.tcpQuality.minMs?.toFixed(1) ?? "—"} /{" "}
+                          {selected.data.tcpQuality.maxMs?.toFixed(1) ?? "—"} ms
+                        </strong>
+                      </article>
+                      <article>
+                        <small>建连失败率</small>
+                        <strong>
+                          {selected.data.tcpQuality.failurePercent ?? "—"}%
+                        </strong>
+                      </article>
+                      <article>
+                        <small>建连耗时标准差</small>
+                        <strong>
+                          {selected.data.tcpQuality.stdevMs?.toFixed(1) ?? "—"}{" "}
+                          ms
+                        </strong>
+                      </article>
+                    </div>
+                    <p className="network-help">
+                      {selected.data.tcpQuality.method} ·{" "}
+                      {selected.data.tcpQuality.address || "无可用连接 IP"}
+                      。完整握手样本；失败包括超时或拒绝连接，不作为包级丢包率。仅代表该
+                      IP 的短时样本。
+                    </p>
+                    {selected.data.tcpQuality.addressScope === "non-public" && (
+                      <p role="status">
+                        目标 IP 为私网或保留地址，可能由本地 DNS /
+                        代理映射。建连耗时可能仅到代理入口，不能作为国际公网线路样本。
+                      </p>
+                    )}
+                  </section>
+                ) : (
+                  <p className="network-help">
+                    此报告未包含 TCP 重复采样；升级 VPS 探测器到 v1.6.0
+                    后重新检测即可获得。
+                  </p>
+                )}
+                <h4>HTTPS 访问阶段</h4>
                 <div className="native-metrics">
                   {Object.entries(selected.data.timingsMs || {}).map(
                     ([key, value]) => (
@@ -685,6 +802,10 @@ export function NativeWorkspace({
                   {selected.data.resolvedIp || "未知"} · TLS{" "}
                   {selected.data.tlsVerified ? "验证成功" : "未完成验证"}
                 </p>
+                <small>
+                  资源路径：{selected.data.path || "/"} · 使用 VPS DNS
+                  选择的连接 IP；网站 / CDN 成功不能推断跨洲骨干质量。
+                </small>
                 {selected.data.errorStage && (
                   <p>失败阶段：{selected.data.errorStage}</p>
                 )}
