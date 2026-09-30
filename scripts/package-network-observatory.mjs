@@ -11,13 +11,16 @@ const files = [
   ["komari-plugin.json", resolve(plugin, "komari-plugin.json")],
   ["script.js", resolve(plugin, "script.js")],
   ["src/model.js", resolve(plugin, "src/model.js")],
-  ...["catalog", "policies", "admin", "report-images"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
+  ...["catalog", "policies", "admin", "report-images", "native-model", "native-controller", "native-archive", "globalping"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
+  ["src/timezones.json", resolve(plugin, "src/timezones.json")],
+  ["runner/native.py", resolve(root, "network-observatory/runner/native.py")],
   ["runner/speedtest.py", resolve(root, "network-observatory/runner/speedtest.py")],
   ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
   ["runner/install.sh", resolve(root, "network-observatory/runner/install.sh")],
   ["runner/quick-install.sh", resolve(root, "network-observatory/runner/quick-install.sh")],
   ["runner/aster-network-observatory-agent.service", resolve(root, "network-observatory/runner/aster-network-observatory-agent.service")],
+  ["runner/aster-network-observatory-probe@.service", resolve(root, "network-observatory/runner/aster-network-observatory-probe@.service")],
   ["README.md", resolve(root, "network-observatory/README.md")],
 ];
 

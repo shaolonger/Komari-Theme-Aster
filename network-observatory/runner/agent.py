@@ -22,11 +22,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import native
+
 API_BASE = "/api/aster-network-observatory/v1"
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 PROBE_PATH = Path("/usr/local/libexec/aster-network-observatory/probe.sh")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.4.1"
+RUNNER_VERSION = "1.5.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 TASK_TIMEOUT = 600
@@ -68,6 +71,9 @@ def validate_config(config):
     if not isinstance(config, dict):
         raise ValueError("配置必须是 JSON 对象")
     base_url = validate_base_url(config.get("serverUrl", ""))
+    role = config.get("role", "node")
+    if role not in {"node", "probe"}:
+        raise ValueError("测量端角色无效")
     node_uuid = config.get("nodeUuid", "")
     token = config.get("token", "")
     if not isinstance(node_uuid, str) or not UUID_RE.fullmatch(node_uuid):
@@ -82,6 +88,7 @@ def validate_config(config):
         "nodeUuid": node_uuid,
         "token": token,
         "tcpqualityBin": quality_bin,
+        "role": role,
     }
 
 
@@ -89,10 +96,10 @@ def api_url(config, suffix):
     return f"{config['serverUrl']}{API_BASE}/nodes/{config['nodeUuid']}/{suffix}"
 
 
-def api_request(config, suffix, method="GET", body=None):
+def api_request(config, suffix, method="GET", body=None, native_api=False):
     data = None if body is None else json.dumps(body, separators=(",", ":")).encode("utf-8")
     request = urllib.request.Request(
-        api_url(config, suffix),
+        (f"{config['serverUrl']}/api/aster-network-observatory/v2/workers/{config.get('role', 'node')}/{config['nodeUuid']}/{suffix}" if native_api else api_url(config, suffix)),
         data=data,
         headers={
             "Authorization": f"Bearer {config['token']}",
@@ -221,22 +228,33 @@ def heartbeat(config, stop):
     # A long route/throughput test must not make a healthy worker appear offline.
     while not stop.is_set():
         try:
-            api_request(config, "heartbeat", method="POST", body=capabilities(config))
+            if config.get("role", "node") == "node":
+                api_request(config, "heartbeat", method="POST", body=capabilities(config))
+            api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl") if shutil.which(x)], "authScheme": native.auth_scheme()}, native_api=True)
         except (urllib.error.URLError, OSError, ValueError):
             pass  # Polling reports connectivity errors; older plugins lack heartbeat.
         stop.wait(30)
 
 
-def configure(server_url="", node_uuid=""):
+def configure(server_url="", node_uuid="", probe_id=""):
 
     if os.geteuid() != 0:
         raise PermissionError("请使用 sudo 运行配置向导，以安全写入节点凭证")
-    previous = load_config(CONFIG_PATH) if CONFIG_PATH.exists() else {}
+    if probe_id and not UUID_RE.fullmatch(probe_id):
+        raise ValueError("大陆探针 ID 无效")
+    if probe_id and node_uuid:
+        raise ValueError("--probe-id 与 --node-uuid 不能同时使用")
+    config_target = CONFIG_PATH.with_name("probe-" + probe_id + ".json") if probe_id else CONFIG_PATH
+    service_name = "aster-network-observatory-probe@" + probe_id + ".service" if probe_id else SERVICE_NAME
+    previous = load_config(config_target) if config_target.exists() else {}
+    role = "probe" if probe_id else "node"
+    if probe_id:
+        node_uuid = probe_id
     print("Aster 网络观测节点配置（探测器密钥只显示一次，输入不会回显）")
     default_url = server_url or previous.get("serverUrl", "")
     server_url = validate_base_url(server_url or input(f"Komari 地址 [{default_url}]: ").strip() or default_url)
     node_uuid = node_uuid or input(f"Komari 节点 UUID [{previous.get('nodeUuid', '')}]: ").strip() or previous.get("nodeUuid", "")
-    reuse = previous.get("serverUrl") == server_url and previous.get("nodeUuid") == node_uuid
+    reuse = previous.get("serverUrl") == server_url and previous.get("nodeUuid") == node_uuid and previous.get("role", "node") == role
     token = getpass.getpass("探测器密钥（已有配置可回车保留）: ").strip() or (previous.get("token", "") if reuse else "")
     tcpquality_bin = input("TcpQuality 脚本路径（回车保留现有路径或使用默认）: ").strip() or previous.get("tcpqualityBin", "")
     config = validate_config({
@@ -244,24 +262,55 @@ def configure(server_url="", node_uuid=""):
         "nodeUuid": node_uuid,
         "token": token,
         "tcpqualityBin": tcpquality_bin,
+        "role": role,
     })
-    api_request(config, "verify", method="POST", body={})
+    api_request(config, "verify", method="POST", body={}, native_api=role == "probe")
 
     try:
         group = grp.getgrnam("aster-netobs")
     except KeyError as error:
         raise RuntimeError("请先运行随插件包提供的 install.sh 安装节点服务") from error
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=CONFIG_PATH.parent, delete=False) as temporary:
+    config_target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=config_target.parent, delete=False) as temporary:
         json.dump(config, temporary, separators=(",", ":"))
         temporary.write("\n")
         temporary_path = Path(temporary.name)
     os.chmod(temporary_path, 0o640)
     os.chown(temporary_path, 0, group.gr_gid)
-    os.replace(temporary_path, CONFIG_PATH)
-    subprocess.run(["systemctl", "enable", SERVICE_NAME], check=True)
-    subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
-    print(f"已登记节点 {node_uuid} 并启动 {SERVICE_NAME}。")
+    os.replace(temporary_path, config_target)
+    subprocess.run(["systemctl", "enable", service_name], check=True)
+    subprocess.run(["systemctl", "restart", service_name], check=True)
+    print(f"已登记节点 {node_uuid} 并启动 {service_name}。")
+
+
+def native_task(config, task, listeners):
+    if not isinstance(task, dict) or not UUID_RE.fullmatch(task.get("id", "")):
+        raise ValueError("原生任务 ID 无效")
+    task_id = task["id"]
+    try:
+        if task.get("operation") == "listen":
+            options = task.get("options") or {}
+            listener = native.Listener(options.get("port"), options.get("password"), options.get("peerScheme"))
+            listeners[task_id] = listener
+            data = {"state": "ready", "publicKey": listener.public_key, "scheme": listener.scheme}
+        else:
+            data = native.measure(task)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        data = {"kind": "speed" if task.get("operation") in {"benchmark", "listen"} else task.get("operation"), "state": "failed", "diagnostic": str(error)[:4000]}
+    # A failed result upload is retried; never repeat a bandwidth measurement.
+    for attempt in range(3):
+        try:
+            api_request(config, "result", method="POST", body={"id": task_id, "data": data}, native_api=True)
+            return
+        except urllib.error.HTTPError as error:
+            if error.code in {401, 409}:
+                return
+            if attempt == 2:
+                raise
+        except (urllib.error.URLError, OSError):
+            if attempt == 2:
+                raise
+        time.sleep(2)
 
 
 def run_daemon(config_path):
@@ -269,19 +318,43 @@ def run_daemon(config_path):
     stop = threading.Event()
     worker = threading.Thread(target=heartbeat, args=(config, stop), daemon=True)
     worker.start()
-    print(f"网络观测探测器已启动，节点 {config['nodeUuid']}，每 {POLL_SECONDS} 秒检查一次任务。", flush=True)
-    while True:
-        try:
-            response = api_request(config, "poll")
-            task = response.get("task") if isinstance(response, dict) else None
-            if task is not None:
+    listeners = {}
+    print(f"网络观测探测器已启动，{config.get('role', 'node')} {config['nodeUuid']}。", flush=True)
+    try:
+        while True:
+            try:
+                native_response = None
                 try:
-                    process_task(config, task)
-                except Exception as error:  # keep the worker alive across transient API failures
-                    print(f"任务处理失败：{error}", file=sys.stderr, flush=True)
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as error:
-            print(f"Komari 暂不可达或响应无效：{error}", file=sys.stderr, flush=True)
-        time.sleep(POLL_SECONDS)
+                    native_response = api_request(config, "poll", native_api=True)
+                except urllib.error.HTTPError as error:
+                    if error.code != 404:
+                        raise
+                if native_response is not None:
+                    allowed = set(native_response.get("listeners", []))
+                    for key, listener in list(listeners.items()):
+                        if key not in allowed or time.monotonic() >= listener.expires or listener.process.poll() is not None:
+                            listener.close()
+                            del listeners[key]
+                    if native_response.get("task"):
+                        native_task(config, native_response["task"], listeners)
+                        continue
+                if not listeners and config.get("role", "node") == "node":
+                    response = api_request(config, "poll")
+                    task = response.get("task") if isinstance(response, dict) else None
+                    if task is not None:
+                        process_task(config, task)
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as error:
+                print(f"测量暂不可用：{error}", file=sys.stderr, flush=True)
+            # Listener expiry is local and independent of panel/network availability.
+            for key, listener in list(listeners.items()):
+                if time.monotonic() >= listener.expires:
+                    listener.close()
+                    del listeners[key]
+            time.sleep(3 if listeners else POLL_SECONDS)
+    finally:
+        stop.set()
+        for listener in listeners.values():
+            listener.close()
 
 
 def main():
@@ -290,12 +363,13 @@ def main():
     configure_parser = subparsers.add_parser("configure", help="交互式登记节点凭证并启用 systemd 服务")
     configure_parser.add_argument("--server-url", default="")
     configure_parser.add_argument("--node-uuid", default="")
+    configure_parser.add_argument("--probe-id", default="")
     run_parser = subparsers.add_parser("run", help="运行节点任务轮询服务")
     run_parser.add_argument("--config", default=str(CONFIG_PATH))
     args = parser.parse_args()
     try:
         if args.command == "configure":
-            configure(args.server_url, args.node_uuid)
+            configure(args.server_url, args.node_uuid, args.probe_id)
         else:
             run_daemon(args.config)
     except KeyboardInterrupt:

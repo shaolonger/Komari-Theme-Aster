@@ -759,3 +759,43 @@
 @media (max-width: 360px) {
   .network-latest-grid { grid-template-columns: 1fr; }
 }
+
+/* Native observatory reuses the theme's surfaces and typography. */
+.native-section-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.native-section-heading h3 { margin:0 0 6px; }
+.native-tabs,.native-steps { display:flex; gap:6px; padding:6px; margin:18px 0; border:1px solid var(--border); border-radius:14px; background:var(--surface-sunken); }
+.native-tabs button,.native-steps button { flex:1; min-width:0; white-space:normal; }
+.native-tabs button[aria-selected=true],.native-steps button[aria-current=step] { background:var(--fill-tertiary); color:var(--status-info); border-color:var(--status-info); }
+.native-purpose-grid,.native-coverage-grid,.native-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:12px; }
+.native-purpose-grid button,.native-result-card { text-align:left; display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:20px; border:1px solid var(--border); border-radius:var(--radius-lg,16px); background:var(--surface-elev); }
+.native-purpose-grid button[aria-pressed=true] { border-color:var(--status-info); background:var(--fill-tertiary); }
+.native-result-card[data-state=failed],.native-result-card[data-state=missing] { border-style:dashed; }
+.native-result-card strong { font-size:18px; line-height:1.5; }
+.native-result-card small,.native-result-card time,.native-purpose-grid small { line-height:1.6; color:var(--text-secondary); overflow-wrap:anywhere; }
+.native-check-grid,.native-field-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr)); gap:12px; margin:12px 0; }
+.native-check-grid label { display:flex; align-items:flex-start; gap:10px; padding:12px; border:1px solid var(--border); border-radius:12px; }
+.native-check-grid small { display:block; margin-top:5px; color:var(--text-secondary); }
+.native-plan-panel textarea { min-height:90px; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-elev); color:var(--text-primary); }
+.native-preview { margin-top:16px; padding:16px; border:1px solid var(--border); border-radius:14px; }
+.native-preview p { overflow-wrap:anywhere; }
+.native-preview [data-ready=false] { color:var(--text-secondary); }
+.native-history-row { width:100%; display:flex; align-items:center; gap:16px; justify-content:space-between; margin:8px 0; text-align:left; }
+.native-history-row time { font-size:12px; color:var(--text-secondary); }
+.native-report-heading strong { font-size:24px; line-height:1.5; overflow-wrap:anywhere; }
+.native-metrics article { padding:18px; border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column; gap:8px; }
+.native-metrics article strong { font-size:22px; }
+.native-metrics small { color:var(--text-secondary); overflow-wrap:anywhere; }
+.native-paired-paths { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.native-paired-paths section { min-width:0; }
+.native-path { list-style:none; padding:0; }
+.native-path li { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }
+.native-path li>span { font-variant-numeric:tabular-nums; width:28px; flex-shrink:0; color:var(--text-secondary); }
+.native-path strong,.native-path small { display:block; overflow-wrap:anywhere; }
+.native-path small { color:var(--text-secondary); margin-top:4px; }
+.native-trend svg { width:100%; height:150px; color:var(--status-info); margin-top:16px; }
+.native-table-scroll { overflow-x:auto; }
+.native-table-scroll table { width:100%; border-collapse:collapse; }
+.native-table-scroll td,.native-table-scroll th { text-align:left; padding:10px; border-bottom:1px solid var(--border); }
+.native-workspace details,.native-plan-panel details { margin-top:16px; }
+.native-workspace summary,.native-plan-panel summary { cursor:pointer; padding:10px 0; }
+@media(max-width:600px) { .native-paired-paths { grid-template-columns:1fr; } .native-section-heading { align-items:flex-start; flex-direction:column; } .native-tabs,.native-steps { gap:3px; padding:4px; } .native-tabs button,.native-steps button { padding:10px 6px; font-size:12px; } .native-history-row { flex-direction:column; align-items:flex-start; gap:6px; } }

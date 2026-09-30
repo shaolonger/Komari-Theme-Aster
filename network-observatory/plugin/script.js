@@ -328,6 +328,7 @@ function safeNodeList(nodes) {
 }
 
 function load() {
+  const nativeController = require("./src/native-controller.js").registerNativeController({server,storageDir,isMissingFile,respond,authorized,readBody,readState});
   registerAdminRoutes({ server, readState, writeState, withStateLock, authorized, readBody, respond,
     nodeHistory, safeNodeList, syncInventory, queueSchedule, createTask, requiredTool });
   server.route("GET", `${API_BASE}/status`, async (req, res) => {
@@ -452,9 +453,12 @@ function load() {
       currentNode.lastSeenAt = new Date(now).toISOString();
       expireTasks(current, now);
       const active = current.tasks.filter((item) => item.status === "running");
-      let task = active.length < GLOBAL_CONCURRENCY && !active.some((item) => item.nodeUuid === identity.uuid)
+      const nativeJobs = nativeController.read().jobs;
+      const nativeActive = nativeJobs.filter((j) => ["listening", "ready", "running"].includes(j.phase));
+      let task = !nativeActive.some((j) => j.executor === `node:${identity.uuid}` || j.operation === "benchmark" && j.nodeUuid === identity.uuid) && active.length < GLOBAL_CONCURRENCY && !active.some((item) => item.nodeUuid === identity.uuid)
         ? current.tasks.find((item) => item.nodeUuid === identity.uuid && item.status === "queued" &&
           !(item.mode === "speedtest" && active.some((running) => running.mode === "speedtest")) &&
+          !(["throughput", "speedtest", "tcpquality-all", "tcpquality-report", "tcpquality-intl", "tcpquality-intl-report"].includes(item.mode) && nativeActive.some((j) => j.operation === "benchmark")) &&
           !(["throughput", "speedtest"].includes(item.mode) && active.some((running) => ["throughput", "speedtest"].includes(running.mode) && running.target === item.target && running.port === item.port))) : null;
       if (task) {
         task.status = "running";
@@ -574,6 +578,6 @@ function load() {
     }
   });
 
-  server.cron("* * * * *", () => { void tick(); });
+  server.cron("* * * * *", () => { void tick(); void nativeController.tick(); });
   void tick();
 }

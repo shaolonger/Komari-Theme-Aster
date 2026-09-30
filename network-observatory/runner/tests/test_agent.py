@@ -62,6 +62,20 @@ class AgentValidationTests(unittest.TestCase):
                     AGENT.configure("https://other.example.net", existing["nodeUuid"])
                 self.assertEqual(AGENT.load_config(target)["serverUrl"], existing["serverUrl"])
 
+    def test_mainland_probe_keeps_existing_node_config_and_uses_separate_service(self):
+        import json
+        with tempfile.TemporaryDirectory() as temp:
+            target=Path(temp)/"agent.json"
+            original={"serverUrl":"https://panel.example.net","nodeUuid":TASK["taskId"],"token":"a"*64,"tcpqualityBin":""}
+            target.write_text(json.dumps(original));target.chmod(0o600)
+            with patch.object(AGENT,"CONFIG_PATH",target),patch.object(AGENT.os,"geteuid",return_value=0),patch.object(AGENT.grp,"getgrnam",return_value=SimpleNamespace(gr_gid=0)),patch.object(AGENT.os,"chown"),patch.object(AGENT.getpass,"getpass",return_value="b"*64),patch("builtins.input",return_value=""),patch.object(AGENT,"api_request",return_value={}) as request,patch.object(AGENT.subprocess,"run") as service:
+                AGENT.configure(original["serverUrl"],probe_id=TASK["taskId"])
+                self.assertEqual(json.loads(target.read_text()),original)
+                probe=target.with_name("probe-"+TASK["taskId"]+".json")
+                self.assertEqual(AGENT.load_config(probe)["role"],"probe")
+                self.assertTrue(request.call_args.kwargs["native_api"])
+                self.assertIn("probe@"+TASK["taskId"],service.call_args.args[0][-1])
+
     def test_capabilities_reflect_installed_commands_and_tcpquality_pair(self):
         with tempfile.TemporaryDirectory() as temp:
             entry = Path(temp) / "runTcpQuality.sh"

@@ -71,7 +71,9 @@ expected = {
     "runner/install.sh",
     "runner/probe.sh",
     "runner/speedtest.py",
+    "runner/native.py",
     "runner/aster-network-observatory-agent.service",
+    "runner/aster-network-observatory-probe@.service",
 }
 files = {}
 with zipfile.ZipFile(archive_path) as bundle:
@@ -111,6 +113,8 @@ install_probe_dependencies() {
   command -v bash >/dev/null 2>&1 || packages="$packages bash"
   command -v iperf3 >/dev/null 2>&1 || packages="$packages iperf3"
   command -v jq >/dev/null 2>&1 || packages="$packages jq"
+  command -v openssl >/dev/null 2>&1 || packages="$packages openssl"
+  command -v mtr >/dev/null 2>&1 || packages="$packages mtr"
   command -v traceroute >/dev/null 2>&1 || packages="$packages traceroute"
   command -v nmap >/dev/null 2>&1 || packages="$packages nmap"
   command -v ping >/dev/null 2>&1 || packages="$packages iputils-ping"
