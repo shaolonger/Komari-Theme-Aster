@@ -62,8 +62,51 @@ function fixture(initial, { gojaErrno = 0 } = {}) {
     return res;
   }
   const state = () => JSON.parse(fs.readFileSync(path.join(dir, 'state.json')));
-  return { invoke, state, cron, calls, errors, writeState(value) { fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(value)); }, setInventory(value) { clientList = value; }, cleanup() { fs.rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, invoke, state, cron, calls, errors, writeState(value) { fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(value)); }, setInventory(value) { clientList = value; }, cleanup() { fs.rmSync(dir, { recursive: true, force: true }); } };
 }
+
+test('first native result on Komari 1.4.3 is archived and releases the next queued task', async () => {
+  const f = fixture(undefined, { gojaErrno: 2 });
+  const nativeBase = '/api/aster-network-observatory/v2';
+  const readFile = fs.readFileSync;
+  try {
+    await sleep();
+    const token = (await f.invoke('POST', `${BASE}/nodes/${A}/token`, { body: {} })).json.token;
+    const worker = `${nativeBase}/workers/node/${A}`;
+    await f.invoke('POST', `${worker}/heartbeat`, { token, body: { version: '1.5.0', tools: ['curl'], authScheme: 'unavailable' } });
+    const policy = (await f.invoke('POST', `${nativeBase}/policies`, { body: { kind: 'websites', clients: [A], sites: ['example.net', 'example.org'], revision: 0 } })).json.policy;
+    await f.invoke('POST', `${nativeBase}/policies/${policy.id}/run`, { body: {} });
+    const first = (await f.invoke('GET', `${worker}/poll`, { token })).json.task;
+    assert.equal(first.operation, 'website');
+
+    // EvalSymlinks in Komari 1.4.3 reports the first missing path component,
+    // which can be an ancestor rather than the requested daily JSON file.
+    fs.readFileSync = (file, ...args) => {
+      try { return readFile(file, ...args); }
+      catch (error) {
+        if (error.code !== 'ENOENT' || typeof file !== 'string' || !file.startsWith(path.join(f.dir, 'native-reports') + path.sep)) throw error;
+        let firstMissing = f.dir;
+        for (const component of path.relative(f.dir, file).split(path.sep)) {
+          firstMissing = path.join(firstMissing, component);
+          if (!fs.existsSync(firstMissing)) break;
+        }
+        throw { value: { Op: 'lstat', Path: firstMissing, Err: { toString: () => 'no such file or directory' } } };
+      }
+    };
+    const result = await f.invoke('POST', `${worker}/result`, { token, body: { id: first.id, data: { kind: 'website', state: 'ok', httpStatus: 200, timingsMs: { dns: 1, connect: 2, tls: 3, ttfb: 4, total: 5 } } } });
+    assert.equal(result.statusCode, 200, JSON.stringify(result.json));
+    const reports = (await f.invoke('GET', `${nativeBase}/nodes/${A}/reports`)).json;
+    assert.equal(reports.records.length, 1);
+    assert.equal(reports.records[0].id, first.id);
+    assert.equal(reports.summaries[0].samples, 1);
+    const next = (await f.invoke('GET', `${worker}/poll`, { token })).json.task;
+    assert.equal(next.operation, 'website');
+    assert.notEqual(next.id, first.id);
+  } finally {
+    fs.readFileSync = readFile;
+    f.cleanup();
+  }
+});
 
 test('NextTrace targets are selectable and public iperf3 candidates require consent', () => {
   const routes = CATALOG.find((item) => item.id === 'china-route');

@@ -8,7 +8,7 @@ three-carrier coverage or certify every production deployment.
 
 ## 对照最初需求：现状与改进顺序
 
-审查范围：主题 v1.6.1，插件和 runner v1.5.0。
+审查范围：主题 v1.6.2，插件 v1.5.1，runner v1.5.0。
 
 | 原始需求 | 当前能获得什么 | 完整满足的条件与限制 |
 | --- | --- | --- |
@@ -40,7 +40,7 @@ three-carrier coverage or certify every production deployment.
 
 v1.6.1 更新了全部网络页面的配置与报告样式；上述前三项测量逻辑问题尚未
 修复。本地两端 iperf3 实验验证的是执行机制，不能当作大陆三网真实链路的
-生产验证。最终验收还应在实际电信、联通、移动测量点分别完成一轮双向路径
+生产验证。v1.5.1 已修复 Komari 1.4.3 首次保存时缺少报告父目录导致的结果上传和超时收尾失败；用官方 1.4.3 JavaScript 运行时验证了修复前报错、修复后成功保存。最终验收还应在实际电信、联通、移动测量点分别完成一轮双向路径
 和吞吐测量，并检查跨天、失败、缺少覆盖及多 VPS 排队时的报告。
 
 ## Measurement requirements

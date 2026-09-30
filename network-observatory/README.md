@@ -1,14 +1,16 @@
 # 原生网络观测：大陆双向线路、全速测速与国际网站
 
-Aster **v1.6.1**、插件 **v1.5.0**、runner **v1.5.0** 新增原生观测。支持 Komari **≥1.4.3**，不修改 Komari/Agent 核心，Web SSH 可保持关闭。检测是带时间和来源的定时样本，不是持续获知所有真实业务包经过的线路。
+Aster **v1.6.2**、插件 **v1.5.1**、runner **v1.5.0** 提供原生观测。支持 Komari **≥1.4.3**，不修改 Komari/Agent 核心，Web SSH 可保持关闭。检测是带时间和来源的定时样本，不是持续获知所有真实业务包经过的线路。
 
-v1.6.1 全面更新网络检测界面：方案面板分为「创建方案」「测量点接入」「已有方案」，VPS 范围支持搜索和批量选择，每日时刻逐项添加。报告、历史、自定义检测及旧工具方案沿用 Aster 的卡片和表单风格，适配浅色、深色和手机布局。插件与 runner 仍为 v1.5.0；已完成 v1.6.0 配套升级的用户只需更新主题。
+v1.6.1 全面更新网络检测界面：方案面板分为「创建方案」「测量点接入」「已有方案」，VPS 范围支持搜索和批量选择，每日时刻逐项添加。报告、历史、自定义检测及旧工具方案沿用 Aster 的卡片和表单风格，适配浅色、深色和手机布局。v1.6.2 配套插件 v1.5.1 修复 Komari 1.4.3 首次保存原生报告失败、任务持续卡在“测量中／等待公共结果”的问题。已有主题 v1.6.1、runner v1.5.0 的用户只需更新插件，无需重发密钥或重装 VPS 探测器。
 
-当前能力、完整三网覆盖的条件及待改进的测量逻辑见[原始需求对照审查](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.6.1/docs/network-observatory-v2-implementation.md#对照最初需求现状与改进顺序)。
+当前能力、完整三网覆盖的条件及待改进的测量逻辑见[原始需求对照审查](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.6.2/docs/network-observatory-v2-implementation.md#对照最初需求现状与改进顺序)。
 
 ## 快速更新
 
-1. 在 [Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/tag/v1.6.1) 下载并更新主题 ZIP 和插件 ZIP，启用插件并批准 API 路由与系统 RPC 权限。HTTP 响应上限为 8 MiB，用于读取 Globalping 全局目录；只保存大陆部分，runner 请求体仍限制 128 KiB。
+若只修复长期卡住且 runner 已为 v1.5.0，请更新并启用 **Aster-Network-Observatory-v1.5.1.zip**，刷新实例页后重试一次检测。旧任务会按原超时规则收尾；这些旧任务的失败报告不能代表网络质量。以下完整步骤用于首次接入或较旧版本升级。
+
+1. 在 [Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/tag/v1.6.2) 下载并更新主题 ZIP 和插件 ZIP，启用插件并批准 API 路由与系统 RPC 权限。HTTP 响应上限为 8 MiB，用于读取 Globalping 全局目录；只保存大陆部分，runner 请求体仍限制 128 KiB。
 2. 在每台 VPS 的 **实例详情 → 网络检测 → 管理探测器** 复制“一键安装 / 升级”命令并执行。未重置密钥时回车保留；仅更新面板不能更新 VPS 上的 runner。
 3. 三个原生类别显示在实例页；旧 NextTrace、公开 iperf3 与 TcpQuality 计划、图片和历史在 **工具诊断与旧计划** 中，原有固定 UTC 时差不会被改成 IANA 时区。不要同时保留重复的高流量测速方案；不再需要的旧计划可暂停。
 
@@ -47,6 +49,37 @@ sudo journalctl -u 'aster-network-observatory-probe@<探针 ID>' -n 100 --no-pag
 
 NAT 后探针能主动连接，所以去程和反向流量测速仍可用；VPS→探针的完整逐跳线路可能缺失，报告明确标记。中间跳点未响应、ICMP 限速或某个 ASN 出现，不足以断言业务丢包或整条线路属于 CN2 GIA 等等级。撤销探针凭证立即阻止后续鉴权；只依赖该探针且没有剩余来源的计划会暂停，旧报告保留。
 
+### 家里只有 Windows/Mac，没有公网 IP
+
+公共大陆线路参考和 VPS→国际网站检测不要求登记自有大陆探针。只有希望测量固定家庭线路、做实际大陆↔VPS 吞吐测试时，才需要家庭侧的测量设备。现有安装器使用 Linux/systemd，尚无 Windows/macOS 原生安装方式；以下是通过 Linux 环境接入的办法，不表示已经在每个 WSL/虚拟化版本实机验证。
+
+- **Windows：**可按[微软 WSL 安装文档](https://learn.microsoft.com/en-us/windows/wsl/install)在管理员 PowerShell 执行 `wsl --install -d Ubuntu`，按提示重启并完成 Ubuntu 用户设置。确认使用 WSL 2，并按[官方 systemd 文档](https://learn.microsoft.com/en-us/windows/wsl/systemd)确认 `systemctl` 可用；然后在 Ubuntu 终端执行面板生成的大陆探针一键命令。
+- **Mac：**可按[Canonical 文档](https://canonical.com/multipass/docs/latest/how-to-guides/install-multipass/)安装 Multipass，在终端执行下列命令创建并进入 Ubuntu 虚拟机，再运行面板生成的大陆探针一键命令。
+
+  ```sh
+  multipass launch 24.04 --name aster-cn --cpus 2 --memory 2G --disk 8G
+  multipass shell aster-cn
+  ```
+
+登记时，名称、城市和运营商填写家庭宽带的真实信息，接入类型选择家庭宽带，**可达公网地址留空**。设备只需主动访问 Komari 和 VPS；全速测速需允许大陆端连到 VPS 的临时测速端口，无需给家庭路由器做入站映射。没有可达公网地址时，VPS→家庭端的完整逐跳路径仍无法保证。
+
+电脑、WSL/虚拟机需在计划执行时运行且联网；睡眠或关机会缺少覆盖。通过虚拟机测得的吞吐也受虚拟网卡、CPU 和家庭宽带影响。两台电脑连同一条家庭宽带仍是同一运营商样本，改变登记标签不能变成三网测量点；完整三网测速需要三个真实运营商的设备或授权资源。
+
+### 长期停留在“测量中／等待公共结果”
+
+同一 VPS 的本机路径和网站任务串行执行，路径探测可能接近三分钟；公共结果正常由插件每分钟领取。运行任务及公共任务有三分钟超时，排队任务有二十分钟期限，不能把持续半小时完全不变当作正常等待。
+
+先刷新实例页，再查看 VPS 服务和面板插件日志：
+
+```sh
+sudo systemctl status aster-network-observatory-agent --no-pager -l
+sudo journalctl -u aster-network-observatory-agent --since '40 minutes ago' --no-pager
+```
+
+若 runner 正常但日志有 `HTTP Error 400`，表示面板拒绝了请求，不能仅凭 HTTP 状态断定目标网络不通。Komari 1.4.3 的一个已确认兼容问题是首次保存原生报告时，尚未创建 `native-reports/<节点 UUID>/`，文件系统返回父目录的 `lstat ... no such file or directory`；结果保存和超时收尾都会失败，阻塞后续任务。**插件 v1.5.1 已修复此问题**，现有 runner v1.5.0 可继续使用。
+
+更新插件后刷新并重试一轮。如果仍卡住，应同时检查插件错误日志、runner 日志和页面读取错误。分享日志时不要发送探测器密钥、`agent.json` 或整个 `native-state.json`。
+
 ## 大陆↔VPS 全速测速
 
 1. 先接入至少一个授权大陆探针；两端需要带 RSA 认证支持的 iperf3，VPS 另需 openssl。一键安装器会安装依赖；若软件源的 iperf3 不支持认证，预览/结果会提示，不能退成未认证监听。两端系统时钟应同步。
@@ -81,11 +114,11 @@ NAT 后探针能主动连接，所以去程和反向流量测速仍可用；VPS�
 
 # Aster 网络检测：从安装到批量巡检
 
-Aster v1.6.1 将网络检测放在每台 VPS 的**实例详情 → 节点诊断 → 网络检测**中。配置、任务状态和报告都在此处；旧 `/network-observatory` 地址只提供跳转到实例页的节点列表。Komari 1.4.3 及以上可用，不需要修改 Komari 或 komari-agent 源码，也不需要开启 Agent Web SSH。检测由每台 VPS 上独立的 systemd 探测器经出站 HTTPS 领取任务，浏览器关闭后仍会运行。
+Aster v1.6.2 将网络检测放在每台 VPS 的**实例详情 → 节点诊断 → 网络检测**中。配置、任务状态和报告都在此处；旧 `/network-observatory` 地址只提供跳转到实例页的节点列表。Komari 1.4.3 及以上可用，不需要修改 Komari 或 komari-agent 源码，也不需要开启 Agent Web SSH。检测由每台 VPS 上独立的 systemd 探测器经出站 HTTPS 领取任务，浏览器关闭后仍会运行。
 
 ## 1. 更新主题和插件
 
-1. 从 [最新 GitHub Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载 `Komari-Theme-Aster-v1.6.1.zip` 与 `Aster-Network-Observatory-v1.5.0.zip`。
+1. 从 [最新 GitHub Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载 `Komari-Theme-Aster-v1.6.2.zip` 与 `Aster-Network-Observatory-v1.5.1.zip`。
 2. 在 Komari 后台分别更新主题和插件，启用插件。插件要求 Komari **≥1.4.3**，不是 ≥1.5.1。
 3. 批准插件的 **API 路由**和**系统 RPC**权限。v1.2.0 新增系统 RPC 权限是为了在浏览器关闭时读取 Komari 节点清单和分组，完成自动继承；插件代码只调用 `admin:listClients`，不会调用远程命令执行。此权限在 Komari 层面较宽，管理员应安装自己信任的插件版本。
 4. 用管理员账号刷新 Aster 页面，进入任意 VPS 实例详情，点「网络检测」。若显示插件未就绪，检查插件是否启用、权限是否批准、反向代理是否转发 `/api/aster-network-observatory/`。旧版主题与新版插件应同时升级，才能使用批量方案和实例页。
@@ -150,7 +183,7 @@ TcpQuality 标准检测与国际互联模式在上游脚本内要求 UID 0，因
 
 实例页显示探测器在线状态、依赖可用性、计划、任务和历史。点“自定义 / 临时检测”可建立本机计划，也可只执行一次。每日多时刻同样适用于本机计划和集中方案；批量方案的目标、时间或应用范围可在“管理已有方案”修改。原有计划升级后保持原来的间隔频率，不会自动改为每日时刻。
 
-在 Aster v1.6.1 的“自定义 / 临时检测”中，选择“路径追踪”“iperf3 限速上传”或“全速双向测速”，可在“公开候选”和“自定义主机”之间切换。公开候选会自动带入目标和端口；自定义主机由用户填写。候选列表来自已启用的网络观测插件；若没有候选项，先确认插件版本、启用状态和 API 权限，再刷新实例页。全速测速需要插件 v1.4.0 和 runner v1.4.0 或以上，实例页会显示“全速双向 · 可用”。
+在 Aster v1.6.2 的“自定义 / 临时检测”中，选择“路径追踪”“iperf3 限速上传”或“全速双向测速”，可在“公开候选”和“自定义主机”之间切换。公开候选会自动带入目标和端口；自定义主机由用户填写。候选列表来自已启用的网络观测插件；若没有候选项，先确认插件版本、启用状态和 API 权限，再刷新实例页。全速测速需要插件 v1.4.0 和 runner v1.4.0 或以上，实例页会显示“全速双向 · 可用”。
 
 点最近结果或历史记录可查看指标、路径和完整输出。图片报告直接显示在报告抽屉，不需要打开外部结果链接。文本历史每节点保留最多 500 条或 2 MiB；为控制磁盘，图片每节点保留最近 **20 份图片报告**，单张最大 2 MiB。更早的文本仍可查看，但对应图片会被清理。图片文件在 Komari 插件数据目录下的 `aster-network-observatory/reports/<节点 UUID>/`，请将该目录纳入面板备份。报告上传会把 VPS 出口 IP 和检测数据交给 TcpQuality 的服务；不希望上传时使用原来的纯文本方案。
 

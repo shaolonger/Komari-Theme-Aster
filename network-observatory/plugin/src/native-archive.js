@@ -23,6 +23,11 @@ function archive(root, missing) {
     const dir = directory(record.nodeUuid),
       day = record.completedAt.slice(0, 10),
       file = path.join(dir, day + ".json");
+    // Komari 1.4.3 resolves symlinks before reading. With a missing parent it
+    // reports that ancestor's PathError, not the requested file's ENOENT.
+    // Create the report directory before the first read so the existing
+    // missing-file check handles new daily files without masking other errors.
+    fs.mkdirSync(dir, { recursive: true });
     const rows = read(file, []);
     const duplicate = rows.some((x) => x.id === record.id);
     if (rows.length >= 10000 && !duplicate) throw new Error("当日原生报告达到容量上限");
