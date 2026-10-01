@@ -29,14 +29,72 @@ import {
   type NativePolicy,
 } from "@/services/nativeObservatory";
 import { formatNetworkTime } from "./shared";
-export function NativePlanPanel({
+import { reportCapabilities } from "@/services/reportObservatory";
+import { ReportResourcesPanel } from "./ReportResourcesPanel";
+import { ReportPlanPanel } from "./ReportPlanPanel";
+import { NetworkDrawer } from "./NetworkDrawer";
+type PlanPanelProps = {
+  initialNodes: string[];
+  primaryNode?: string;
+  onApplied?: () => void;
+};
+export function NativePlanPanel(props: PlanPanelProps) {
+  const capability = useQuery({
+    queryKey: ["report-capabilities"],
+    queryFn: reportCapabilities,
+    retry: false,
+    staleTime: 60000,
+  });
+  const [resources, setResources] = useState(false),
+    [legacyResources, setLegacyResources] = useState(false);
+  if (!capability.data) return <LegacyNativePlanPanel {...props} />;
+  return (
+    <>
+      <ReportPlanPanel
+        uuid={props.primaryNode}
+        initialNodes={props.initialNodes}
+        onApplied={props.onApplied}
+        onResources={() => setResources(true)}
+      />
+      {resources && (
+        <NetworkDrawer
+          title="测量点接入与 VPS 公网地址"
+          onClose={() => setResources(false)}
+        >
+          <ReportResourcesPanel
+            onLegacy={() => {
+              setResources(false);
+              setLegacyResources(true);
+            }}
+          />
+        </NetworkDrawer>
+      )}
+      {legacyResources && (
+        <NetworkDrawer
+          title="测量点接入与 VPS 公网地址"
+          onClose={() => setLegacyResources(false)}
+        >
+          <LegacyNativePlanPanel
+            {...props}
+            resourcesOnly
+            onApplied={undefined}
+          />
+        </NetworkDrawer>
+      )}
+    </>
+  );
+}
+
+function LegacyNativePlanPanel({
   initialNodes,
   primaryNode,
   onApplied,
+  resourcesOnly = false,
 }: {
   initialNodes: string[];
   primaryNode?: string;
   onApplied?: () => void;
+  resourcesOnly?: boolean;
 }) {
   const cache = useQueryClient(),
     catalog = useQuery({
@@ -68,7 +126,9 @@ export function NativePlanPanel({
       ReturnType<typeof previewNative>
     > | null>(null),
     [step, setStep] = useState(1),
-    [view, setView] = useState<"plan" | "setup" | "manage">("plan"),
+    [view, setView] = useState<"plan" | "setup" | "manage">(
+      resourcesOnly ? "setup" : "plan",
+    ),
     [nodeSearch, setNodeSearch] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -95,6 +155,7 @@ export function NativePlanPanel({
     try {
       await fn();
       await cache.invalidateQueries({ queryKey: ["native-catalog"] });
+      await cache.invalidateQueries({ queryKey: ["report-catalog"] });
       await cache.invalidateQueries({ queryKey: ["native-reports"] });
       onApplied?.();
     } catch (e) {
@@ -201,41 +262,51 @@ export function NativePlanPanel({
   }
   return (
     <div className="network-form native-plan-panel">
-      <div className="network-config-intro">
-        <span className="network-icon-tile">
-          <Layers3 size={22} aria-hidden="true" />
-        </span>
-        <div>
-          <strong>把网络观测交给定时计划</strong>
-          <p>选用途、选范围、设时间。大陆测量点登记一次，供多台 VPS 复用。</p>
-        </div>
-      </div>
-      <div className="native-config-tabs" role="group" aria-label="方案工作区">
-        <button
-          type="button"
-          aria-pressed={view === "plan"}
-          onClick={() => setView("plan")}
-        >
-          <Plus size={15} aria-hidden="true" />
-          {edit ? "编辑方案" : "创建方案"}
-        </button>
-        <button
-          type="button"
-          aria-pressed={view === "setup"}
-          onClick={() => setView("setup")}
-        >
-          <Radio size={15} aria-hidden="true" />
-          测量点接入
-        </button>
-        <button
-          type="button"
-          aria-pressed={view === "manage"}
-          onClick={() => setView("manage")}
-        >
-          <Layers3 size={15} aria-hidden="true" />
-          已有方案 <span>{data.policies.length}</span>
-        </button>
-      </div>
+      {!resourcesOnly && (
+        <>
+          <div className="network-config-intro">
+            <span className="network-icon-tile">
+              <Layers3 size={22} aria-hidden="true" />
+            </span>
+            <div>
+              <strong>把网络观测交给定时计划</strong>
+              <p>
+                选用途、选范围、设时间。大陆测量点登记一次，供多台 VPS 复用。
+              </p>
+            </div>
+          </div>
+          <div
+            className="native-config-tabs"
+            role="group"
+            aria-label="方案工作区"
+          >
+            <button
+              type="button"
+              aria-pressed={view === "plan"}
+              onClick={() => setView("plan")}
+            >
+              <Plus size={15} aria-hidden="true" />
+              {edit ? "编辑方案" : "创建方案"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "setup"}
+              onClick={() => setView("setup")}
+            >
+              <Radio size={15} aria-hidden="true" />
+              测量点接入
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "manage"}
+              onClick={() => setView("manage")}
+            >
+              <Layers3 size={15} aria-hidden="true" />
+              已有方案 <span>{data.policies.length}</span>
+            </button>
+          </div>
+        </>
+      )}
       {view === "plan" && (
         <>
           <nav className="native-steps" aria-label="配置步骤">
@@ -1091,16 +1162,18 @@ export function NativePlanPanel({
               保存连接目标
             </button>
           </section>
-          <div className="network-form-footer">
-            <span>接入完成后回到方案继续配置</span>
-            <button
-              type="button"
-              className="network-primary-button"
-              onClick={() => setView("plan")}
-            >
-              返回方案配置 <ArrowRight size={15} aria-hidden="true" />
-            </button>
-          </div>
+          {!resourcesOnly && (
+            <div className="network-form-footer">
+              <span>接入完成后回到方案继续配置</span>
+              <button
+                type="button"
+                className="network-primary-button"
+                onClick={() => setView("plan")}
+              >
+                返回方案配置 <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </>
       )}
       {view === "manage" && (

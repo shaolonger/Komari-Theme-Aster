@@ -19,6 +19,8 @@
 
 Aster 可在每台 VPS 的实例详情页配置、运行和查看网络检测；内置 HTTPS、NextTrace 三网路径、TcpQuality 回程/国际互联、自有站点与授权 iperf3 方案。可预览并批量套用到多台 VPS，或按 Komari 分组自动继承，新节点接入后无需逐个填写目标。节点探测器通过出站 HTTPS 领取任务，Agent 可保持 `--disable-web-ssh`，无需改造 Komari/Agent。插件适配 Komari 1.4.3 及以上，分组自动继承需批准其系统 RPC 权限；代码只读取节点清单。安装步骤、公开目标来源、工具许可与流量影响见 [网络检测使用指南](network-observatory/README.md)。
 
+Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR、单连接双向测速、十次延迟矩阵、IDC 和 BGP/RPKI 分别保存轮次。批量计划、集中资源、迁移与升级步骤见 [新版网络报告指南](docs/network-report-v3-guide.md)，设计与测量口径见 [重构方案](docs/network-observatory-report-redesign-plan.md)。大陆九格需要实际可用且允许该用途的端点；缺少覆盖会明确记录。
+
 ## 效果预览
 
 以下图片由当前仓库代码在官方 Komari 兼容模拟环境中直接运行并截图，展示 Aster 当前界面；演示节点和监控数值均为模拟数据。
@@ -104,4 +106,4 @@ Aster 工作室按外观、巡检、节点、资产和网络组织配置，支�
  </picture>
 </a>
 
-Aster v1.7.0 的原生网络观测在实例页提供大陆双向线路、授权全速测速与国际网站报告。配置和升级步骤见[网络观测完整指南](network-observatory/README.md)；稳定的大陆三网全速测速需要自有或授权大陆测量点。
+Aster v1.8.0 的新版网络报告支持完整 MTR、HTTP/iperf3 单连接双向、AWS/网站/CDN/Telegram 矩阵及 BGP/RPKI。请同步升级插件和 runner 至 1.7.0；使用步骤见[新版指南](docs/network-report-v3-guide.md)。

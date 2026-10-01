@@ -520,7 +520,7 @@ test("provider request omits ipVersion for IP targets; 422 and 429 are distinct 
       source: { asn: 4134 },
       options: { family: "6", protocol: "icmp" },
     });
-    assert.equal(bodies[1].measurementOptions.ipVersion, "IPv6");
+    assert.equal(bodies[1].measurementOptions.ipVersion, 6);
     global.fetch = async () => ({ ok: false, status: 422 });
     await assert.rejects(
       G.request("/probes"),

@@ -46,9 +46,27 @@ function normalize(job, payload) {
       hops = (r.hops || []).slice(0, 64).map((h, i) => ({
         ttl: i + 1,
         address: h.resolvedAddress || "",
-        asn: "",
+        asn: Array.isArray(h.asn)
+          ? h.asn.filter(Number.isInteger).join(" ")
+          : "",
+        asnSource: Array.isArray(h.asn) && h.asn.length ? "Globalping" : "",
         rttMs:
           (h.timings || []).find((t) => typeof t.rtt === "number")?.rtt ?? null,
+        ...(h.stats
+          ? {
+              sent: h.stats.total,
+              received: h.stats.rcv,
+              lossPercent: h.stats.loss,
+              lastMs:
+                [...(h.timings || [])]
+                  .reverse()
+                  .find((t) => typeof t.rtt === "number")?.rtt ?? null,
+              avgMs: h.stats.rcv ? h.stats.avg : null,
+              bestMs: h.stats.rcv ? h.stats.min : null,
+              worstMs: h.stats.rcv ? h.stats.max : null,
+              stdevMs: h.stats.rcv ? h.stats.stDev : null,
+            }
+          : {}),
       }));
     const matched = p.country === "CN" && p.asn === job.source.asn;
     return {
@@ -56,7 +74,7 @@ function normalize(job, payload) {
       data: {
         kind: "route",
         state: !matched ? "missing" : r.status === "finished" ? "ok" : "failed",
-        method: "Globalping",
+        method: job.options.fullMtr ? "Globalping MTR" : "Globalping",
         protocol: job.options.protocol,
         target: job.target,
         family: job.options.family,
@@ -72,14 +90,17 @@ function normalize(job, payload) {
 }
 function create(job) {
   return request("/measurements", {
-    type: "traceroute",
+    type: job.options.fullMtr ? "mtr" : "traceroute",
     target: job.target,
     locations: [{ country: "CN", asn: job.source.asn, limit: 1 }],
     measurementOptions: {
       protocol: job.options.protocol.toUpperCase(),
-      port: 443,
+      port: job.options.port || 443,
+      ...(job.options.fullMtr
+        ? { packets: Math.max(1, Math.min(16, job.options.packets || 16)) }
+        : {}),
       ...(!job.target.includes(":") && !/^[0-9.]+$/.test(job.target)
-        ? { ipVersion: "IPv" + job.options.family }
+        ? { ipVersion: Number(job.options.family) }
         : {}),
     },
   });

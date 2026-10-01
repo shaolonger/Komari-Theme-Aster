@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -29,10 +30,11 @@ API_BASE = "/api/aster-network-observatory/v1"
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 PROBE_PATH = Path("/usr/local/libexec/aster-network-observatory/probe.sh")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.6.0"
+RUNNER_VERSION = "1.7.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 TASK_TIMEOUT = 600
+STATE_DIR = Path("/var/lib/aster-network-observatory")
 MODES = {
     "https",
     "route",
@@ -230,7 +232,9 @@ def heartbeat(config, stop):
         try:
             if config.get("role", "node") == "node":
                 api_request(config, "heartbeat", method="POST", body=capabilities(config))
-            api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl") if shutil.which(x)], "authScheme": native.auth_scheme()}, native_api=True)
+            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed"], "activeJobIds": native.active_tasks()}, native_api=True)
+            if "activeJobIds" in response:
+                native.reconcile_tasks(set(response["activeJobIds"]))
         except (urllib.error.URLError, OSError, ValueError):
             pass  # Polling reports connectivity errors; older plugins lack heartbeat.
         stop.wait(30)
@@ -284,6 +288,68 @@ def configure(server_url="", node_uuid="", probe_id=""):
 
 
 def native_task(config, task, listeners):
+    with native.task_context(task.get("id", "")):
+        return _native_task(config, task, listeners)
+
+
+def outbox_dir(config):
+    folder = STATE_DIR / (config.get("role", "node") + "-" + config["nodeUuid"])
+    if not UUID_RE.fullmatch(config["nodeUuid"]) or config.get("role", "node") not in {"node", "probe"}:
+        raise ValueError("结果缓存身份无效")
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if folder.is_symlink():
+        raise ValueError("拒绝使用符号链接结果缓存")
+    return folder
+
+
+def persist_result(config, task_id, data):
+    if not UUID_RE.fullmatch(task_id):
+        raise ValueError("结果缓存任务 ID 无效")
+    folder = outbox_dir(config)
+    output = folder / (task_id + ".json")
+    temporary = output.with_suffix(".tmp")
+    with open(temporary, "w", encoding="utf8") as file:
+        os.chmod(temporary, 0o600)
+        json.dump({"id": task_id, "data": data, "createdAt": time.time()}, file, separators=(",", ":"))
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temporary, output)
+    return output
+
+
+def remove_result(file):
+    try:
+        file.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def flush_results(config):
+    # Results survive a service restart. Retrying delivery never invokes measure().
+    folder = outbox_dir(config)
+    for file in sorted(folder.glob("*.json"))[:16]:
+        if not UUID_RE.fullmatch(file.stem) or file.is_symlink():
+            continue
+        try:
+            payload = json.loads(file.read_text(encoding="utf8"))
+        except FileNotFoundError:
+            continue  # The sending worker won the delivery race.
+        if payload.get("id") != file.stem:
+            raise ValueError("结果缓存 ID 不一致")
+        if time.time() - payload.get("createdAt", 0) > 7 * 86400:
+            remove_result(file)
+            continue
+        try:
+            api_request(config, "result", method="POST", body={"id": payload["id"], "data": payload["data"]}, native_api=True)
+        except urllib.error.HTTPError as error:
+            if error.code == 409:
+                remove_result(file)
+                continue
+            raise
+        remove_result(file)
+
+
+def _native_task(config, task, listeners):
     if not isinstance(task, dict) or not UUID_RE.fullmatch(task.get("id", "")):
         raise ValueError("原生任务 ID 无效")
     task_id = task["id"]
@@ -296,14 +362,19 @@ def native_task(config, task, listeners):
         else:
             data = native.measure(task)
     except (ValueError, OSError, KeyError, TypeError) as error:
-        data = {"kind": "speed" if task.get("operation") in {"benchmark", "listen"} else task.get("operation"), "state": "failed", "diagnostic": str(error)[:4000]}
+        data = {"kind": "speed" if task.get("operation") in {"benchmark", "listen", "http-speed", "iperf-speed"} else task.get("operation"), "state": "failed", "diagnostic": str(error)[:4000]}
+    cached = persist_result(config, task_id, data) if task.get("operation") != "listen" else None
     # A failed result upload is retried; never repeat a bandwidth measurement.
     for attempt in range(3):
         try:
             api_request(config, "result", method="POST", body={"id": task_id, "data": data}, native_api=True)
+            if cached:
+                remove_result(cached)
             return
         except urllib.error.HTTPError as error:
             if error.code in {401, 409}:
+                if cached and error.code == 409:
+                    remove_result(cached)
                 return
             if attempt == 2:
                 raise
@@ -319,10 +390,20 @@ def run_daemon(config_path):
     worker = threading.Thread(target=heartbeat, args=(config, stop), daemon=True)
     worker.start()
     listeners = {}
+    pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aster-latency")
+    pending = {}
     print(f"网络观测探测器已启动，{config.get('role', 'node')} {config['nodeUuid']}。", flush=True)
     try:
         while True:
             try:
+                for task_id, future in list(pending.items()):
+                    if future.done():
+                        del pending[task_id]
+                        try:
+                            future.result()
+                        except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as error:
+                            print(f"结果回传失败，未重复测量：{error}", file=sys.stderr, flush=True)
+                flush_results(config)
                 native_response = None
                 try:
                     native_response = api_request(config, "poll", native_api=True)
@@ -336,9 +417,13 @@ def run_daemon(config_path):
                             listener.close()
                             del listeners[key]
                     if native_response.get("task"):
-                        native_task(config, native_response["task"], listeners)
+                        task = native_response["task"]
+                        if task.get("operation") == "latency" and task.get("options", {}).get("reportVersion") == 3:
+                            pending[task["id"]] = pool.submit(native_task, config, task, listeners)
+                        else:
+                            native_task(config, task, listeners)
                         continue
-                if not listeners and config.get("role", "node") == "node":
+                if not listeners and not pending and config.get("role", "node") == "node":
                     response = api_request(config, "poll")
                     task = response.get("task") if isinstance(response, dict) else None
                     if task is not None:
@@ -350,9 +435,11 @@ def run_daemon(config_path):
                 if time.monotonic() >= listener.expires:
                     listener.close()
                     del listeners[key]
-            time.sleep(3 if listeners else POLL_SECONDS)
+            time.sleep(0.5 if pending else 3 if listeners else POLL_SECONDS)
     finally:
         stop.set()
+        native.reconcile_tasks(set())
+        pool.shutdown(wait=True)
         for listener in listeners.values():
             listener.close()
 

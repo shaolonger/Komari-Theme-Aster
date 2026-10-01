@@ -10,6 +10,8 @@ import {
 } from "@/services/nativeObservatory";
 import { NetworkDrawer } from "./NetworkDrawer";
 import { formatNetworkTime } from "./shared";
+import { reportCapabilities } from "@/services/reportObservatory";
+import { NetworkReportWorkspace } from "./NetworkReportWorkspace";
 const labels: Record<string, string> = {
   ok: "测量完成",
   application: "网站应用响应",
@@ -375,7 +377,13 @@ function Hops({ r }: { r: NativeRecord }) {
     </section>
   );
 }
-export function NativeWorkspace({
+export function NativeWorkspace(props: { uuid: string; onConfigure: () => void }) {
+  const capability = useQuery({ queryKey: ["report-capabilities"], queryFn: reportCapabilities, retry: false, staleTime: 60000 });
+  if (!capability.data) return <LegacyNativeWorkspace {...props} />;
+  return <><NetworkReportWorkspace {...props} availableModules={capability.data.modules} /><details className="network-legacy-reports"><summary>旧版单次检测与历史</summary><LegacyNativeWorkspace {...props} /></details></>;
+}
+
+function LegacyNativeWorkspace({
   uuid,
   onConfigure,
 }: {

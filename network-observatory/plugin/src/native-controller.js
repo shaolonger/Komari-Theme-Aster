@@ -22,6 +22,7 @@ function registerNativeController(ctx) {
     enricher = createEnricher(ctx.enrichmentOptions);
   let queue = Promise.resolve(),
     busy = false;
+  let roundController = null;
   const lock = (fn) => {
     const promise = queue.then(fn, fn);
     queue = promise.then(
@@ -136,12 +137,17 @@ function registerNativeController(ctx) {
     const tools = s.workers[j.executor].tools;
     if (j.operation === "website" && !tools.includes("curl"))
       return "测量端缺少 curl";
+    if (j.operation === "route" && j.options?.fullMtr && !tools.includes("mtr"))
+      return "完整逐跳统计需要 mtr；请重新运行一键安装命令补齐依赖";
     if (
       j.operation === "route" &&
       !tools.includes("nexttrace") &&
-      !tools.includes("traceroute")
+      !tools.includes("traceroute") &&
+      !tools.includes("mtr")
     )
       return "测量端缺少路径工具";
+    if (j.operation === "iperf-speed" && !tools.includes("iperf3"))
+      return "测量端缺少 iperf3";
     if (j.operation === "benchmark") {
       const node = s.workers["node:" + j.nodeUuid];
       if (!online(s, "node:" + j.nodeUuid)) return "VPS 测量端未就绪";
@@ -155,22 +161,44 @@ function registerNativeController(ctx) {
     return "";
   }
   function finish(s, j, data, source = j.source) {
-    reports.append({
-      id: j.id,
-      nodeUuid: j.nodeUuid,
-      policyId: j.policyId,
-      completedAt: new Date().toISOString(),
-      operation: j.operation,
-      target: j.target,
-      source,
-      executor: j.executor,
-      direction: j.direction,
-      pairId: j.pairId || "",
-      fingerprint: M.fingerprint({ ...j, source }),
-      options: j.options,
-      data,
-    });
-    s.jobs = s.jobs.filter((x) => x.id !== j.id);
+    if (j.roundId) roundController.complete(j, data, source);
+    else
+      reports.append({
+        id: j.id,
+        nodeUuid: j.nodeUuid,
+        policyId: j.policyId,
+        completedAt: new Date().toISOString(),
+        operation: j.operation,
+        target: j.target,
+        source,
+        executor: j.executor,
+        direction: j.direction,
+        pairId: j.pairId || "",
+        fingerprint: M.fingerprint({ ...j, source }),
+        options: j.options,
+        data,
+      });
+    const followers = s.jobs.filter((x) => x.sharedJobId === j.id);
+    if (data.state !== "cancelled")
+      for (const follower of followers)
+        roundController.complete(
+          follower,
+          { ...data, sharedMeasurementId: j.id },
+          source,
+        );
+    else
+      for (const follower of followers) {
+        delete follower.sharedJobId;
+        delete follower.sharedRoundId;
+        delete follower.waitReason;
+        follower.phase = "queued";
+        roundController.progress(follower);
+      }
+    const completed = new Set([
+      j.id,
+      ...(data.state !== "cancelled" ? followers.map((x) => x.id) : []),
+    ]);
+    s.jobs = s.jobs.filter((x) => !completed.has(x.id));
   }
   function enqueue(s, p, uuid) {
     if (s.jobs.filter((x) => x.policyId === p.id && x.nodeUuid === uuid).length)
@@ -189,6 +217,7 @@ function registerNativeController(ctx) {
   function safe(s) {
     return {
       ...s,
+      reportSecrets: undefined,
       probes: Object.entries(s.probes).map(([id, p]) => {
         const { tokenHash, ...rest } = p;
         return { id, ...rest, online: online(s, "probe:" + id) };
@@ -313,7 +342,12 @@ function registerNativeController(ctx) {
     const port = Number(input.port || 25201);
     if (!Number.isInteger(port) || port < 20000 || port > 40000)
       throw new Error("测速端口需在 20000–40000");
-    s.endpoints[input.nodeUuid] = { address: M.host(input.address), port };
+    s.endpoints[input.nodeUuid] = {
+      address: M.host(input.address),
+      ipv4: input.ipv4 ? M.host(input.ipv4) : "",
+      ipv6: input.ipv6 ? M.host(input.ipv6) : "",
+      port,
+    };
     s.revision++;
     save(s);
     respond(res, 200, { ok: true });
@@ -399,9 +433,45 @@ function registerNativeController(ctx) {
           authScheme: ["oaep", "pkcs1"].includes(b.authScheme)
             ? b.authScheme
             : "unavailable",
+          features: Array.isArray(b.features)
+            ? b.features.filter((f) =>
+                [
+                  "report-v3",
+                  "latency-samples",
+                  "full-mtr",
+                  "speed-intervals",
+                  "http-speed",
+                ].includes(f),
+              )
+            : [],
         };
+        const active = Array.isArray(b.activeJobIds)
+          ? b.activeJobIds.filter((id) => UUID.test(id)).slice(0, 4)
+          : [];
+        for (const j of s.jobs)
+          if (
+            j.roundId &&
+            j.executor === w.key &&
+            j.phase === "running" &&
+            active.includes(j.id)
+          )
+            j.expiresAt = Math.min(
+              Date.now() + 90000,
+              j.deadlineAt || j.expiresAt,
+            );
         save(s);
-        respond(res, 200, { ok: true });
+        respond(res, 200, {
+          ok: true,
+          activeJobIds: s.jobs
+            .filter(
+              (j) =>
+                (j.executor === w.key && j.phase === "running") ||
+                (j.operation === "benchmark" &&
+                  w.key === "node:" + j.nodeUuid &&
+                  ["listening", "ready", "running"].includes(j.phase)),
+            )
+            .map((j) => j.id),
+        });
       },
     );
     route("GET", `/workers/${role}/:id/poll`, false, async (req, res, s) => {
@@ -428,19 +498,68 @@ function registerNativeController(ctx) {
       let task = null;
       for (const j of s.jobs) {
         if (
+          j.roundId &&
+          j.executor === w.key &&
+          !s.workers[w.key]?.features?.includes("report-v3")
+        )
+          continue;
+        if (
           j.phase === "queued" &&
+          (!j.availableAt || j.availableAt <= Date.now()) &&
           j.executor === w.key &&
           j.operation !== "benchmark" &&
+          !(
+            ["http-speed", "iperf-speed"].includes(j.operation) &&
+            occupied.some(
+              (x) =>
+                ["http-speed", "iperf-speed"].includes(x.operation) &&
+                x.target === j.target &&
+                x.options.port === j.options.port,
+            )
+          ) &&
           !occupied.some(
             (x) =>
-              x.executor === w.key ||
+              (x.executor === w.key &&
+                !(
+                  j.roundId &&
+                  j.operation === "latency" &&
+                  x.roundId &&
+                  x.operation === "latency"
+                )) ||
               (x.operation === "benchmark" && x.nodeUuid === w.id),
+          ) &&
+          !(
+            j.roundId &&
+            j.operation === "latency" &&
+            occupied.filter(
+              (x) => x.executor === w.key && x.operation === "latency",
+            ).length >= 4
+          ) &&
+          !(
+            j.roundId &&
+            legacy.tasks.some(
+              (x) =>
+                x.nodeUuid === j.nodeUuid &&
+                x.status === "running" &&
+                [
+                  "speedtest",
+                  "throughput",
+                  "tcpquality-all",
+                  "tcpquality-report",
+                  "tcpquality-intl",
+                  "tcpquality-intl-report",
+                ].includes(x.mode),
+            )
           )
         ) {
           const problem = coverage(s, j);
           if (problem) {
             finish(s, j, {
-              kind: j.operation,
+              kind: ["benchmark", "http-speed", "iperf-speed"].includes(
+                j.operation,
+              )
+                ? "speed"
+                : j.operation,
               state: "missing",
               diagnostic: problem,
             });
@@ -448,17 +567,29 @@ function registerNativeController(ctx) {
           }
           j.phase = "running";
           j.expiresAt = Date.now() + 180000;
+          if (j.roundId) j.deadlineAt = Date.now() + 300000;
+          j.startedAt = new Date().toISOString();
           task = { ...j };
+          if (
+            j.options?.endpoint?.id &&
+            s.reportSecrets?.[j.options.endpoint.id]
+          )
+            task.credentials = {
+              token: s.reportSecrets[j.options.endpoint.id],
+            };
+          if (j.roundId) roundController.progress(j);
           break;
         }
         if (
           j.operation === "benchmark" &&
           j.phase === "queued" &&
+          (!j.availableAt || j.availableAt <= Date.now()) &&
           w.key === "node:" + j.nodeUuid &&
           !heavy &&
           !occupied.some(
             (x) =>
-              x.operation === "benchmark" ||
+              (x.operation === "benchmark" &&
+                (x.nodeUuid === j.nodeUuid || x.executor === j.executor)) ||
               x.executor === "node:" + j.nodeUuid ||
               x.executor === j.executor,
           ) &&
@@ -498,6 +629,12 @@ function registerNativeController(ctx) {
           j.executor === w.key
         ) {
           j.phase = "running";
+          if (j.roundId) {
+            j.startedAt = new Date().toISOString();
+            j.deadlineAt = Date.now() + 300000;
+            j.expiresAt = Date.now() + 180000;
+            roundController.progress(j);
+          }
           task = {
             ...j,
             credentials: {
@@ -532,6 +669,10 @@ function registerNativeController(ctx) {
         const b = prepared || readBody(req),
           j = s.jobs.find((x) => x.id === b.id);
         if (!j) {
+          if (roundController.receipt(b.id, w.key)) {
+            respond(res, 200, { ok: true, replay: true });
+            return;
+          }
           respond(res, 409, { error: "任务已结束" });
           return;
         }
@@ -562,8 +703,34 @@ function registerNativeController(ctx) {
             return;
           }
           const data = b.data,
-            kind = j.operation === "benchmark" ? "speed" : j.operation;
+            kind = ["benchmark", "http-speed", "iperf-speed"].includes(
+              j.operation,
+            )
+              ? "speed"
+              : j.operation;
           M.validateResult(data, kind);
+          const busyOnly =
+            kind === "speed" &&
+            data.state === "failed" &&
+            data.runs?.length &&
+            data.runs.every(
+              (r) =>
+                r.state === "failed" &&
+                !r.bytes &&
+                /server is busy|server busy/i.test(r.diagnostic || ""),
+            );
+          if (j.roundId && busyOnly && (j.busyAttempts || 0) < 2) {
+            j.busyAttempts = (j.busyAttempts || 0) + 1;
+            j.phase = "queued";
+            j.availableAt = Date.now() + j.busyAttempts * 60000;
+            j.expiresAt = Date.now() + 6 * 3600000;
+            delete j.deadlineAt;
+            j.waitReason = "公共端点繁忙，尚未传输测速数据；等待退避后重试";
+            roundController.progress(j);
+            save(s);
+            respond(res, 200, { ok: true, retrying: true });
+            return;
+          }
           finish(s, j, data, {
             ...j.source,
             runnerVersion: s.workers[w.key]?.version || "",
@@ -608,6 +775,7 @@ function registerNativeController(ctx) {
             name: n.name || n.uuid,
             group: n.group || "",
             ip: n.ipv4 || n.ip_v4 || "",
+            ipv6: n.ipv6 || n.ip_v6 || "",
           }));
       } catch (e) {
         error = String(e.message || e).slice(0, 200);
@@ -620,10 +788,15 @@ function registerNativeController(ctx) {
           for (const n of inventory)
             if (
               !s.endpoints[n.uuid] &&
-              n.ip &&
-              require("./model.js").isHost(n.ip)
+              (n.ip || n.ipv6) &&
+              require("./model.js").isHost(n.ip || n.ipv6)
             )
-              s.endpoints[n.uuid] = { address: n.ip, port: 25201 };
+              s.endpoints[n.uuid] = { address: n.ip || n.ipv6, port: 25201 };
+          for (const n of inventory) {
+            const endpoint = s.endpoints[n.uuid];
+            if (endpoint && n.ipv6 && require("./model.js").isHost(n.ipv6))
+              endpoint.ipv6 = n.ipv6;
+          }
         }
         s.inventoryError = error;
         for (const j of s.jobs.slice())
@@ -639,6 +812,7 @@ function registerNativeController(ctx) {
               diagnostic:
                 "任务超时：" + (coverage(s, j) || "测量或排队没有按期完成"),
             });
+        roundController.tick(s);
         for (const p of s.policies)
           if (p.enabled && p.nextAt <= now) {
             for (const uuid of M.members(p, s.inventory)) enqueue(s, p, uuid);
@@ -682,7 +856,12 @@ function registerNativeController(ctx) {
         }
         if (
           (refreshProvider ||
-            s.policies.some((p) => p.kind === "routes" && p.publicSources)) &&
+            s.policies.some((p) => p.kind === "routes" && p.publicSources) ||
+            s.reportSuites?.some(
+              (p) =>
+                p.enabled &&
+                p.modules.some((m) => m.module === "routes" && m.publicSources),
+            )) &&
           s.provider.checkedAt < now - 10 * 60000
         ) {
           s.provider.checkedAt = now;
@@ -757,13 +936,18 @@ function registerNativeController(ctx) {
           });
         }),
       );
+      await roundController.publicTick();
     } catch (e) {
       console.error("Aster native scheduler:", String(e.message || e));
     } finally {
       busy = false;
     }
   }
+  roundController = require("./report-controller.js").registerReportController(
+    ctx,
+    { read, lock, save, finish, coverage, online, tick },
+  );
   void tick();
-  return { tick, read, lock, reports, enqueue };
+  return { tick, read, lock, reports, enqueue, roundController };
 }
 module.exports = { registerNativeController, BASE };

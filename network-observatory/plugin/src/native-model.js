@@ -345,10 +345,11 @@ function validateResult(data, kind) {
             "registryCountry",
           ].some((k) => h[k] !== undefined && typeof h[k] !== "string") ||
           (h.rttMs !== null && !number(h.rttMs)),
+        // Optional MTR fields remain absent on legacy traceroute reports.
       ))
   )
     bad();
-  if (kind === "website" && data.tcpQuality != null) {
+  if (["website", "latency"].includes(kind) && data.tcpQuality != null) {
     const q = data.tcpQuality;
     if (
       typeof q.method !== "string" ||
@@ -366,7 +367,52 @@ function validateResult(data, kind) {
       (q.failurePercent !== null && q.failurePercent > 100)
     )
       bad();
+    if (
+      q.samples !== undefined &&
+      (!Array.isArray(q.samples) ||
+        q.samples.length !== q.sent ||
+        q.samples.some(
+          (sample, i) =>
+            !sample ||
+            sample.index !== i + 1 ||
+            !["ok", "timeout", "refused", "failed"].includes(sample.state) ||
+            (sample.state === "ok"
+              ? !number(sample.rttMs)
+              : sample.rttMs !== null) ||
+            typeof sample.address !== "string" ||
+            typeof sample.error !== "string",
+        ) ||
+        q.samples.filter((sample) => sample.state === "ok").length !==
+          q.received)
+    )
+      bad();
+    if (q.medianMs !== undefined && q.medianMs !== null && !number(q.medianMs))
+      bad();
   }
+  if (
+    kind === "latency" &&
+    (!data.tcpQuality || !Array.isArray(data.tcpQuality.samples))
+  )
+    bad();
+  if (
+    kind === "route" &&
+    data.hops?.some(
+      (h) =>
+        [
+          "lastMs",
+          "avgMs",
+          "bestMs",
+          "worstMs",
+          "stdevMs",
+          "sent",
+          "received",
+          "lossPercent",
+        ].some((k) => h[k] !== undefined && h[k] !== null && !number(h[k])) ||
+        (h.lossPercent !== undefined && h.lossPercent > 100) ||
+        (h.received !== undefined && h.received > h.sent),
+    )
+  )
+    bad();
   if (
     kind === "website" &&
     ["ok", "application"].includes(data.state) &&
@@ -389,11 +435,24 @@ function validateResult(data, kind) {
           !r ||
           !["source-to-target", "target-to-source"].includes(r.direction) ||
           ![1, 4, 8].includes(r.streams) ||
-          !["ok", "failed"].includes(r.state) ||
-          (r.state === "ok" &&
+          !["ok", "partial", "missing", "failed"].includes(r.state) ||
+          (["ok", "partial"].includes(r.state) &&
             (!number(r.bitsPerSecond) ||
               !number(r.bytes) ||
-              !number(r.seconds))),
+              !number(r.seconds))) ||
+          (r.intervals !== undefined &&
+            (!Array.isArray(r.intervals) ||
+              r.intervals.length > 80 ||
+              r.intervals.some(
+                (i) =>
+                  !i ||
+                  !number(i.bitsPerSecond) ||
+                  !number(i.seconds) ||
+                  i.seconds <= 0,
+              ))) ||
+          ["tcpRttMs", "retransmits", "maxBitsPerSecond"].some(
+            (k) => r[k] !== undefined && r[k] !== null && !number(r[k]),
+          ),
       ))
   )
     bad();

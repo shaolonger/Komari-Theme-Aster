@@ -35,6 +35,7 @@ fi
 install -d -o root -g root -m 0755 "$SERVICE_DIR"
 install -d -o root -g "$SERVICE_GROUP" -m 0750 "$CONFIG_DIR"
 install -o root -g root -m 0755 "$SCRIPT_DIR/probe.sh" "$SERVICE_DIR/probe.sh"
+install -o root -g root -m 0644 "$SCRIPT_DIR/http_receiver.py" "$SERVICE_DIR/http_receiver.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/native.py" "$SERVICE_DIR/native.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/speedtest.py" "$SERVICE_DIR/speedtest.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/agent.py" "$SERVICE_DIR/agent.py"
@@ -42,6 +43,7 @@ install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-agent.ser
   /etc/systemd/system/aster-network-observatory-agent.service
 install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-probe@.service" \
   /etc/systemd/system/aster-network-observatory-probe@.service
+install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-http.service" /etc/systemd/system/aster-network-observatory-http.service
 systemctl daemon-reload
 
 printf '%s\n' \

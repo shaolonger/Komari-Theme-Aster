@@ -22,6 +22,8 @@ PLUGIN_FILES = {
     "runner/probe.sh": b"probe",
     "runner/speedtest.py": b"speedtest",
     "runner/native.py": b"native",
+    "runner/http_receiver.py": b"receiver",
+    "runner/aster-network-observatory-http.service": b"http-service",
     "runner/aster-network-observatory-probe@.service": b"probe service",
     "runner/aster-network-observatory-agent.service": b"service",
 }

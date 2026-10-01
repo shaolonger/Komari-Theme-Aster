@@ -22,6 +22,25 @@ TASK = {
 
 
 class AgentValidationTests(unittest.TestCase):
+    def test_result_outbox_survives_failed_upload_and_never_repeats_measurement(self):
+        import json
+        config = {"serverUrl": "https://panel.example.net", "nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "operation": "latency", "target": "example.net", "options": {}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT.native, "measure", return_value={"kind": "latency", "state": "failed"}) as measure, patch.object(AGENT, "api_request", side_effect=OSError("offline")), patch.object(AGENT.time, "sleep"):
+            with self.assertRaises(OSError):
+                AGENT.native_task(config, task, {})
+            measure.assert_called_once()
+            cached = list((Path(temp) / ("node-" + TASK["taskId"])).glob("*.json"))
+            self.assertEqual(len(cached), 1)
+            self.assertNotIn("token", cached[0].read_text())
+            self.assertEqual(cached[0].stat().st_mode & 0o777, 0o600)
+            with patch.object(AGENT, "api_request", return_value={"ok": True}) as request:
+                AGENT.flush_results(config)
+                self.assertEqual(request.call_args.kwargs["body"]["id"], task["id"])
+            self.assertFalse(cached[0].exists())
+            measure.assert_called_once()
+        with self.assertRaises(ValueError):
+            AGENT.persist_result(config, "../../state", {})
     def test_accepts_allowlisted_modes_hosts_and_tcpquality_default(self):
         self.assertEqual(AGENT.validate_task(TASK)["target"], "example.net")
         self.assertEqual(AGENT.validate_task({**TASK, "target": "2001:db8::1"})["target"], "2001:db8::1")

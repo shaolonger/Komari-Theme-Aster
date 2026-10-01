@@ -1,3 +1,11 @@
+# 网络报告 v3
+
+主题 **1.8.0** / 插件 **1.7.0** / runner **1.7.0** 提供实例详情中的「路由 / 测速 / 国际」成组报告。升级、三步批量计划、资源登记和排障请先阅读[新版逐步指南](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.8.0/docs/network-report-v3-guide.md)。插件 ZIP 同时包含 `docs/network-report-v3-guide.md`。支持 Komari ≥1.4.3，Web SSH 可保持关闭。
+
+下文保留为 **v1/v2 工具诊断、旧版计划与旧报告的参考**；其中版本号、旧 UI 和历史窗口说明均属于旧版，不适用于新版轮次报告。
+
+---
+
 # 原生网络观测：大陆双向线路、全速测速与国际网站
 
 Aster **v1.7.0**、插件 **v1.6.0**、runner **v1.6.0** 提供原生观测。支持 Komari **≥1.4.3**，不修改 Komari/Agent 核心，Web SSH 可保持关闭。检测是带时间和来源的定时样本，不是持续获知所有真实业务包经过的线路。
@@ -5,6 +13,8 @@ Aster **v1.7.0**、插件 **v1.6.0**、runner **v1.6.0** 提供原生观测。�
 v1.7.0 为公网路线跳点增加 ASN 补查及网络归属来源、缺失原因；国际目标扩充为 TcpQuality 的 31 个网站/API、8 个 CDN，另保留 9 个原有首页，共 48 项。方案支持搜索、分组和一键选择，预设 CDN 自动使用资源路径。报告增加 10 次 TCP 建连样本与非公网端点提示，路线、测速、网站各返回最近 200 份详情。已有凭证、计划和历史保留；旧报告不会补造历史 ASN 或 TCP 数据。
 
 当前能力、完整三网覆盖的条件及待改进的测量逻辑见[原始需求对照审查](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.7.0/docs/network-observatory-v2-implementation.md#对照最初需求现状与改进顺序)。
+
+按 PickMyVPS 截图重构「路由 / 测速 / 国际」报告的后续规划见[网络报告重构方案](../docs/network-observatory-report-redesign-plan.md)，包含测量口径、公共与授权资源、轮次模型、分阶段交付和验收条件；新版实现与验收记录见[实施记录](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.8.0/docs/network-report-implementation-status.md)。
 
 ## 快速更新
 

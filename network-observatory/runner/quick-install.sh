@@ -72,6 +72,8 @@ expected = {
     "runner/probe.sh",
     "runner/speedtest.py",
     "runner/native.py",
+    "runner/http_receiver.py",
+    "runner/aster-network-observatory-http.service",
     "runner/aster-network-observatory-agent.service",
     "runner/aster-network-observatory-probe@.service",
 }
