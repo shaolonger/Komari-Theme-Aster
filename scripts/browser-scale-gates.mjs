@@ -1364,6 +1364,9 @@ try {
   if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-timing.png`);
   await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('预览覆盖与下次执行')).click()`);
   await waitUntil(cdp, `document.querySelector('.native-preview')?.textContent.includes('1 台 VPS')`,2000);
+  // Preview content renders before action() finishes refreshing the catalog.
+  // Wait for the real enabled button rather than clicking during that refresh.
+  await waitUntil(cdp, `Array.from(document.querySelectorAll('.native-preview button')).some(b=>b.textContent.includes('确认保存')&&!b.disabled)`,6000);
   await cdp.value(`Array.from(document.querySelectorAll('.native-preview button')).find(b=>b.textContent.includes('确认保存')).click()`);
   await waitUntil(cdp, `document.querySelector('.native-plan-panel [role="status"]')?.textContent.includes('方案已保存')`,2000);
   failGate(nativeFixture.applications===1,'native plan did not submit');
