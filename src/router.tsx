@@ -1,13 +1,16 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
+import { Spinner } from "@/components/ui/Spinner";
 import { AppShell } from "@/components/shell/AppShell";
 import { RouteErrorFallback } from "@/components/shell/ErrorBoundary";
-import { Spinner } from "@/components/ui/Spinner";
 
-const Home = lazy(() => import("@/pages/Home").then((m) => ({ default: m.Home })));
+const Home = lazy(() =>
+  import("@/pages/Home").then((m) => ({ default: m.Home })),
+);
 const Instance = lazy(() =>
   import("@/pages/Instance").then((m) => ({ default: m.Instance })),
 );
+const InstanceReport = lazy(() => import("@/pages/InstanceReport"));
 const Compare = lazy(() =>
   import("@/pages/Compare").then((m) => ({ default: m.Compare })),
 );
@@ -15,14 +18,22 @@ const NotFound = lazy(() =>
   import("@/pages/NotFound").then((m) => ({ default: m.NotFound })),
 );
 const NetworkObservatory = lazy(() =>
-  import("@/pages/NetworkObservatory").then((m) => ({ default: m.NetworkObservatory })),
+  import("@/pages/NetworkObservatory").then((m) => ({
+    default: m.NetworkObservatory,
+  })),
 );
 
-function Loading() {
+function loading(page: ReactNode) {
   return (
-    <div className="flex h-[60vh] items-center justify-center">
-      <Spinner />
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-[60vh] items-center justify-center">
+          <Spinner />
+        </div>
+      }
+    >
+      {page}
+    </Suspense>
   );
 }
 
@@ -34,43 +45,27 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <Suspense fallback={<Loading />}>
-            <Home />
-          </Suspense>
-        ),
+        element: loading(<Home />),
       },
       {
         path: "compare",
-        element: (
-          <Suspense fallback={<Loading />}>
-            <Compare />
-          </Suspense>
-        ),
+        element: loading(<Compare />),
       },
       {
         path: "network-observatory",
-        element: (
-          <Suspense fallback={<Loading />}>
-            <NetworkObservatory />
-          </Suspense>
-        ),
+        element: loading(<NetworkObservatory />),
+      },
+      {
+        path: "instance/:uuid/report",
+        element: loading(<InstanceReport />),
       },
       {
         path: "instance/:uuid",
-        element: (
-          <Suspense fallback={<Loading />}>
-            <Instance />
-          </Suspense>
-        ),
+        element: loading(<Instance />),
       },
       {
         path: "404",
-        element: (
-          <Suspense fallback={<Loading />}>
-            <NotFound />
-          </Suspense>
-        ),
+        element: loading(<NotFound />),
       },
       { path: "*", element: <Navigate to="/404" replace /> },
     ],

@@ -16,3 +16,12 @@ BROWSER_GATE_SCREENSHOT="$PWD/docs/images/current/aster.png" node scripts/browse
 截图模式还会生成 `aster-studio-{appearance,overview,views,assets,network}-{desktop,mobile}.png`，用于逐分区首屏检查，并验证两个尺寸下均无页面横向溢出。此检查不等于所有折叠内容、长列表及深色模式的完整视觉验收。
 
 深色模式同样生成五分区、两种设备尺寸的首屏截图，文件名增加 `-dark` 后缀；通过保存外观偏好并重载页面切换。
+
+v1.9.0 的全面报告截图可独立生成（同样使用模拟数据）：
+
+```sh
+npm run build
+BROWSER_REPORT_GATES_ONLY=1 BROWSER_REPORT_SCREENSHOT="$PWD/docs/images/current/vps-report" node scripts/browser-scale-gates.mjs
+```
+
+生成 `vps-report-dates.png`、`vps-report-online.png` 与离线报告的 `vps-report-light.png` / `vps-report-dark.png`。此门禁同时验证两类后端、精确日期、断网阅读、真实曲线绘制、1024/390/320px 和 PDF，不修改首页预览图。

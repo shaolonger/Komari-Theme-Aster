@@ -238,11 +238,11 @@ function officialPingMetricSeries(params, fixture) {
   // The interactive Ping regression run must exercise the long-history parser
   // and uPlot path with the same density requested in production. Scale tests
   // keep their compact response so the gate remains focused on node volume.
-  const pointCount = Math.min(fixture.ui ? 4_320 : 24, requestedPointCount);
+  const pointCount = Math.min(fixture.comprehensive ? 480 : fixture.ui ? 4_320 : 24, requestedPointCount);
   const series = [];
 
   for (const metricKey of metricKeys) {
-    if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey)) continue;
+    if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey) && !fixture.comprehensive) continue;
     for (const [index, uuid] of entityIds.entries()) {
       const points = Array.from({ length: pointCount }, (_, point) => {
         const fraction = pointCount === 1 ? 1 : point / (pointCount - 1);
@@ -254,7 +254,10 @@ function officialPingMetricSeries(params, fixture) {
             ? 20 + ((index + point) % 30)
             : metricKey === "ping.loss"
               ? hasLoss ? 0.5 : 0
-              : 1_000 + index + point * (metricKey === "net.total.up" ? 2 : 3),
+              : metricKey === "cpu.usage" ? point === 120 ? 87 : 10 + point % 25
+              : ["memory.used", "disk.used", "swap.used"].includes(metricKey) ? 500_000_000 + point * 1000
+              : metricKey.startsWith("net.total.") ? 1_000 + index + point * (metricKey === "net.total.up" ? 2 : 3)
+              : metricKey.startsWith("net.") ? 10000 + point * 50 : 20 + point % 10,
           count,
           tags: { task_id: "1" },
         };
@@ -263,7 +266,7 @@ function officialPingMetricSeries(params, fixture) {
         metric_key: metricKey,
         entity_id: uuid,
         tags: { task_id: "1" },
-        points: metricKey.startsWith("net.total.") && fixture.ui && index === entityIds.length - 1
+        points: metricKey.startsWith("net.total.") && fixture.ui && !fixture.comprehensive && index === entityIds.length - 1
           ? null
           : points,
       });
@@ -564,6 +567,14 @@ const server = createServer(async (request, response) => {
         series,
       });
     }
+    if (fixture.comprehensive && payload.method === "common:getRecords") {
+      const end = Date.parse(toIsoOrNow(payload.params.end));
+      const start = payload.params.start ? Date.parse(payload.params.start) : end - (payload.params.hours || 6) * 3600000;
+      const records = Array.from({ length: 480 }, (_, i) => payload.params.type === "ping"
+        ? { client: "node-0", task_id: 1, time: new Date(start + (end - start) * i / 480).toISOString(), value: i === 200 ? -1 : 20 + i % 20 }
+        : { client: "node-0", time: new Date(start + (end - start) * i / 480).toISOString(), cpu: i === 120 ? 87 : 10 + i % 25, ram: 500000000 + i * 1000, disk: 5000000000 + i * 1000, net_total_up: i * 10000, net_total_down: i * 30000, net_in: i * 100, net_out: i * 50, load: .5, process: 20, connections: 30, connections_udp: 2 });
+      return sendRpcResult(response, payload.id, { records, count: records.length, tasks: [{ id: 1, name: "历史任务", interval: 60, type: "icmp", target: "203.0.113.19" }] });
+    }
     return sendRpcMethodMissing(response, payload.id, payload.method);
   }
 
@@ -671,7 +682,8 @@ class CDP {
   call(method, params = {}) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP ${method} timed out`)); }, method === 'Page.printToPDF' ? 45000 : 30000);
+      this.pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
       this.socket.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -866,6 +878,7 @@ try {
   await cdp.call("Runtime.enable");
   await cdp.call("HeapProfiler.enable");
 
+  if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
       const run = `${backend.id}-scale-${nodes}`;
@@ -1543,6 +1556,68 @@ try {
     await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   }
   results.push({reportV3:'ten original samples, 403 detail, routes/ASN and BGP evidence, nine speed rows, dark/light 390px, daily multiple times and coverage preview, keyboard Escape'});
+  }
+
+  for (const backend of Object.values(BACKEND_PROFILES)) {
+    await clearFixturePage(cdp);
+    console.log(`Checking comprehensive report: ${backend.label}`);
+    activeFixture = { backend: backend.id, nodes: 3, ui: true, network: true, reports: true, comprehensive: true, run: `comprehensive-${backend.id}` };
+    requestCounts.set(activeFixture.run, {}); requestPayloads.set(activeFixture.run, []); savedUiSettings = null;
+    await cdp.call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await cdp.call('Page.navigate', { url: `http://127.0.0.1:${address.port}/instance/node-0` });
+    await waitUntil(cdp, `document.querySelector('.instance-report-entry')!==null`, 6000);
+    await cdp.value(`document.querySelector('.instance-report-entry').click()`);
+    await waitUntil(cdp, `document.querySelector('.instance-report-generate')!==null`, 6000);
+    if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-dates.png`, { waitForImages: false });
+    failGate(await cdp.value(`location.pathname.endsWith('/report')`), 'report entry did not navigate to the lazy route');
+    await cdp.value(`document.querySelector('.instance-report-presets button:nth-child(3)').click()`);
+    await cdp.value(`document.querySelector('.instance-report-generate').click()`);
+    await waitUntil(cdp, `document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null`, 15000);
+    failGate(await cdp.value(`!document.querySelector('.instance-report-error')`), 'report generation failed: '+await cdp.value(`document.querySelector('.instance-report-error')?.textContent`));
+    failGate(await cdp.value(`(()=>{const trigger=document.querySelector('.floating-controls-trigger').getBoundingClientRect();return Array.from(document.querySelectorAll('.instance-report-page-actions button')).every(button=>{const r=button.getBoundingClientRect();return r.right<=trigger.left||r.top>=trigger.bottom||r.bottom<=trigger.top})})()`), 'report actions overlap the floating controls');
+    const html = await cdp.value(`document.querySelector('.instance-report-frame').srcdoc`);
+    const model = await cdp.value(`JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent)`);
+    if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-online.png`, { waitForImages: false });
+    failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence');
+    failGate(!html.includes('203.0.113.19') && !html.includes('8.8.8.8'), 'redacted report leaked an address');
+    const rpcMethod = backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords';
+    failGate(rpcRequests(activeFixture.run, rpcMethod).some(r => r.params.start === new Date(model.range.start).toISOString() && r.params.end === new Date(model.range.end).toISOString()), 'report did not query its exact frozen window');
+    // The exported model, not a screenshot or current visible chapter, is the archive.
+    const offlinePath = join(profile, `report-${backend.id}.html`); writeFileSync(offlinePath, html);
+    await clearFixturePage(cdp);
+    await cdp.call('Network.enable');
+    await cdp.call('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+    await cdp.call('Page.navigate', { url: new URL(`file://${offlinePath}`).href });
+    await waitUntil(cdp, `document.querySelector('#overview [data-chart] svg')!==null`, 6000);
+    await waitUntil(cdp, `document.querySelector('#overview [data-chart^="ping:"] path')?.getAttribute('d').includes('L')`, 2000);
+    failGate(await cdp.value(`Math.min(...Array.from(document.querySelector('#overview [data-chart="cpu"] path').getAttribute('d').matchAll(/[ML][^, ]+,(-?[\\d.]+)/g),m=>Number(m[1])))<50`), 'display reduction lost the original CPU spike');
+    failGate(await cdp.value(`JSON.parse(document.getElementById('report-data').textContent).reportId===${JSON.stringify(model.reportId)}`), 'offline report identity changed');
+    for (const chapter of ['resources','network','traffic','stability','assets','events','sources','overview']) {
+      await cdp.value(`document.querySelector('[data-chapter="${chapter}"]').click()`);
+      await waitUntil(cdp, `document.getElementById('${chapter}').hidden===false`, 1500);
+      failGate(await cdp.value(`document.querySelectorAll('.chapter:not([hidden])').length===1`), 'offline chapter navigation broken');
+    }
+    for (const width of [1024, 390, 320]) {
+      await cdp.call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
+      await waitUntil(cdp, `Array.from(document.querySelectorAll('#overview .chart')).every(c=>!c.querySelector('svg')||Math.abs(c.querySelector('svg').viewBox.baseVal.width-c.clientWidth)<1)`, 2000);
+      failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`), `offline report overflows ${width}px`);
+      const unreadable = await cdp.value(`Array.from(document.querySelectorAll('#overview svg text')).some(t=>{const r=t.getBoundingClientRect();return r.height<10})`);
+      failGate(!unreadable, 'report chart labels became unreadable on mobile');
+    }
+    await cdp.call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    for (const appearance of ['light','dark']) {
+      await cdp.value(`document.documentElement.dataset.theme='${appearance}'`);
+      if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.comprehensive-${backend.id}-${appearance}.png`, { waitForImages: false });
+      if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-${appearance}.png`, { waitForImages: false });
+    }
+    await cdp.call('Emulation.setEmulatedMedia', { media: 'print' });
+    failGate(await cdp.value(`Array.from(document.querySelectorAll('.chapter')).every(s=>getComputedStyle(s).display!=='none')`), 'print omitted a hidden chapter');
+    const printed = await cdp.call('Page.printToPDF', { printBackground: true, preferCSSPageSize: true, generateTaggedPDF: false, generateDocumentOutline: false });
+    failGate(printed.data.length > 10000, 'report print PDF is empty');
+    await cdp.call('Emulation.setEmulatedMedia', { media: '' });
+    await cdp.call('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    results.push({ comprehensiveReport: backend.label, verified: 'detail entry, 30-day exact query, worker statistics, all network evidence, redaction, same archived ID, offline charts/navigation, 1024/390/320px, both appearances, PDF all chapters' });
+  }
 
   if (process.env.BROWSER_GATE_SCREENSHOT) {
     activeFixture = {
@@ -1686,7 +1761,7 @@ try {
     await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 8`, 8_000);
     await captureScreenshot(cdp, `${screenshotBase}-overview-mobile.png`);
   }
-  results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
+  if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

@@ -1,6 +1,6 @@
 import { lazy, Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FileChartColumn } from "lucide-react";
 import "uplot/dist/uPlot.min.css";
 import { InstanceDetails } from "@/components/instance/InstanceDetails";
 import { PingChart } from "@/components/instance/PingChart";
@@ -172,9 +172,9 @@ export function Instance() {
           <ChevronLeft size={14} />
           返回
         </Link>
-        <NodeSwitcher key={uuid} nodes={nodeOptions} currentUuid={selectedNodeUuid} onSelect={(nextUuid) => {
+        <div className="instance-topbar-actions"><Link className="instance-report-entry" to={`/instance/${encodeURIComponent(uuid)}/report${customRangeActive ? `?${new URLSearchParams({ start: appliedRange.start, end: appliedRange.end })}` : ""}`}><FileChartColumn size={14} />生成报告</Link><NodeSwitcher key={uuid} nodes={nodeOptions} currentUuid={selectedNodeUuid} onSelect={(nextUuid) => {
           if (nextUuid !== uuid) startTransition(() => navigate(`/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`));
-        }} />
+        }} /></div>
       </div>
       <InstanceDetails uuid={uuid} onNodeReady={alignCharts} />
       {chartType !== "network" && <Link className="network-instance-shortcut" to={`/instance/${uuid}?focus=network`}>网络检测 · 探测器、计划与报告 →</Link>}

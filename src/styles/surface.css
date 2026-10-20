@@ -1,4 +1,8 @@
 /* Aster 共享表面样式 */
+.instance-topbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;min-width:0}
+.instance-report-entry{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;padding:8px 12px;border:1px solid var(--border-strong);background:var(--surface);border-radius:9px;color:var(--text-secondary)}
+.instance-report-entry:hover{background:var(--hover-bg);color:var(--text-primary)}
+@media(max-width:600px){.instance-topbar-actions{width:100%;justify-content:flex-start}.instance-topbar-actions .instance-node-switcher{flex:1;min-width:0}}
 
 /* 固定的全视口背景图,画在 body::before 上以便首帧即存在(index.html 内联脚本在 React
    挂载前就注入这些变量,避免不透明→玻璃的闪烁)。位于 body 的 --bg-0 兜底之上、#root 内容

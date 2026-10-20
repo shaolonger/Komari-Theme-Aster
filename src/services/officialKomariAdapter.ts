@@ -209,7 +209,7 @@ function toPingTask(task: z.infer<typeof OfficialPingTaskSchema>): PingTask {
   };
 }
 
-async function queryOfficialMetrics({
+export async function queryOfficialMetrics({
   metricKeys,
   uuids,
   window,
@@ -217,6 +217,7 @@ async function queryOfficialMetrics({
   fillEmpty,
   aggregationByMetric,
   options,
+  strictResponse = false,
 }: {
   metricKeys: string[];
   uuids: string[];
@@ -225,6 +226,7 @@ async function queryOfficialMetrics({
   fillEmpty: boolean;
   aggregationByMetric?: Readonly<Record<string, string>>;
   options?: OfficialCallOptions;
+  strictResponse?: boolean;
 }) {
   const scopedAggregationByMetric = Object.fromEntries(
     metricKeys.flatMap((metricKey) => {
@@ -246,7 +248,7 @@ async function queryOfficialMetrics({
         ? { aggregation_by_metric: scopedAggregationByMetric }
         : {}),
     },
-    MetricQueryResponseSchema,
+    strictResponse ? MetricQueryResponseSchema.extend({ series: z.array(MetricSeriesSchema) }) : MetricQueryResponseSchema,
     options,
   );
 }

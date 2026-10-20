@@ -1,6 +1,6 @@
 # Aster · 星枢
 
-面向 Komari 的服务器监控与资产管理主题，由 shaolonger 独立维护。围绕节点总览、VPS 工作台、多目标 Ping 分析和节点比较，重构界面与交互体验。
+面向 Komari 的服务器监控与资产管理主题，由 shaolonger 独立维护。提供节点总览、VPS 工作台、多目标 Ping 分析、节点比较与可离线保存的全面报告。
 
 ## 安装与迁移
 
@@ -47,6 +47,14 @@ Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR�
 
 <p align="center">
   <img src="docs/images/current/instance-ping.png" alt="Aster 实例详情与多任务 Ping 图表" width="90%">
+</p>
+
+### VPS 全面报告
+
+在详情页选择日期，一键汇总性能资源、Ping 与既有网络检测、带宽流量、配置资产及事件线索。报告明确标注缺测和统计精度，可按原格式下载自包含 HTML，断网后仍能查看全部章节、图表和明细；另提供 JSON 与 PDF 打印。使用方式与数据限制见[全面报告指南](docs/vps-report-guide.md)。
+
+<p align="center">
+  <img src="docs/images/current/vps-report-online.png" alt="Aster VPS 全面报告，可下载原格式离线回顾" width="90%">
 </p>
 
 ### VPS 对比工作台
