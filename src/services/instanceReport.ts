@@ -35,6 +35,8 @@ const array = (v: unknown): Obj[] => (Array.isArray(v) ? v.map(object) : []);
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+const metricValue = (v: unknown, unit: string) =>
+  unit === "°C" && typeof v === "number" && Number.isFinite(v) ? v : num(v);
 const check = throwIfReportAborted;
 class ReportHttpError extends Error {
   constructor(public status: number) {
@@ -194,7 +196,7 @@ export function forkMetrics(
       : "返回点") as ReportMetric["precision"],
     points: records
       .filter((r) => !r.client || r.client === uuid)
-      .map((r) => ({ t: timestamp(r.time), v: num(r[key]) }))
+      .map((r) => ({ t: timestamp(r.time), v: metricValue(r[key], unit) }))
       .filter((p) => p.t >= range.start && p.t < range.end),
   })).filter((m) => m.points.some((p) => p.v != null));
 }
@@ -220,29 +222,55 @@ export async function collectMetrics(
       strictResponse: true,
     });
     if (!Array.isArray(response.series)) throw new Error("历史指标响应无效");
-    metrics = METRIC_FIELDS.map(([key, label, unit, remoteKey]) => {
+    metrics = METRIC_FIELDS.flatMap(([key, label, unit, remoteKey]) => {
       const series = response.series.filter(
         (s) => s.entity_id === uuid && s.metric_key === remoteKey,
       );
       if (series.some((s) => s.points.length >= POINT_LIMIT)) limited = true;
-      return {
-        key,
-        label,
-        unit,
-        precision: (key.startsWith("net_total")
-          ? "计数器末值"
-          : "聚合桶均值") as ReportMetric["precision"],
-        points: series
-          .flatMap((s) =>
-            s.points.map((p) => ({
-              t: timestamp(p.time),
-              v: num(p.value),
-              n: p.count,
-            })),
-          )
-          .filter((p) => p.t >= range.start && p.t < range.end),
-      };
-    }).filter((m) => m.points.some((p) => p.v != null));
+      const grouped = new Map<string, ReportMetric>();
+      for (const s of series)
+        for (const p of s.points) {
+          const t = timestamp(p.time);
+          if (t < range.start || t >= range.end || !Number.isFinite(t))
+            continue;
+          const tags = { ...s.tags, ...p.tags },
+            index = tags.device_index ?? "",
+            name = tags.device_name ?? "";
+          const device = index !== "" || name !== "";
+          const metricKey = device ? `${key}[${index}|${name}]` : key;
+          const m: ReportMetric = grouped.get(metricKey) ?? {
+            key: metricKey,
+            label:
+              label +
+              (device
+                ? ` · GPU ${index || "?"}${name ? " · " + name : ""}`
+                : ""),
+            unit,
+            precision: key.startsWith("net_total")
+              ? "计数器末值"
+              : s.downsampled === false
+                ? "返回点"
+                : "聚合桶均值",
+            points: [],
+            provenance: {
+              metricKey: remoteKey,
+              aggregation: key.startsWith("net_total") ? "last" : "avg",
+              downsampled:
+                typeof s.downsampled === "boolean" ? s.downsampled : null,
+              intervalSeconds: num(s.interval_seconds),
+              retentionDays: num(s.retention_days),
+              deviceIndex: index,
+              deviceName: name,
+            },
+          };
+          const value = metricValue(p.value, unit);
+          m.points.push({ t, v: value, n: p.count });
+          grouped.set(metricKey, m);
+        }
+      return [...grouped.values()].filter((m) =>
+        m.points.some((p) => p.v != null),
+      );
+    });
   } else {
     const payload = await getRpc2Client().call(
       "common:getRecords",

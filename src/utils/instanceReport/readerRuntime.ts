@@ -78,10 +78,15 @@ export function readerRuntime() {
       container.textContent = "所选期间没有有效观测值";
       return;
     }
-    let maximum = 0;
-    for (const p of values) maximum = Math.max(maximum, p.v || 0);
+    let maximum = 0,
+      minimum = 0;
+    for (const p of values) {
+      maximum = Math.max(maximum, p.v || 0);
+      minimum = Math.min(minimum, p.v || 0);
+    }
     const ceiling = Math.max(1, maximum * 1.12),
-      y = (v: number) => top + ph - (v / ceiling) * ph;
+      floor = minimum < 0 ? minimum * 1.12 : 0,
+      y = (v: number) => top + ph - ((v - floor) / (ceiling - floor)) * ph;
     const x = (t: number) =>
       left +
       ((t - model.range.start) / (model.range.end - model.range.start)) * pw;
@@ -134,7 +139,8 @@ export function readerRuntime() {
     };
     node("title", {}, data.label + " · 缺测处断开，数据精度见统计表");
     [0, 0.5, 1].forEach((ratio) => {
-      const yy = y(ratio * ceiling);
+      const tick = floor + ratio * (ceiling - floor),
+        yy = y(tick);
       node("line", {
         x1: left,
         y1: yy,
@@ -145,8 +151,8 @@ export function readerRuntime() {
       });
       const label =
         data.unit === "B" || data.unit === "B/s"
-          ? number(ratio * ceiling, "B").replace(/\.\d+/, "")
-          : (ratio * ceiling).toFixed(ceiling < 10 ? 1 : 0);
+          ? number(tick, "B").replace(/\.\d+/, "")
+          : tick.toFixed(ceiling - floor < 10 ? 1 : 0);
       node(
         "text",
         {

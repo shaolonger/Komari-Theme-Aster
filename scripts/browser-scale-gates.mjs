@@ -244,7 +244,7 @@ function officialPingMetricSeries(params, fixture) {
   for (const metricKey of metricKeys) {
     if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey) && !fixture.comprehensive) continue;
     for (const [index, uuid] of entityIds.entries()) {
-      const points = Array.from({ length: pointCount }, (_, point) => {
+      let points = Array.from({ length: pointCount }, (_, point) => {
         const fraction = pointCount === 1 ? 1 : point / (pointCount - 1);
         const hasLoss = point === Math.floor(pointCount / 2);
         const count = hasLoss ? 2 : 1;
@@ -254,6 +254,7 @@ function officialPingMetricSeries(params, fixture) {
             ? 20 + ((index + point) % 30)
             : metricKey === "ping.loss"
               ? hasLoss ? 0.5 : 0
+              : metricKey === "gpu.usage" ? 45
               : metricKey === "cpu.usage" ? point === 120 ? 87 : 10 + point % 25
               : ["memory.used", "disk.used", "swap.used"].includes(metricKey) ? 500_000_000 + point * 1000
               : metricKey.startsWith("net.total.") ? 1_000 + index + point * (metricKey === "net.total.up" ? 2 : 3)
@@ -262,6 +263,7 @@ function officialPingMetricSeries(params, fixture) {
           tags: { task_id: "1" },
         };
       });
+      if (fixture.comprehensive && metricKey.startsWith('gpu.') && metricKey !== 'gpu.usage') points = points.flatMap(p => [0,1].map(device => ({...p, value: metricKey === 'gpu.temperature' ? 45 + device * 5 : metricKey === 'gpu.memory.total' ? 4294967296 : metricKey.includes('memory') ? 500000000 + device * 100000000 : 40 + device * 10, tags: { device_index: String(device), device_name: `Example GPU ${device}` }})));
       series.push({
         metric_key: metricKey,
         entity_id: uuid,
@@ -1579,6 +1581,7 @@ try {
     const model = await cdp.value(`JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent)`);
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-online.png`, { waitForImages: false });
     failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence');
+    if (backend.id === BACKEND_PROFILES.official.id) failGate(model.metrics.filter(m=>m.key.startsWith('gpu_memory[')).length===2, 'report merged separate GPU devices');
     failGate(!html.includes('203.0.113.19') && !html.includes('8.8.8.8'), 'redacted report leaked an address');
     const rpcMethod = backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords';
     failGate(rpcRequests(activeFixture.run, rpcMethod).some(r => r.params.start === new Date(model.range.start).toISOString() && r.params.end === new Date(model.range.end).toISOString()), 'report did not query its exact frozen window');

@@ -93,6 +93,94 @@ describe("strict report data collector", () => {
       expect.anything(),
     );
   });
+  it("archives every GPU device separately, preserves negative temperatures and delta provenance", async () => {
+    expect(
+      forkMetrics({ records: [{ time: start, temp: -2 }] }, "a", range).find(
+        (m) => m.key === "temp",
+      )?.points[0]?.v,
+    ).toBe(-2);
+    call.mockResolvedValue({
+      series: [
+        {
+          entity_id: "a",
+          metric_key: "gpu.memory.used",
+          downsampled: false,
+          interval_seconds: 60,
+          retention_days: 7,
+          points: [
+            {
+              time: start,
+              value: 0,
+              count: 1,
+              tags: { device_index: "0", device_name: "GPU A" },
+            },
+            {
+              time: start,
+              value: 2048,
+              count: 1,
+              tags: { device_index: "1", device_name: "GPU B" },
+            },
+          ],
+        },
+        {
+          entity_id: "a",
+          metric_key: "gpu.temperature",
+          points: [
+            {
+              time: start,
+              value: -4,
+              count: 1,
+              tags: { device_index: "0", device_name: "GPU A" },
+            },
+          ],
+        },
+        {
+          entity_id: "a",
+          metric_key: "traffic.up",
+          downsampled: true,
+          points: [{ time: start, value: 0, count: 10 }],
+        },
+      ],
+    });
+    const result = await collectMetrics(
+      "a",
+      range,
+      new AbortController().signal,
+    );
+    const devices = result.metrics.filter((m) =>
+      m.key.startsWith("gpu_memory["),
+    );
+    expect(devices).toHaveLength(2);
+    expect(devices.map((m) => m.points[0]!.v)).toEqual([0, 2048]);
+    expect(devices[0]!.provenance).toMatchObject({
+      deviceIndex: "0",
+      deviceName: "GPU A",
+      downsampled: false,
+      retentionDays: 7,
+    });
+    expect(
+      result.metrics.find((m) => m.key.startsWith("temp["))!.points[0]!.v,
+    ).toBe(-4);
+    expect(
+      result.metrics.find((m) => m.key === "traffic_delta_up")!.provenance
+        ?.aggregation,
+    ).toBe("avg");
+    expect(call).toHaveBeenCalledWith(
+      "public:queryMetrics",
+      expect.objectContaining({
+        metric_keys: expect.arrayContaining([
+          "gpu.usage",
+          "gpu.device.usage",
+          "gpu.memory.used",
+          "gpu.memory.total",
+          "gpu.temperature",
+          "traffic.up",
+          "traffic.down",
+        ]),
+      }),
+      expect.anything(),
+    );
+  });
   it("reconstructs valid zero and partial-loss latency and retains deleted task IDs", async () => {
     call.mockImplementation(async (method: string) =>
       method === "public:getPublicPingTasks"

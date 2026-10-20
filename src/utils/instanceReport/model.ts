@@ -28,6 +28,15 @@ export interface ReportMetric {
   points: ReportPoint[];
   precision: "返回点" | "聚合桶均值" | "计数器末值";
   capacity?: number;
+  provenance?: {
+    metricKey: string;
+    aggregation: string;
+    downsampled: boolean | null;
+    intervalSeconds: number | null;
+    retentionDays: number | null;
+    deviceIndex: string;
+    deviceName: string;
+  };
 }
 export interface ReportPing {
   id: number;
@@ -149,8 +158,13 @@ export const METRIC_FIELDS = [
   ["process", "进程", "个", "process.count"],
   ["connections", "TCP 连接", "个", "connections.tcp"],
   ["connections_udp", "UDP 连接", "个", "connections.udp"],
-  ["gpu", "GPU", "%", ""],
-  ["temp", "温度", "°C", ""],
+  ["gpu", "GPU 平均使用率", "%", "gpu.usage"],
+  ["gpu_device", "GPU 设备使用率", "%", "gpu.device.usage"],
+  ["gpu_memory", "GPU 显存使用", "B", "gpu.memory.used"],
+  ["gpu_memory_total", "GPU 显存容量", "B", "gpu.memory.total"],
+  ["temp", "温度", "°C", "gpu.temperature"],
+  ["traffic_delta_up", "上报上传增量", "B", "traffic.up"],
+  ["traffic_delta_down", "上报下载增量", "B", "traffic.down"],
 ] as const;
 export const CHAPTERS = [
   ["overview", "报告概览"],

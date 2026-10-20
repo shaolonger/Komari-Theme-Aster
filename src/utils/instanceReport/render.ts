@@ -151,7 +151,9 @@ export function renderReportHtml(model: ReportModel) {
 
   const gauges = model.metrics.filter(
     (m) =>
-      !m.key.startsWith("net_total") && !["net_in", "net_out"].includes(m.key),
+      !m.key.startsWith("net_total") &&
+      !["net_in", "net_out"].includes(m.key) &&
+      !m.key.startsWith("traffic_delta"),
   );
   const resources =
     summary(
@@ -160,10 +162,13 @@ export function renderReportHtml(model: ReportModel) {
     ) +
     (gauges.length
       ? `<div class="charts">${gauges
-          .filter((m) =>
-            ["cpu", "ram", "disk", "load", "process", "connections"].includes(
-              m.key,
-            ),
+          .filter(
+            (m) =>
+              m.key.startsWith("gpu") ||
+              m.key.startsWith("temp") ||
+              ["cpu", "ram", "disk", "load", "process", "connections"].includes(
+                m.key,
+              ),
           )
           .map((m) => chart(m.key))
           .join("")}</div>` +
@@ -398,8 +403,22 @@ export function renderReportHtml(model: ReportModel) {
     note(
       `流量质量：${model.traffic.partial ? "部分覆盖 / 仅观测增量" : "边界完整"}。跨午夜采样的增量归入后一观测点日期，不能精确拆分自然日账单。当前配额规则：${model.node.trafficRule || "未提供"}；仅为生成时配置。`,
     ) +
+    (model.metrics.some((m) => m.key.startsWith("traffic_delta"))
+      ? div +
+        '<h3>后端上报流量增量</h3><div class="charts">' +
+        model.metrics
+          .filter((m) => m.key.startsWith("traffic_delta"))
+          .map((m) => chart(m.key))
+          .join("") +
+        "</div>" +
+        note(
+          "这些值是后端单次上报增量或其聚合桶均值，不能直接相加为期间总量。上方期间量仍使用累计计数器差分，避免重复统计。",
+        )
+      : "") +
     model.metrics
-      .filter((m) => m.key.startsWith("net_"))
+      .filter(
+        (m) => m.key.startsWith("net_") || m.key.startsWith("traffic_delta"),
+      )
       .map(chartTable)
       .join("");
 
@@ -542,8 +561,15 @@ export function renderReportHtml(model: ReportModel) {
     ) +
     table(
       ["指标", "有效点", "估计覆盖", "实际首尾观测", "精度 / 缺项"],
-      METRIC_FIELDS.map(([key, label]) => {
-        const m = metric(key),
+      METRIC_FIELDS.flatMap(([key, label, unit]) => {
+        const found = model.metrics.filter(
+          (m) => m.key === key || m.key.startsWith(key + "["),
+        );
+        return found.length
+          ? found
+          : [{ key, label, unit, points: [], precision: "返回点" as const }];
+      }).map((m: ReportMetric) => {
+        const { key, label } = m,
           valid = m?.points.filter((p) => p.v != null) ?? [];
         return [
           label,
@@ -552,7 +578,7 @@ export function renderReportHtml(model: ReportModel) {
           valid.length
             ? `${date(valid[0]?.t)} — ${date(valid.at(-1)?.t)}`
             : "—",
-          m?.precision ??
+          (valid.length ? m.precision : null) ??
             "此范围没有返回有效值；未采集、过期或后端未提供的具体原因未知",
         ];
       }),
