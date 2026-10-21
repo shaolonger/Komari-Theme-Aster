@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Lock } from "lucide-react";
+import { HomeRoutesProvider } from "@/hooks/useHomeRoutes";
 import { NodeGrid } from "@/components/node/NodeGrid";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAuth } from "@/hooks/useAuth";
@@ -91,7 +92,7 @@ export function Home() {
 
   return (
     <div className="py-2">
-      <NodeGrid />
+      <HomeRoutesProvider><NodeGrid /></HomeRoutesProvider>
     </div>
   );
 }

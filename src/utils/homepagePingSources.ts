@@ -1,4 +1,4 @@
-import type { PingOverviewItem, PingOverviewTaskSummary } from "@/types/komari";
+import type { PingOverviewItem, PingOverviewTaskSummary, PingOverviewSample } from "@/types/komari";
 import { formatLatency, formatLatencyValue, formatMetricNumber, formatPacketLoss } from "@/utils/format";
 import {
   HOMEPAGE_PING_WINDOW_HOURS,
@@ -19,7 +19,7 @@ export interface HomepagePingSourceRow {
   lossShortLabel: string;
   latencyRatio: number;
   lossDotCount: number;
-  samples: Array<{ time: number; value: number }>;
+  samples: PingOverviewSample[];
   attentionScore: number;
   title: string;
   status: "ok" | "warning" | "critical" | "empty";

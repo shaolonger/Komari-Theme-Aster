@@ -8,6 +8,7 @@ interface TrafficSparklineProps {
   height?: number;
   className?: string;
   redrawKey?: string | number;
+  variant?: "line" | "area";
 }
 
 /**
@@ -21,6 +22,7 @@ export function TrafficSparkline({
   height = 28,
   className = "traffic-sparkline",
   redrawKey,
+  variant = "area",
 }: TrafficSparklineProps) {
   const draw = useCallback(
     (ctx: CanvasRenderingContext2D, width: number, canvasHeight: number) => {
@@ -55,7 +57,7 @@ export function TrafficSparkline({
       ctx.closePath();
       ctx.fillStyle = mixSrgbTowardWhite(baseColor, 0.78);
       ctx.globalAlpha = 0.2;
-      ctx.fill();
+      if (variant === "area") ctx.fill();
 
       ctx.beginPath();
       points.forEach((point, index) => {
@@ -69,7 +71,8 @@ export function TrafficSparkline({
       ctx.globalAlpha = 0.92;
       ctx.stroke();
 
-      points.forEach((point) => {
+      points.forEach((point, index) => {
+        if (variant === "line" && index < points.length - 1) return;
         if (!point.active) return;
         ctx.beginPath();
         ctx.arc(point.x, point.y, 1.35, 0, Math.PI * 2);
@@ -80,7 +83,7 @@ export function TrafficSparkline({
 
       ctx.globalAlpha = 1;
     },
-    [color, samples],
+    [color, samples, variant],
   );
 
   return (

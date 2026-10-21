@@ -41,6 +41,15 @@ Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR�
   <img src="docs/images/current/overview-dark.png" alt="Aster 首页深色模式" width="90%">
 </p>
 
+### 曜石外观与三网线路
+
+v1.11.0 新增「曜石」石墨灰和对应的「曜石·明」亮色外观，按参考图呈现四宫格资源、分段指标、逐任务延迟 / 丢包趋势及 IPv4 / IPv6 三网去程和回程。三网线路同步支持全部既有外观；使用真实路径 ASN，需要网络观测插件 **1.8.0** 并选择发布节点。缺测、未识别、部分路径和过期结果明确区分。详见[使用与配置指南](docs/obsidian.md)。
+
+<p align="center">
+  <img src="docs/images/current/obsidian-dark-card.png" alt="曜石深色卡片" width="40%">
+  <img src="docs/images/current/obsidian-light-card.png" alt="曜石浅色卡片" width="40%">
+</p>
+
 ### 澄空外观
 
 v1.10.0 新增「澄空」：冷白冰蓝、薄片叠层卡片和轻微空间视差。首页右上角展开快捷按钮后选择「澄空」，或在 Aster 工作室将其保存为默认外观。小卡片同时显示已用 / 总流量、剩余额度、占比及进度；不限量和超额情况会明确区分。触屏与系统「减少动态效果」自动停用立体动效。详见[使用说明与实际截图](docs/clear-sky.md)。

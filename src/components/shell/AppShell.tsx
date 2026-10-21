@@ -4,6 +4,7 @@ import { FloatingControls } from "./FloatingControls";
 import { useSiteMetadata } from "@/hooks/useSiteMetadata";
 import { lazy, Suspense, useRef } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
+const SlateAppearance = lazy(() => import("./SlateAppearance"));
 const ClearSkyLayer = lazy(() => import("./ClearSkyLayer"));
 
 export function AppShell() {
@@ -14,6 +15,7 @@ export function AppShell() {
   return (
     <div ref={ref} className="app-shell relative flex min-h-screen flex-col">
       <BackgroundLayer />
+      {appearance.startsWith("slate") && <Suspense fallback={null}><SlateAppearance /></Suspense>}
       {clearSky && <Suspense fallback={null}><ClearSkyLayer shellRef={ref} /></Suspense>}
       <FloatingControls />
       {/* max-[720px]:pt-16 给右上角固定的浮动控件留出空间，避免窄屏下展开的控件行盖住首张卡片的头部 */}

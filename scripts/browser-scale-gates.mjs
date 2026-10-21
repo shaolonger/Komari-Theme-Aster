@@ -1,3 +1,4 @@
+import { checkSlate } from "./slate-browser-gates.mjs";
 import { checkClearSky } from "./clear-sky-browser-gates.mjs";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
@@ -144,6 +145,7 @@ function nodeList(size) {
     group: activeFixture.docs ? docsNode[1] : `Group ${index % 8}`,
     region: activeFixture.docs ? docsNode[2] : `R${index % 16}`,
     hidden: false,
+    ...(activeFixture.slate ? {ipv4:"8.8.8.8",ipv6:"2001:4860:4860::8888",os:"debian"} : {}),
     cpu_name: index % 2 === 0 ? "AMD EPYC 7B13" : "Intel Xeon Platinum",
     cpu_cores: 2 + (index % 4) * 2,
     mem_total: 2_147_483_648,
@@ -192,7 +194,7 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
-  const docsOffline = activeFixture.docs && index === 0;
+  const docsOffline = activeFixture.docs && !activeFixture.slate && index === 0;
   return {
     online: !docsOffline,
     cpu: (index + sequence) % 100,
@@ -211,9 +213,9 @@ function officialLatestStatus(index, sequence) {
     net_total_down: (activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
     connections: 12,
     connections_udp: 2,
-    uptime: sequence,
+    uptime: activeFixture.slate ? 24 * 86400 : sequence,
     process: 20,
-    time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : 1_700_000_000 + sequence,
+    time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : activeFixture.slate ? Math.floor(Date.now() / 1000) : 1_700_000_000 + sequence,
   };
 }
 
@@ -279,8 +281,8 @@ function officialPingMetricSeries(params, fixture) {
   return {
     start: new Date(windowStart).toISOString(),
     end: new Date(end).toISOString(),
-    series,
-    count: series.length,
+    series: fixture.slate ? series.flatMap(s => [1,2,3,4].map(id => ({...s, tags:{task_id:String(id)}, points:s.points?.map(p=>({...p,tags:{task_id:String(id)},value:s.metric_key=== "ping.latency_ms" ? p.value * id : p.value}))}))) : series,
+    count: fixture.slate ? series.length * 4 : series.length,
   };
 }
 
@@ -291,9 +293,9 @@ function officialPingStats(params, fixture) {
   return {
     start,
     end,
-    stats: entityIds.map((uuid, index) => ({
+    stats: entityIds.flatMap((uuid, index) => (fixture.slate ? [1,2,3,4] : [1]).map(id => ({
       entity_id: uuid,
-      task_id: "1",
+      task_id: String(id),
       name: "edge",
       type: "icmp",
       interval: 60,
@@ -306,8 +308,8 @@ function officialPingStats(params, fixture) {
       avg: 25 + (index % 3),
       latest: 20 + (index % 30),
       p99_p50_ratio: 1.2,
-    })),
-    count: entityIds.length,
+    }))),
+    count: entityIds.length * (fixture.slate ? 4 : 1),
   };
 }
 
@@ -375,7 +377,7 @@ const server = createServer(async (request, response) => {
         // Use an absolute URL: production correctly rejects relative rate
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
-        homepagePingBindings: { "1": nodeList(fixture.nodes).map((node) => node.uuid) },
+        homepagePingBindings: Object.fromEntries((fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
       },
@@ -396,7 +398,19 @@ const server = createServer(async (request, response) => {
     return sendJson(response, { logged_in: Boolean(fixture.ui), username: "test", uuid: "test" });
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
-  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (url.pathname === '/api/aster-network-observatory/v3/public/routes') {
+    count('home-routes');
+    if (!fixture.slate) { response.statusCode = 404; return sendJson(response, { error: 'plugin unavailable' }); }
+    const evidence = (label, asn, state = 'ok') => ({ label, asns: [asn], at: new Date().toISOString(), samples: 1, state });
+    const family4 = [
+      {carrier:'电信',forward:evidence('CN2','4809'),return:evidence('CN2','4809')},
+      {carrier:'联通',forward:evidence('9929','9929'),return:evidence('9929','9929')},
+      {carrier:'移动',forward:null,return:evidence('CMIN2','58807')}
+    ];
+    const family6 = [{carrier:'电信',forward:evidence('163','4134'),return:null},{carrier:'联通',forward:null,return:evidence('4837','4837','stale')},{carrier:'移动',forward:null,return:null}];
+    return sendJson(response,{available:true,nodes:Object.fromEntries(nodeList(fixture.nodes).slice(0,-1).map(n=>[n.uuid,{'4':family4,'6':family6}]))});
+  }
   if (fixture.reports && url.pathname.startsWith('/api/aster-network-observatory/v3/')) {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
@@ -502,7 +516,7 @@ const server = createServer(async (request, response) => {
         return sendRpcResult(response, payload.id, reports);
       }
       if (payload.method === "public:getPublicPingTasks") {
-        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
+        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
         return sendRpcResult(response, payload.id, [{
           id: 1,
           weight: 1,
@@ -887,7 +901,7 @@ try {
   await cdp.call("Runtime.enable");
   await cdp.call("HeapProfiler.enable");
 
-  if (!process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -1779,7 +1793,11 @@ try {
   await clearFixturePage(cdp);
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
   savedUiSettings = null;
-  results.push(await checkClearSky({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
+  if (!process.env.BROWSER_SLATE_ONLY) results.push(await checkClearSky({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
+  await clearFixturePage(cdp);
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "slate", ui: true, docs: true, clearSky: true, comprehensive: true, slate: true };
+  savedUiSettings = null;
+  results.push(await checkSlate({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

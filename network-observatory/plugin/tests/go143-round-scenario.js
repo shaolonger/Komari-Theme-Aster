@@ -5,6 +5,12 @@ function runRoundScenario() {
   const store = require("./src/round-store.js").roundStore(__storageDir__, isMissingFile, () => now);
   const model = require("./src/report-model.js");
   const node = "c388e74d-a922-4ae1-bd10-1fb30e2e53de";
+  const homeRoutes = require("./src/home-routes.js").homeRouteStore(__storageDir__, isMissingFile, () => now);
+  homeRoutes.observe({nodeUuid:node,operation:"route",direction:"VPS→大陆",options:{family:"4",protocol:"tcp"},source:{carrier:"移动",city:"上海"},target:"8.8.8.8",completedAt:new Date(now).toISOString(),data:{kind:"route",state:"ok",complete:true,hops:[{asn:"AS58807"}]}});
+  const projected = homeRoutes.summary([node]);
+  if (projected[node]["4"][2].return.label !== "CMIN2" || projected[node]["4"][2].forward !== null || projected[node]["6"][2].return !== null) throw new Error("homepage route projection mismatch");
+  if (require("./src/home-routes.js").homeRouteStore(__storageDir__, isMissingFile, () => now).summary([node])[node]["4"][2].return.label !== "CMIN2") throw new Error("homepage projection restart mismatch");
+  console.log("Official Komari runtime: isolated homepage route projection, ASN classification and restart passed");
   const suite = model.normalizeSuite({ clients: [node], modules: [{ module: "international", endpoints: ["aws:ap-east-1", "telegram:dc5:ipv4"] }] });
   const id = crypto.randomUUID();
   const plan = model.planSlots({ endpoints: {}, probes: {} }, suite, suite.modules[0], node, id);

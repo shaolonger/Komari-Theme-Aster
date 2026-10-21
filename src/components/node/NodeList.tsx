@@ -1,3 +1,5 @@
+import { CarrierRoutes } from "./CarrierRoutes";
+import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { memo, type CSSProperties, type FocusEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, ChevronRight, ChevronUp, Clock3, Database, Unplug } from "lucide-react";
@@ -97,6 +99,7 @@ function ResourceMetric({
 }
 
 function NodeListRow({ uuid }: { uuid: string }) {
+  const routes = useHomeRoutes();
   const model = useNodeCardModel(uuid);
 
   if (!model.node) {
@@ -184,6 +187,7 @@ function NodeListRow({ uuid }: { uuid: string }) {
         </div>
       </div>
 
+      {routes.data?.nodes[uuid] && <details className="node-list-routes" role="cell"><summary>三网线路</summary><CarrierRoutes uuid={uuid} compact /></details>}
       <Link className="node-list-detail" to={`/instance/${node.uuid}`} aria-label={`查看 ${node.name} 详情`} title="查看详情">
         <ChevronRight size={16} aria-hidden />
       </Link>

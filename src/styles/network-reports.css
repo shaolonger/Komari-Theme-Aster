@@ -705,3 +705,8 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+.home-routes-publish { padding: 14px; border: 1px solid var(--border-strong); border-radius: 12px; }
+.home-routes-publish summary { cursor: pointer; font-weight: 600; }
+.home-routes-publish p { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.home-routes-publish-nodes { max-height: 220px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 8px; margin: 12px 0; }
+.home-routes-publish-nodes label { display: flex; flex-direction: row; align-items: center; gap: 8px; }

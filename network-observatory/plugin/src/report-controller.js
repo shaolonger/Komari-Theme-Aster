@@ -32,6 +32,7 @@ function shareJob(job, candidate, plannedAt) {
 function registerReportController(ctx, native) {
   const store = roundStore(ctx.storageDir, ctx.isMissingFile);
   const bgp = B.createBgpCollector(ctx.bgpOptions);
+  const homeRoutes = require("./home-routes.js").homeRouteStore(ctx.storageDir, ctx.isMissingFile);
   let recovered = false;
   let bgpBusy = false;
   const capabilities = {
@@ -48,6 +49,14 @@ function registerReportController(ctx, native) {
     maxTargetsPerRound: 250,
     retention: { detailDays: 7, summaryDays: 90 },
   };
+  function completeAndProject(job, data, source) {
+    const result = store.complete(job, data, source);
+    if (result) {
+      try { homeRoutes.observe(result); }
+      catch (e) { console.error("Aster homepage route projection:", String(e.message || e)); }
+    }
+    return result;
+  }
   function state(s) {
     s.reportSuites ||= [];
     s.reportResources ||= [];
@@ -222,7 +231,7 @@ function registerReportController(ctx, native) {
       job.reportModule = mod.module;
       const reason = readiness(s, job);
       if (reason)
-        store.complete(job, {
+        completeAndProject(job, {
           kind: R.kindFor(job.operation),
           state: "missing",
           diagnostic: reason,
@@ -231,6 +240,39 @@ function registerReportController(ctx, native) {
     }
     return round.id;
   }
+  // Explicit per-node publication; old installations publish nothing by default.
+  route("PUT", "/home-routes", (req, res, s) => {
+    const body = ctx.readBody(req);
+    if (body.revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
+    if (!Array.isArray(body.nodeUuids) || body.nodeUuids.length > 2000 || body.nodeUuids.some(id => !UUID.test(id))) throw new Error("节点范围无效");
+    const allowed = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
+    const selected = [...new Set(body.nodeUuids)];
+    if (selected.some(id => !allowed.has(id))) throw new Error("只能发布当前可见节点的线路摘要，请刷新清单");
+    // Backfill only on the administrator's save, never scan history on public reads.
+    for (const uuid of selected) {
+      for (const row of store.list(uuid, "routes", { limit: 50 }).rounds) {
+        if (!row.detailAvailable) continue;
+        const round = store.get(uuid, row.id);
+        for (const measurement of round?.measurements || []) homeRoutes.observe(measurement, false);
+      }
+    }
+    homeRoutes.save();
+    s.homeRouteNodes = selected;
+    s.revision++;
+    native.save(s);
+    ctx.respond(res, 200, { revision: s.revision });
+  });
+  ctx.server.route("GET", BASE + "/public/routes", async (_req, res) => {
+    try {
+      await native.lock(() => {
+        const s = native.read();
+        // Cached inventory must have been refreshed by this plugin version. Fail closed.
+        const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
+        const allowed = (s.homeRouteNodes || []).filter(id => visible.has(id));
+        ctx.respond(res, 200, { available: true, nodes: homeRoutes.summary(allowed) });
+      });
+    } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
+  });
   route("GET", "/capabilities", (_req, res) =>
     ctx.respond(res, 200, capabilities),
   );
@@ -242,6 +284,7 @@ function registerReportController(ctx, native) {
       endpoints: R.directory(s),
       presets: PRESETS,
       suites: s.reportSuites,
+      homeRouteNodes: s.homeRouteNodes || [],
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,
@@ -614,7 +657,7 @@ function registerReportController(ctx, native) {
               .get(job.nodeUuid, job.sharedRoundId)
               ?.measurements.find((m) => m.id === job.sharedJobId);
             if (result && result.data.state !== "cancelled") {
-              store.complete(
+              completeAndProject(
                 job,
                 { ...result.data, sharedMeasurementId: result.id },
                 result.source,
@@ -624,7 +667,7 @@ function registerReportController(ctx, native) {
           }
           const reason = readiness(s, job);
           if (reason || job.expiresAt <= now)
-            store.complete(job, {
+            completeAndProject(job, {
               kind: R.kindFor(job.operation),
               state: "missing",
               diagnostic: reason || "恢复时任务已超过排队期限",
@@ -812,7 +855,7 @@ function registerReportController(ctx, native) {
           },
         };
       }
-      return store.complete(job, data, source);
+      return completeAndProject(job, data, source);
     },
     progress: (job) => store.progress(job),
     receipt: store.receipt,

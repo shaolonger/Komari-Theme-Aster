@@ -11,7 +11,7 @@ const files = [
   ["komari-plugin.json", resolve(plugin, "komari-plugin.json")],
   ["script.js", resolve(plugin, "script.js")],
   ["src/model.js", resolve(plugin, "src/model.js")],
-  ...["catalog", "policies", "admin", "report-images", "native-model", "native-controller", "native-archive", "globalping", "route-enrichment", "website-catalog", "round-store", "report-catalog", "report-model", "report-controller", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
+  ...["catalog", "policies", "admin", "report-images", "native-model", "native-controller", "native-archive", "globalping", "route-enrichment", "website-catalog", "round-store", "report-catalog", "report-model", "report-controller", "home-routes", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["runner/probe.sh", resolve(root, "network-observatory/runner/probe.sh")],
   ["src/timezones.json", resolve(plugin, "src/timezones.json")],
   ["runner/aster-network-observatory-http.service", resolve(root, "network-observatory/runner/aster-network-observatory-http.service")],
@@ -24,6 +24,7 @@ const files = [
   ["runner/aster-network-observatory-agent.service", resolve(root, "network-observatory/runner/aster-network-observatory-agent.service")],
   ["runner/aster-network-observatory-probe@.service", resolve(root, "network-observatory/runner/aster-network-observatory-probe@.service")],
   ["README.md", resolve(root, "network-observatory/README.md")],
+  ["docs/obsidian.md", resolve(root, "docs/obsidian.md")],
   ["docs/network-report-v3-guide.md", resolve(root, "docs/network-report-v3-guide.md")],
   ["docs/network-report-implementation-status.md", resolve(root, "docs/network-report-implementation-status.md")],
 ];

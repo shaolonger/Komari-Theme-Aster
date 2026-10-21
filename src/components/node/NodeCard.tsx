@@ -30,15 +30,19 @@ import {
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { MetricBar } from "./MetricBar";
+import { CarrierRoutes } from "./CarrierRoutes";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
+import { getDisplayRegionCode } from "@/utils/geo";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
 import type { ByteRateDisplay } from "@/utils/format";
 import type { TrafficDisplay } from "@/utils/traffic";
+
+const regionNames = new Intl.DisplayNames(["zh-CN"], { type: "region" });
 
 type NodeCardNode = NodeInfo & NodeMetrics;
 type DisplayStat = { value: string; unit: string };
@@ -52,9 +56,11 @@ export const NodeCard = memo(function NodeCard({
   density?: "standard" | "expanded";
 }) {
   const { resolvedAppearance, appearance } = usePreferences();
+  const slate = appearance.startsWith("slate");
   const diagnosticAppearance = appearance === "diagnostic";
   const themeSettings = useThemeSettings();
   const model = useNodeCardModel(uuid);
+  const [billingOpen, setBillingOpen] = useState(false);
   const [expanded, setExpanded] = useState(density === "expanded");
   useEffect(() => setExpanded(density === "expanded"), [density, uuid]);
   if (!model.node) {
@@ -104,21 +110,23 @@ export const NodeCard = memo(function NodeCard({
     ? hostStatus === "offline" ? "critical" : hostStatus === "stale" ? "warning" : "ok"
     : cardStatus;
   const showExtended = !diagnosticAppearance || expanded || density === "expanded";
+  const footer = <NodeCardFooter expire={expire} expireColor={expireColor} uptime={uptime} footerTags={footerTags} renewalPrice={renewalPrice} />;
   return (
     <article
       className={clsx("server-card", isOffline && "is-offline")}
-      data-appearance={resolvedAppearance}
       data-status={shownStatus}
       data-density={density}
     >
       <div className="server-card-content">
-        <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} />
+        <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} reference={slate} />
+        {slate && <div className="slate-node-badges"><span>{node.region ? regionNames.of(getDisplayRegionCode(node.region)) : "节点"}</span>{node.ipv4 && <span data-kind="ip">V4</span>}{node.ipv6 && <span data-kind="ip">V6</span>}{footerTags.map((tag, i) => <span key={i} data-kind="tag">{tag.label}</span>)}</div>}
 
         <div className="server-card-stack">
           <NodeMetricSection
             node={node}
             loadFraction={loadFraction}
-            redrawKey={resolvedAppearance}
+            redrawKey={appearance + resolvedAppearance}
+            reference={slate}
           />
 
           <NodeTrafficSection
@@ -127,10 +135,11 @@ export const NodeCard = memo(function NodeCard({
             downRate={downRate}
             trafficTrend={trafficTrend}
             isOnline={isOnline}
-            redrawKey={resolvedAppearance}
+            redrawKey={appearance + resolvedAppearance}
+            reference={slate}
           />
 
-          {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} /> : <NodeTrafficQuota traffic={traffic} />}
+          {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} /> : <NodeTrafficQuota traffic={traffic} uptime={slate ? `${uptime.value}${uptime.unit}` : undefined} />}
 
           {showExtended && showConnections && (
             <div className="card-metric-section card-metric-divided server-card-meta-grid">
@@ -162,13 +171,10 @@ export const NodeCard = memo(function NodeCard({
             <ChevronDown size={14} aria-hidden="true" />{showExtended ? "收起扩展信息" : "更多信息 · 配置、价格、在线时长、连接"}
           </button>
         )}
-        {showExtended && <NodeCardFooter
-          expire={expire}
-          expireColor={expireColor}
-          uptime={uptime}
-          footerTags={footerTags}
-          renewalPrice={renewalPrice}
-        />}
+        {showExtended && (slate ? <div className="slate-billing">
+          <button type="button" className="slate-billing-toggle" aria-expanded={billingOpen} aria-label="价格与到期信息" title={`${renewalPrice || "未设置价格"} · 到期 ${expire.value}${expire.unit}`} onClick={() => setBillingOpen(value => !value)}><CircleDollarSign size={19}/></button>
+          {billingOpen && <div className="slate-billing-panel">{footer}</div>}
+        </div> : footer)}
       </div>
     </article>
   );
@@ -181,6 +187,7 @@ function NodeCardHeader({
   hostStatus,
   networkStatus,
   diagnostic,
+  reference,
 }: {
   node: NodeCardNode;
   subtitle: string;
@@ -188,13 +195,14 @@ function NodeCardHeader({
   hostStatus: HostHealthStatus;
   networkStatus: ReturnType<typeof getNetworkHealthStatus>;
   diagnostic: boolean;
+  reference: boolean;
 }) {
   const detailLabels = nodeDetailLinkLabels(node.name, osName);
   return (
     <header className="server-card-header">
       <div className="server-card-title-block">
         <div className="server-card-title-row">
-          <Flag region={node.region} size={15} />
+          <Flag region={node.region} size={reference ? 18 : 15} />
           <Link
             to={`/instance/${node.uuid}`}
             className="server-card-title-link"
@@ -210,6 +218,7 @@ function NodeCardHeader({
         )}
         {diagnostic && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
       </div>
+      <span className="slate-online-badge" data-host-status={hostStatus} data-online={hostStatus === "online"}>{hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "待更新"}</span>
       <Link
         to={`/instance/${node.uuid}`}
         className="server-card-detail-link"
@@ -226,17 +235,19 @@ function NodeMetricSection({
   node,
   loadFraction,
   redrawKey,
+  reference,
 }: {
   node: NodeCardNode;
   loadFraction: number;
   redrawKey: string;
+  reference: boolean;
 }) {
   return (
     <div className="card-metric-section server-metric-grid">
       <MetricBar
         icon={<Cpu size={13} strokeWidth={2} />}
         label="CPU"
-        valueText={formatMetricNumber(node.cpuPct)}
+        valueText={formatMetricNumber(node.cpuPct, { digits: reference ? 0 : 2 })}
         unit="%"
         detailText={`${node.cpu_cores || 0} 核`}
         fraction={node.cpuPct / 100}
@@ -246,7 +257,7 @@ function NodeMetricSection({
       <MetricBar
         icon={<MemoryStick size={13} strokeWidth={2} />}
         label="内存"
-        valueText={formatMetricNumber(node.ramPct)}
+        valueText={formatMetricNumber(node.ramPct, { digits: reference ? 0 : 2 })}
         unit="%"
         detailText={`${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`}
         fraction={node.ramPct / 100}
@@ -256,7 +267,7 @@ function NodeMetricSection({
       <MetricBar
         icon={<HardDrive size={13} strokeWidth={2} />}
         label="磁盘"
-        valueText={formatMetricNumber(node.diskPct)}
+        valueText={formatMetricNumber(node.diskPct, { digits: reference ? 0 : 2 })}
         unit="%"
         detailText={`${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`}
         fraction={node.diskPct / 100}
@@ -267,9 +278,10 @@ function NodeMetricSection({
         icon={<Gauge size={13} strokeWidth={2} />}
         label="负载"
         valueText={formatLoadValue(node.load1)}
+        detailText={reference ? `${formatLoadValue(node.load5)} / ${formatLoadValue(node.load15)}` : undefined}
         fraction={loadFraction}
         redrawKey={redrawKey}
-        paint={{
+        paint={reference ? { kind: "solid", color: "var(--progress-network)" } : {
           kind: "gradient",
           from: "var(--progress-cpu)",
           to: "var(--progress-memory)",
@@ -286,6 +298,7 @@ function NodeTrafficSection({
   trafficTrend,
   isOnline,
   redrawKey,
+  reference,
 }: {
   node: NodeCardNode;
   upRate: ByteRateDisplay;
@@ -293,10 +306,12 @@ function NodeTrafficSection({
   trafficTrend: { up: TrafficTrendSample[]; down: TrafficTrendSample[] };
   isOnline: boolean;
   redrawKey: string;
+  reference: boolean;
 }) {
   return (
     <div className="card-metric-section server-traffic-section">
       <TrafficStat
+        reference={reference}
         direction="上行"
         totalLabel="出站"
         rate={upRate}
@@ -309,6 +324,7 @@ function NodeTrafficSection({
         icon={<ArrowUp size={15} strokeWidth={2.4} />}
       />
       <TrafficStat
+        reference={reference}
         direction="下行"
         totalLabel="入站"
         rate={downRate}
@@ -330,7 +346,7 @@ const TRAFFIC_QUOTA_SEGMENTS = 18;
 // 下面是 18 个独立 segment。每个 segment 按它的绝对位置上色(绿→黄→红,见
 // trafficQuotaSegmentColor),只要 used fraction 到达就点亮,否则用中性轨道色 ——
 // 于是点亮区段呈现整条渐变,前沿就能看出离用满还有多远。
-function NodeTrafficQuota({ traffic }: { traffic: TrafficDisplay }) {
+function NodeTrafficQuota({ traffic, uptime }: { traffic: TrafficDisplay; uptime?: string }) {
   return (
     <div
       className="card-metric-section traffic-quota"
@@ -339,9 +355,10 @@ function NodeTrafficQuota({ traffic }: { traffic: TrafficDisplay }) {
       <div className="traffic-quota-head">
         <span className="traffic-quota-label">
           <Database size={13} strokeWidth={2} />
-          <span>剩余流量</span>
+          <span className="quota-default-label">剩余流量</span><span className="quota-slate-label">流量配额</span>
           <strong className="traffic-quota-remain">{traffic.remainingLabel}</strong>
         </span>
+        {uptime && <span className="slate-quota-uptime">在线：{uptime}</span>}
         <span className="traffic-quota-usage">{traffic.detail}</span>
       </div>
       <div className="traffic-quota-track" aria-hidden>
@@ -388,6 +405,7 @@ const NodeHealthSection = memo(function NodeHealthSection({
           {emptyText}
         </div>
       )}
+      <CarrierRoutes uuid={uuid} />
     </div>
   );
 });
@@ -545,7 +563,9 @@ function TrafficStat({
   redrawKey,
   color,
   icon,
+  reference,
 }: {
+  reference: boolean;
   direction: "下行" | "上行";
   totalLabel: "入站" | "出站";
   rate: ByteRateDisplay;
@@ -572,7 +592,7 @@ function TrafficStat({
         </span>
       </div>
       <div className="traffic-stat-trend" aria-hidden>
-        <TrafficSparkline samples={samples} color={speedColor} redrawKey={redrawKey} />
+        <TrafficSparkline samples={samples} color={reference ? color : speedColor} redrawKey={redrawKey} variant={reference ? "line" : "area"} height={reference ? 22 : 28} />
         <span
           className="traffic-stat-live"
           data-live={live ? "true" : "false"}
@@ -591,7 +611,7 @@ function TrafficStat({
       <div className="traffic-stat-foot">
         <div className="traffic-stat-total-label">
           <GlobeArrow direction={totalLabel} color={color} />
-          <span>{totalLabel}</span>
+          <span>{reference ? `累计${totalLabel}` : totalLabel}</span>
         </div>
         <span className="tabular">{total}</span>
       </div>

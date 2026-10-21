@@ -6,6 +6,7 @@ import {
   saveReportResource,
   type ReportEndpoint,
 } from "@/services/reportObservatory";
+import { HomeRoutesPublishPanel } from "./HomeRoutesPublishPanel";
 const blank = {
   name: "",
   address: "",
@@ -62,6 +63,7 @@ export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
   return (
     <div className="network-form">
       <h3>集中测量资源</h3>
+      {catalog.data && <HomeRoutesPublishPanel catalog={catalog.data} />}
       <p className="report-caption">
         内置公开节点可直接选择；自定义端点仅需登记一次。大陆九格以地区与运营商匹配资源。授权密钥不会写入报告或分享内容。
       </p>

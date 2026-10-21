@@ -6,6 +6,10 @@ import {
 import { isAppearance, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
+  it.each(["slate", "slate-light"] as const)("preserves the %s appearance", (appearance) => {
+    expect(isAppearance(appearance)).toBe(true);
+    expect(normalizeThemeSettings({ defaultAppearance: appearance }).defaultAppearance).toBe(appearance);
+  });
   it("preserves the Clear Sky default through saved settings and rejects unknown appearances", () => {
     expect(isAppearance("clearsky")).toBe(true);
     expect(normalizeThemeSettings({ defaultAppearance: "clearsky" }).defaultAppearance).toBe("clearsky");

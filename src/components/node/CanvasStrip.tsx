@@ -1,3 +1,4 @@
+import { getPaletteRevision, subscribePalette } from "@/utils/palette";
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
 
 interface CanvasStripProps {
@@ -123,7 +124,7 @@ export function resolveCssColor(color: string): string {
   const varName = extractCssVarName(color);
   if (!varName) return color;
 
-  const appearance = document.documentElement.dataset.appearance ?? "";
+  const appearance = `${document.documentElement.dataset.appearance}:${document.documentElement.dataset.themeStyle}:${getPaletteRevision()}`;
   if (appearance !== cssColorCacheKey) {
     cssColorCacheKey = appearance;
     cssColorCache.clear();
@@ -278,6 +279,7 @@ export function CanvasStrip({
   getHoverIndex,
   onHoverIndex,
 }: CanvasStripProps) {
+  const paletteRevision = useSyncExternalStore(subscribePalette, getPaletteRevision, getPaletteRevision);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastHoverIndexRef = useRef<number | null>(null);
   const [width, setWidth] = useState(0);
@@ -332,7 +334,7 @@ export function CanvasStrip({
     ctx.setTransform(backing.dpr, 0, 0, backing.dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     draw(ctx, width, height);
-  }, [draw, height, redrawKey, renderActive, width]);
+  }, [draw, height, redrawKey, renderActive, width, paletteRevision]);
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!getHoverIndex || !onHoverIndex || width <= 0) return;

@@ -1,4 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { usePreferences } from "@/hooks/usePreferences";
+import { PingHistoryBars } from "./PingHistoryBars";
 import { Link } from "react-router-dom";
 import { BarChart3 } from "lucide-react";
 import type { HomepagePingSourceRow } from "@/utils/homepagePingSources";
@@ -68,9 +70,11 @@ function PingTaskSparkline({
 function PingTaskTile({
   source,
   density,
+  segmented = false,
 }: {
   source: HomepagePingSourceRow;
   density: "regular" | "compact";
+  segmented?: boolean;
 }) {
   const latencyColor = latencyHeatColor(source.latencyMs);
   const hasLoss = (source.lossPercent ?? 0) > 0;
@@ -93,19 +97,19 @@ function PingTaskTile({
           {source.name}
         </Link>
         <span className="ping-task-readings tabular">
-          <strong style={{ color: latencyColor }}>
+          <span className="ping-reading-label">延迟</span><strong style={{ color: latencyColor }}>
             {source.latencyShortLabel}
             {source.latencyMs != null && <small>ms</small>}
           </strong>
           <i aria-hidden />
-          <strong className="ping-task-loss-value">
+          <span className="ping-reading-label">丢包</span><strong className="ping-task-loss-value">
             {source.lossShortLabel}
             {source.lossPercent != null && <small>%</small>}
           </strong>
         </span>
       </div>
       {density === "regular" && <small className="ping-task-meta">{sourceMeta(source)}</small>}
-      <PingTaskSparkline source={source} />
+      {segmented ? <PingHistoryBars source={source} /> : <PingTaskSparkline source={source} />}
     </article>
   );
 }
@@ -153,6 +157,8 @@ export function PingSourceMatrix({
   compareUrl: string;
   density?: "regular" | "compact";
 }) {
+  const { appearance } = usePreferences();
+  const segmented = appearance.startsWith("slate");
   const [showAll, setShowAll] = useState(false);
   if (rows.length === 0) return null;
 
@@ -177,8 +183,9 @@ export function PingSourceMatrix({
     <section className="ping-source-matrix" data-density={density}>
       {density === "regular" && (
         <header className="ping-source-matrix-head">
+          {segmented && <small className="slate-network-caption">延迟 丢包趋势</small>}
           <span className="ping-source-matrix-title">
-            监测任务
+            {segmented ? "网络质量" : "监测任务"}
             <b>{rows.length}</b>
           </span>
           <span className="ping-source-summary" aria-label="Ping 聚合摘要">
@@ -203,7 +210,7 @@ export function PingSourceMatrix({
           compact ? (
             <CompactPingTaskLane key={source.taskId} source={source} />
           ) : (
-            <PingTaskTile key={source.taskId} source={source} density={density} />
+            <PingTaskTile key={source.taskId} source={source} density={density} segmented={segmented} />
           )
         ))}
         {hiddenCount > 0 && (

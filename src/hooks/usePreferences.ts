@@ -1,3 +1,4 @@
+import { notifyPaletteChanged } from "@/utils/palette";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
@@ -32,7 +33,7 @@ function resolveAppearance(a: Appearance): ResolvedAppearance {
   if (a === "system") {
     return getSystemAppearanceMediaQuery()?.matches ? "dark" : "light";
   }
-  return a === "dark" ? "dark" : "light";
+  return a === "dark" || a === "slate" ? "dark" : "light";
 }
 
 function parseStoredAppearance(raw: string | null): Appearance | null {
@@ -109,12 +110,14 @@ function markThemeFlip() {
 
 function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedAppearance) {
   const root = document.documentElement;
+  const previous = `${root.dataset.appearance}:${root.dataset.themeStyle}`;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = appearance === "diagnostic" || appearance === "clearsky" ? appearance : "default";
+  root.dataset.themeStyle = appearance.startsWith("slate") ? "slate" : appearance === "diagnostic" || appearance === "clearsky" ? appearance : "default";
   root.style.colorScheme = resolvedAppearance;
+  if (previous !== `${root.dataset.appearance}:${root.dataset.themeStyle}`) notifyPaletteChanged();
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
-    meta.content = appearance === "clearsky" ? "#e7f1fc" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
+    meta.content = appearance.startsWith("slate") ? (resolvedAppearance === "dark" ? "#252b34" : "#edf0f5") : appearance === "clearsky" ? "#e7f1fc" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
   }
 }
 

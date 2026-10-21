@@ -41,11 +41,11 @@
           if (value == null) return null;
           try {
             const parsed = JSON.parse(value);
-            if (parsed === "system" || parsed === "light" || parsed === "dark" || parsed === "diagnostic" || parsed === "clearsky") {
+            if (parsed === "system" || parsed === "light" || parsed === "dark" || parsed === "diagnostic" || parsed === "clearsky" || parsed === "slate" || parsed === "slate-light") {
               return parsed;
             }
           } catch {
-            if (value === "system" || value === "light" || value === "dark" || value === "diagnostic" || value === "clearsky") {
+            if (value === "system" || value === "light" || value === "dark" || value === "diagnostic" || value === "clearsky" || value === "slate" || value === "slate-light") {
               return value;
             }
           }
@@ -76,12 +76,12 @@
             ? window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light"
-            : appearance === "dark" ? "dark" : "light";
+            : appearance === "dark" || appearance === "slate" ? "dark" : "light";
         document.documentElement.dataset.appearance = resolved;
-        document.documentElement.dataset.themeStyle = appearance === "diagnostic" || appearance === "clearsky" ? appearance : "default";
+        document.documentElement.dataset.themeStyle = appearance.startsWith("slate") ? "slate" : appearance === "diagnostic" || appearance === "clearsky" ? appearance : "default";
         document.documentElement.style.colorScheme = resolved;
         const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.content = appearance === "clearsky" ? "#e7f1fc" : resolved === "dark" ? "#000000" : "#F5F5F7";
+        if (meta) meta.content = appearance.startsWith("slate") ? (resolved === "dark" ? "#252b34" : "#edf0f5") : appearance === "clearsky" ? "#e7f1fc" : resolved === "dark" ? "#000000" : "#F5F5F7";
 
         // Apply the cached custom background + card transparency before first
         // paint so a refresh doesn't flash the solid theme before React mounts.

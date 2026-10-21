@@ -7,6 +7,8 @@ const appearances: { value: Appearance; label: string; detail: string }[] = [
   { value: 'system', label: '跟随系统', detail: '随设备的深浅色模式自动切换' },
   { value: 'dark', label: '深色', detail: '柔和暗面，适合夜间持续观测' },
   { value: 'diagnostic', label: '诊断', detail: '突出异常、收敛色彩，适合快速巡检' },
+  { value: 'slate', label: '曜石', detail: '石墨灰、彩色指标与分段网络趋势' },
+  { value: 'slate-light', label: '曜石·明', detail: '曜石的亮色版本，保留相同卡片层次' },
   { value: 'clearsky', label: '澄空', detail: '冷白冰蓝、薄片叠层与轻微空间视差' },
 ];
 const layouts: { value: NodeViewMode; label: string; detail: string }[] = [

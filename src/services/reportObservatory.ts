@@ -292,6 +292,7 @@ const catalogSchema = capabilitiesSchema.extend({
     }),
   ),
   suites: z.array(suiteSchema),
+  homeRouteNodes: z.array(z.string()).default([]),
   revision: z.number(),
   inventory: z.array(
     z.object({
@@ -299,6 +300,7 @@ const catalogSchema = capabilitiesSchema.extend({
       name: z.string(),
       group: z.string(),
       ip: z.string(),
+      publicVisible: z.boolean().default(false),
     }),
   ),
   timezones: z.array(z.string()),
@@ -485,3 +487,5 @@ export const revokeReportShares = (uuid: string, id: string) =>
     `/nodes/${encodeURIComponent(uuid)}/rounds/${encodeURIComponent(id)}/shares`,
     "DELETE",
   );
+
+export const publishHomeRoutes = (nodeUuids: string[], revision: number) => request("/home-routes", "PUT", { nodeUuids, revision });

@@ -774,6 +774,7 @@ function registerNativeController(ctx) {
             uuid: n.uuid,
             name: n.name || n.uuid,
             group: n.group || "",
+            publicVisible: n.hidden === false || n.hidden === 0 || n.hidden === "false",
             ip: n.ipv4 || n.ip_v4 || "",
             ipv6: n.ipv6 || n.ip_v6 || "",
           }));

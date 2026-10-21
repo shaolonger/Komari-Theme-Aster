@@ -22,6 +22,8 @@ const APPEARANCE_OPTIONS = [
   { value: "system", icon: Monitor, label: "跟随系统" },
   { value: "dark", icon: Moon, label: "深色" },
   { value: "diagnostic", icon: Activity, label: "诊断" },
+  { value: "slate", icon: Moon, label: "曜石" },
+  { value: "slate-light", icon: Sun, label: "曜石·明" },
   { value: "clearsky", icon: Sparkles, label: "澄空" },
 ] as const;
 
