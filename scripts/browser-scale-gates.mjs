@@ -1,3 +1,4 @@
+import { checkClearSky } from "./clear-sky-browser-gates.mjs";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -160,7 +161,7 @@ function nodeList(size) {
     currency: activeFixture.docs ? "USD" : "",
     expired_at: activeFixture.docs ? `2027-${String((index % 9) + 1).padStart(2, "0")}-20T00:00:00Z` : "",
     tags: activeFixture.docs ? ["production", "edge", "backup"][index % 3] : "",
-    traffic_limit: 1_000_000_000_000,
+    traffic_limit: activeFixture.clearSky && index === 6 ? 0 : 1_000_000_000_000,
     traffic_limit_type: "sum",
   };
   });
@@ -206,8 +207,8 @@ function officialLatestStatus(index, sequence) {
     load15: 0.3,
     net_in: sequence * 120 + index,
     net_out: sequence * 100 + index,
-    net_total_up: sequence * 1_000 + index,
-    net_total_down: sequence * 2_000 + index,
+    net_total_up: (activeFixture.clearSky ? index === 7 ? 600_000_000_000 : 20_000_000_000 * (index + 1) : 0) + sequence * 1_000 + index,
+    net_total_down: (activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
     connections: 12,
     connections_udp: 2,
     uptime: sequence,
@@ -708,7 +709,7 @@ async function waitUntil(cdp, expression, timeoutMs) {
     cards: document.querySelectorAll('.home-node-card-slot').length,
     rows: document.querySelectorAll('.node-list-row').length,
     url: location.href
-    , focus: document.activeElement?.outerHTML, switcher: document.querySelector('.node-search-switcher')?.outerHTML
+    , focus: document.activeElement?.outerHTML.slice(0, 800), switcher: document.querySelector('.node-search-switcher')?.outerHTML
   })`);
   throw new Error(`browser condition timed out: ${expression}; ${JSON.stringify(diagnostics)}`);
 }
@@ -880,6 +881,7 @@ try {
   await cdp.call("Runtime.enable");
   await cdp.call("HeapProfiler.enable");
 
+  if (!process.env.BROWSER_CLEAR_SKY_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -1435,8 +1437,8 @@ try {
   await waitUntil(cdp, `document.querySelectorAll('.network-instance-plan').length === 2`, 3_000);
   await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1`), "network workspace overflows mobile viewport");
-  await cdp.value(`document.querySelector('.floating-controls-trigger').click()`);
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await cdp.value(`if (document.querySelector('.floating-controls-trigger').getAttribute('aria-expanded') !== 'true') document.querySelector('.floating-controls-trigger').click()`);
+  await waitUntil(cdp, `['主题设置', '管理'].every(label => { const action = document.querySelector('.floating-controls-actions [aria-label="' + label + '"]'); const bounds = document.querySelector('.floating-controls-actions').getBoundingClientRect(); const rect = action?.getBoundingClientRect(); return rect && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1; })`, 4_000);
   failGate(await cdp.value(`['主题设置', '管理'].every(label => { const action = document.querySelector('.floating-controls-actions [aria-label="' + label + '"]'); const bounds = document.querySelector('.floating-controls-actions').getBoundingClientRect(); const rect = action?.getBoundingClientRect(); return rect && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1; })`), "floating controls clip settings or admin on mobile");
   await cdp.value(`document.querySelector('.floating-controls-trigger').click()`);
   await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
@@ -1765,6 +1767,11 @@ try {
     await captureScreenshot(cdp, `${screenshotBase}-overview-mobile.png`);
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
+  }
+  await clearFixturePage(cdp);
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
+  savedUiSettings = null;
+  results.push(await checkClearSky({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

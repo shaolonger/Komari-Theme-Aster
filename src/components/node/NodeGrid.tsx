@@ -797,6 +797,8 @@ function NodeSelectionPanel({
   );
 }
 
+const ClearSkyHomeHeading = lazy(() => import("./ClearSkyHomeHeading"));
+
 const HomeNetworkBatch = lazy(() => import("@/components/network/HomeNetworkBatch"));
 
 export function NodeGrid() {
@@ -1550,6 +1552,7 @@ export function NodeGrid() {
           showLauncher={showCostFloatingButton}
         />
       )}
+      {appearance === "clearsky" && <Suspense fallback={null}><ClearSkyHomeHeading count={nodes.length} /></Suspense>}
       <HomeMetricSummary
         open={overviewPanel != null}
         panel={overviewPanel}

@@ -34,6 +34,7 @@ import { PingSourceMatrix } from "./PingSourceMatrix";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
 import { TrafficSparkline } from "./TrafficSparkline";
+import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
 import type { ByteRateDisplay } from "@/utils/format";
@@ -129,7 +130,7 @@ export const NodeCard = memo(function NodeCard({
             redrawKey={resolvedAppearance}
           />
 
-          <NodeTrafficQuota traffic={traffic} />
+          {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} /> : <NodeTrafficQuota traffic={traffic} />}
 
           {showExtended && showConnections && (
             <div className="card-metric-section card-metric-divided server-card-meta-grid">

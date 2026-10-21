@@ -253,3 +253,48 @@
   --tag-fg: var(--tag-gray-fg);
   --tag-border: transparent;
 }
+
+/* Clear Sky palette is available before its optional visual layer loads. */
+[data-theme-style="clearsky"] {
+  --bg-0: #e7f1fc;
+  --bg-1: #eef3fc;
+  --surface: #f9fcff;
+  --surface-elev: #fbfdff;
+  --surface-sunken: #eaf1fc;
+  --border: #dce5f2;
+  --border-subtle: #e2e9f5;
+  --border-strong: #bdcee6;
+  --hairline: #dce5f2;
+  --text-primary: #263551;
+  --text-secondary: #536680;
+  --text-tertiary: #617089;
+  --text-on-strong: #ffffff;
+  --fill-primary: #486bc2;
+  --fill-secondary: #dfe8f7;
+  --fill-tertiary: #eaf0fa;
+  --hover-bg: #e8f0fc;
+  --accent-500: #486bc2;
+  --progress-bg: #dce5f3;
+  --progress-cpu: #486bc2;
+  --progress-memory: #8a75bc;
+  --progress-swap: #7986be;
+  --progress-disk: #ae7746;
+  --progress-network: #2a899c;
+  --progress-traffic-from: #6b91d2;
+  --progress-traffic-to: #5bafc2;
+  --status-success: #2a899c;
+  --status-online: #2a899c;
+  --status-warning: #a66b36;
+  --status-error: #b04e66;
+  --status-offline: #b04e66;
+  --status-info: #486bc2;
+  --speed-kb: #2a899c;
+  --speed-mb: #a66b36;
+  --speed-gb: #ad6139;
+  --speed-tb: #b04e66;
+  --tag-gray-bg: #e9eef8;
+  --tag-gray-fg: #536680;
+  --ring: #486bc27a;
+  --shadow-card: 0 13px 25px -18px #6a89b875, 0 2px 4px #7899c109;
+  --sky-surface: linear-gradient(135deg, color-mix(in srgb, var(--surface-a) 98%, white) 12%, var(--surface-a) 65%, color-mix(in srgb, var(--surface-a) 94%, #b9d1f4));
+}

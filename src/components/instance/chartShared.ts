@@ -17,6 +17,8 @@ export const CHART_PALETTE = {
   warning: "#d4a54a",
 } as const;
 
+export const CLEAR_SKY_SERIES = ["#486bc2", "#8a75bc", "#ae7746", "#2a899c", "#b56577", "#7986be"];
+
 // 备用定性色板（仅缺少总数时用）；正常走下面的 OKLCH 生成。
 const CHART_SERIES_COLORS = [
   "#4878d0", // 蓝
@@ -336,6 +338,10 @@ function computeChartSize(
     };
   }
 
+  if (typeof containerWidth === "number" && containerWidth > 0) {
+    return { w: Math.max(1, q(containerWidth)), h: viewportWidth < 768 ? 136 : GRID_CHART_HEIGHT };
+  }
+
   if (viewportWidth >= 1280) {
     return {
       w: Math.min(GRID_CHART_DESKTOP_MAX_WIDTH, q((viewportWidth - GRID_CHART_DESKTOP_GUTTER) / 3)),
@@ -387,7 +393,7 @@ export function useResponsiveChartSize(mode: "grid" | "wide") {
       observerRef.current = null;
       nodeRef.current = node;
       if (node) {
-        if (mode === "wide" && typeof ResizeObserver !== "undefined") {
+        if (typeof ResizeObserver !== "undefined") {
           const observer = new ResizeObserver(scheduleApply);
           observer.observe(node);
           observerRef.current = observer;

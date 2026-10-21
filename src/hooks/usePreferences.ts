@@ -110,11 +110,11 @@ function markThemeFlip() {
 function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedAppearance) {
   const root = document.documentElement;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = appearance === "diagnostic" ? "diagnostic" : "default";
+  root.dataset.themeStyle = appearance === "diagnostic" || appearance === "clearsky" ? appearance : "default";
   root.style.colorScheme = resolvedAppearance;
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
-    meta.content = resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
+    meta.content = appearance === "clearsky" ? "#e7f1fc" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
   }
 }
 

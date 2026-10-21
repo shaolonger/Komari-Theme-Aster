@@ -93,6 +93,7 @@ export function useNodeCardModel(uuid: string, pingBucketCount?: number) {
     //（"剩余 ∞" + "2.73 GB / ∞"）。
     const trafficLimitLabel = trafficUsage.unlimited ? "∞" : formatBytes(trafficUsage.limit);
     const traffic: TrafficDisplay = {
+      usagePercent: trafficUsage.unlimited ? null : trafficUsage.used / trafficUsage.limit * 100,
       fraction: trafficUsage.fraction,
       color: trafficUsage.unlimited
         ? "var(--status-success)"

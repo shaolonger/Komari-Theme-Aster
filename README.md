@@ -41,6 +41,18 @@ Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR�
   <img src="docs/images/current/overview-dark.png" alt="Aster 首页深色模式" width="90%">
 </p>
 
+### 澄空外观
+
+v1.10.0 新增「澄空」：冷白冰蓝、薄片叠层卡片和轻微空间视差。首页右上角展开快捷按钮后选择「澄空」，或在 Aster 工作室将其保存为默认外观。小卡片同时显示已用 / 总流量、剩余额度、占比及进度；不限量和超额情况会明确区分。触屏与系统「减少动态效果」自动停用立体动效。详见[使用说明与实际截图](docs/clear-sky.md)。
+
+<p align="center">
+  <img src="docs/images/current/clear-sky-compact.png" alt="澄空外观：小卡片与独立流量使用区域" width="90%">
+</p>
+
+<p align="center">
+  <img src="docs/images/current/clear-sky-detail.png" alt="澄空外观：实例信息与负载图表" width="90%">
+</p>
+
 ### 实例详情
 
 实例详情集中展示资料完整度、续费压力、流量预估、运行状态，以及可切换时间范围的负载和多任务 Ping 图表。

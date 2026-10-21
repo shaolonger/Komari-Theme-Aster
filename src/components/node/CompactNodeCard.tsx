@@ -27,6 +27,7 @@ import {
 import { speedRateColor } from "@/utils/metricTone";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { TrafficSparkline } from "./TrafficSparkline";
+import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary } from "./NodeStatusSummary";
 import type { NodeInfo, NodeMetrics, TrafficTrendSample } from "@/types/komari";
@@ -279,6 +280,7 @@ function CompactLiveTraffic({
   upRate,
   downRate,
   showTrafficTotal,
+  clearSky,
 }: {
   node: CompactNode;
   traffic: TrafficDisplay;
@@ -286,6 +288,7 @@ function CompactLiveTraffic({
   upRate: ByteRateDisplay;
   downRate: ByteRateDisplay;
   showTrafficTotal: boolean;
+  clearSky: boolean;
 }) {
   const style = {
     "--compact-traffic-fill": `${clamp01(traffic.fraction) * 100}%`,
@@ -301,13 +304,13 @@ function CompactLiveTraffic({
         <CompactTrafficLane direction="up" rate={upRate} samples={trafficTrend.up} />
         <CompactTrafficLane direction="down" rate={downRate} samples={trafficTrend.down} />
       </div>
-      <div className="compact-node-quota-pill" style={style}>
+      {clearSky ? <TrafficQuotaDetails traffic={traffic} /> : <div className="compact-node-quota-pill" style={style}>
         <span className="compact-node-quota-fill" aria-hidden />
         <span className="compact-node-quota-content">
           <Database size={10} />
           <strong className="tabular">{traffic.compactDetail}</strong>
         </span>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -387,6 +390,7 @@ export const CompactNodeCard = memo(function CompactNodeCard({ uuid }: { uuid: s
         upRate={upRate}
         downRate={downRate}
         showTrafficTotal={showTrafficTotal}
+        clearSky={appearance === "clearsky"}
       />
       {hasHomepagePingBinding && sourceRows.length > 0 ? (
         <PingSourceMatrix rows={sourceRows} compareUrl={compareUrl} density="compact" />

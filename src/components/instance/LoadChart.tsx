@@ -49,6 +49,7 @@ const CONNECTION_KEYS = ["connections", "udp"];
 const CONNECTION_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.cpu];
 const PROCESS_KEYS = ["process"];
 const PROCESS_COLORS = [CHART_PALETTE.warning];
+const SKY_COLORS = { cpu: ["#486bc2"], memory: ["#8a75bc", "#ae7746"], disk: ["#ae7746"], network: ["#2a899c", "#486bc2"], connections: ["#8a75bc", "#486bc2"], process: ["#486bc2"] };
 const SERIES_LABELS: Record<string, string> = {
   cpu: "CPU",
   ram: "内存",
@@ -172,7 +173,7 @@ function buildBaseOptions({
   displayTimeZone,
   spanGaps,
   axisKind = "default",
-  axisSize = 52,
+  axisSize = 68,
 }: {
   title: string;
   keys: string[];
@@ -190,7 +191,7 @@ function buildBaseOptions({
   const { grid, text } = getAxisColors(isDark);
 
   return {
-    padding: [8, 12, 10, 2],
+    padding: [8, 18, 10, 8],
     cursor: { drag: { x: true, y: false } },
     legend: { show: false },
     scales: {
@@ -289,6 +290,7 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
+  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize("grid");
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -349,8 +351,8 @@ const ChartCard = memo(function ChartCard({
 
   // resize 时只有这个 memo 变，uplot-react 走 setSize() 而非整个 chart 的拆建重建。
   const chartOptions = useMemo<uPlot.Options>(
-    () => ({ ...enhancedOptions, width, height }) as uPlot.Options,
-    [enhancedOptions, width, height],
+    () => ({ ...enhancedOptions, width: Math.min(width, measuredWidth), height }) as uPlot.Options,
+    [enhancedOptions, width, measuredWidth, height],
   );
 
   return (
@@ -368,7 +370,7 @@ const ChartCard = memo(function ChartCard({
           {note && <span className="tabular text-[var(--text-tertiary)]">{note}</span>}
         </div>
       </header>
-      <div className="instance-uplot-wrap">
+      <div className="instance-uplot-wrap" ref={plotRef}>
         <UplotReact
           key={`${uuid}-${rangeHours}-${xRange?.[0] ?? "auto"}-${xRange?.[1] ?? "auto"}`}
           options={chartOptions}
@@ -411,7 +413,7 @@ export function LoadChart({
   const { data, isLoading, refetch } = useLoadRecords(uuid, queryHours, active, nodeMeta, range);
   const isRealtime = hours === 0;
   const node = useNodeMetrics(uuid, isRealtime && active);
-  const { resolvedAppearance } = usePreferences();
+  const { resolvedAppearance, appearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const { w, h } = useResponsiveChartSize("grid");
@@ -552,7 +554,7 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={CPU_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}
@@ -585,7 +587,7 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={MEMORY_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}
@@ -610,7 +612,7 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={DISK_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}
@@ -640,7 +642,7 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={NETWORK_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}
@@ -665,7 +667,7 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={CONNECTION_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}
@@ -695,7 +697,7 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={PROCESS_COLORS}
+          colors={appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
           width={w}
           height={h}
           resolvedAppearance={resolvedAppearance}

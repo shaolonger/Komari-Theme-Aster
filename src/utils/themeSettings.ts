@@ -40,7 +40,7 @@ import {
   type DisplayTimeZone,
 } from "@/utils/timeDisplay";
 
-export type Appearance = "system" | "light" | "dark" | "diagnostic";
+export type Appearance = "system" | "light" | "dark" | "diagnostic" | "clearsky";
 export type NodeViewMode = "large" | "standard" | "compact" | "list";
 
 export interface ResolvedThemeSettings {
@@ -132,7 +132,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
 };
 
 export function isAppearance(value: unknown): value is Appearance {
-  return value === "system" || value === "light" || value === "dark" || value === "diagnostic";
+  return value === "system" || value === "light" || value === "dark" || value === "diagnostic" || value === "clearsky";
 }
 
 function normalizeAppearance(

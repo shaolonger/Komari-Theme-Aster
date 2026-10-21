@@ -6,6 +6,12 @@ import {
 import { isAppearance, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
+  it("preserves the Clear Sky default through saved settings and rejects unknown appearances", () => {
+    expect(isAppearance("clearsky")).toBe(true);
+    expect(normalizeThemeSettings({ defaultAppearance: "clearsky" }).defaultAppearance).toBe("clearsky");
+    expect(isAppearance("unknown")).toBe(false);
+    expect(normalizeThemeSettings({ defaultAppearance: "unknown" as never }).defaultAppearance).toBe("system");
+  });
   it("defaults desktop and mobile node cards to the standard scanning view", () => {
     expect(normalizeThemeSettings({}).desktopNodeViewMode).toBe("standard");
     expect(normalizeThemeSettings({}).mobileNodeViewMode).toBe("standard");

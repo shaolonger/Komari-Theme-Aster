@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
   Sun,
   Moon,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -21,6 +22,7 @@ const APPEARANCE_OPTIONS = [
   { value: "system", icon: Monitor, label: "跟随系统" },
   { value: "dark", icon: Moon, label: "深色" },
   { value: "diagnostic", icon: Activity, label: "诊断" },
+  { value: "clearsky", icon: Sparkles, label: "澄空" },
 ] as const;
 
 const VIEW_OPTIONS = [

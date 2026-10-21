@@ -39,9 +39,10 @@ const iconAsset = [...assets].find((file) => {
   return source.includes("createLucideIcon") || source.includes("CircleDollarSign");
 });
 const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
-// The Home shell now includes a small batch-network launcher; the drawer and
-// editor remain lazy chunks. Keep a narrow margin for content-hashed names.
-const limits = { js: 161 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
+// Clear Sky adds the appearance boundary and lazy quota/heading slots. Its
+// visual CSS, header, quota content and pointer motion load only when selected.
+// Allow 1 KiB for these entry points; retain the existing CSS/font/icon limits.
+const limits = { js: 162 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
 if (jsBytes > limits.js) failures.push(`Home JS Brotli ${jsBytes} > ${limits.js}`);
 if (cssBytes > limits.css) failures.push(`Home CSS Brotli ${cssBytes} > ${limits.css}`);

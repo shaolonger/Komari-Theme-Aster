@@ -6,6 +6,8 @@ const COMPACT_TRAFFIC_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
 // 节点累计上/下行总量的这几种归约之一来比较。后端会把 type 转小写,空/未知值落到 "max"
 // (gorm 默认 'max')。
 export interface TrafficDisplay {
+  /** Unclamped quota use. Null for an unlimited plan; optional for older callers. */
+  usagePercent?: number | null;
   /** used / limit,夹到 0..1(无限时为 0)。 */
   fraction: number;
   /** 条的热力色(用量上升时绿 → 红)。 */

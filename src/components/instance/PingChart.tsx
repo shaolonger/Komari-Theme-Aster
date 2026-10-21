@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CLEAR_SKY_SERIES } from "./chartShared";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Eye, EyeOff, MapPin, RefreshCw, Star } from "lucide-react";
@@ -96,7 +97,7 @@ export function PingChart({
     active,
     range,
   );
-  const { resolvedAppearance } = usePreferences();
+  const { resolvedAppearance, appearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const { w, h, ref: chartSizeRef } = useResponsiveChartSize("wide");
@@ -134,8 +135,8 @@ export function PingChart({
     );
   }, [tasks]);
   const taskColors = useMemo(
-    () => new Map(tasks.map((task, index) => [task.id, colorForSeries(index, tasks.length)] as const)),
-    [tasks],
+    () => new Map(tasks.map((task, index) => [task.id, appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
+    [tasks, appearance],
   );
   const taskKeySet = useMemo(() => new Set(tasks.map((task) => String(task.id))), [tasks]);
   const taskKeys = useMemo(() => tasks.map((task) => String(task.id)), [tasks]);

@@ -154,7 +154,7 @@ export interface NodeMetrics {
 }
 
 export interface ThemeSettings {
-  defaultAppearance?: "system" | "light" | "dark" | "diagnostic";
+  defaultAppearance?: "system" | "light" | "dark" | "diagnostic" | "clearsky";
   displayTimeZone?: string;
   desktopNodeViewMode?: "large" | "standard" | "compact" | "list";
   mobileNodeViewMode?: "large" | "standard" | "compact" | "list";

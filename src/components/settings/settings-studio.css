@@ -189,3 +189,7 @@
 .studio-home-preview { scroll-margin-top: 100px; }
 
 .studio-preview-status { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+.studio-appearance-drawing[data-appearance="clearsky"] { --mini-bg: #e7f1fc; --mini-surface: #f9fcff; --mini-line: #d5e1f1; background: linear-gradient(135deg,#fafdff,#dce9fa 65%,#ece4fa); border: 1px solid white; color: #486bc2; }
+.studio-appearance-drawing[data-appearance="clearsky"] .studio-mini-sidebar { background: #e9f0fb; }
+.studio-appearance-drawing[data-appearance="clearsky"] .studio-layout-drawing > div { border-color: white; border-radius: 7px; box-shadow: 0 4px 6px -4px #6a89b860; }
