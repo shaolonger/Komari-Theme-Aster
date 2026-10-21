@@ -44,10 +44,15 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
     if (w === 1440) await shot("large");
     await view("list"); await fits(`list ${w}px`);
   }
+  await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: false });
   await width(1440); await view("compact");
-  const center = await cdp.value(`(() => { const card = document.querySelector('.compact-node-card'); card.scrollIntoView({block:'center'}); const r = card.getBoundingClientRect(); return { x:r.x + 24, y:r.y + 24 }; })()`);
+  await cdp.value("document.querySelector('.compact-node-card').scrollIntoView({block:'center'})");
+  // content-visibility can replace an intrinsic placeholder on scroll. Measure
+  // after layout has settled, not before revealing the offscreen card.
   await new Promise(resolve => setTimeout(resolve, 350));
-  await cdp.call("Input.dispatchMouseEvent", { type: "mouseMoved", ...center });
+  const center = await cdp.value(`(() => { const r=document.querySelector('.compact-node-card').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+Math.min(50,r.height/2)}; })()`);
+  console.log("Clear Sky input", await cdp.value(`({fine:matchMedia('(hover: hover) and (pointer: fine)').matches,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,hitCard:!!document.elementFromPoint(${center.x},${center.y})?.closest('.compact-node-card')})`));
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseMoved", pointerType: "mouse", ...center });
   await waitUntil(cdp, "document.querySelector('.sky-is-tilted') !== null", 3_000);
   await cdp.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   await waitUntil(cdp, "document.querySelector('.sky-is-tilted') === null", 3_000);
