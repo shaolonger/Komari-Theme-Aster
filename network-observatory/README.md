@@ -1,6 +1,6 @@
 # 网络报告 v3
 
-主题 **1.11.0** / 插件 **1.8.0** / runner **1.7.0** 提供实例详情中的「路由 / 测速 / 国际」成组报告。升级、三步批量计划、资源登记和排障请先阅读[新版逐步指南](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.8.0/docs/network-report-v3-guide.md)。插件 ZIP 同时包含 `docs/network-report-v3-guide.md`。支持 Komari ≥1.4.3，Web SSH 可保持关闭。
+主题 **1.11.1** / 插件 **1.8.0** / runner **1.7.0** 提供实例详情中的「路由 / 测速 / 国际」成组报告。升级、三步批量计划、资源登记和排障请先阅读[新版逐步指南](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.8.0/docs/network-report-v3-guide.md)。插件 ZIP 同时包含 `docs/network-report-v3-guide.md`。支持 Komari ≥1.4.3，Web SSH 可保持关闭。
 
 下文保留为 **v1/v2 工具诊断、旧版计划与旧报告的参考**；其中版本号、旧 UI 和历史窗口说明均属于旧版，不适用于新版轮次报告。
 
@@ -237,4 +237,4 @@ TcpQuality 标准检测与国际互联模式在上游脚本内要求 UID 0，因
 
 ## 首页三网线路（插件 1.8.0）
 
-完成 v3「大陆路由」观测后，在「集中测量资源 → 首页三网线路」选择可见节点并保存发布范围，即可让首页所有外观读取去程 / 回程摘要。IPv4 / IPv6 独立，未探测方向不会推断。公开摘要默认关闭，仅发布标签、ASN、方向、时间和状态；原始报告、目标地址和凭证不公开。主题需 1.11.0，已有 1.7.0 runner 可继续使用。详见[曜石与线路指南](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.11.0/docs/obsidian.md)。
+完成 v3「大陆路由」观测后，在「集中测量资源 → 首页三网线路」选择可见节点并保存发布范围，即可让首页所有外观读取去程 / 回程摘要。IPv4 / IPv6 独立，未探测方向不会推断。公开摘要默认关闭，仅发布标签、ASN、方向、时间和状态；原始报告、目标地址和凭证不公开。主题需 1.11.1，已有 1.7.0 runner 可继续使用。详见[曜石与线路指南](https://github.com/shaolonger/Komari-Theme-Aster/blob/v1.11.1/docs/obsidian.md)。

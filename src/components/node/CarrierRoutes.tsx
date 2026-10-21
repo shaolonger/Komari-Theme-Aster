@@ -1,8 +1,6 @@
 import { memo, useState } from "react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { type RouteEvidence } from "@/services/homeRoutes";
-import { usePreferences } from "@/hooks/usePreferences";
-import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 
 function Evidence({ value, direction, timeZone }: { value: RouteEvidence | null; direction: string; timeZone: string }) {
@@ -12,13 +10,12 @@ function Evidence({ value, direction, timeZone }: { value: RouteEvidence | null;
 }
 export const CarrierRoutes = memo(function CarrierRoutes({ uuid, compact = false }: { uuid: string; compact?: boolean }) {
   const [family, setFamily] = useState<"4" | "6">("4");
-  const { displayTimeZone } = useThemeSettings();
-  const { appearance } = usePreferences();
   const routes = useHomeRoutes();
+  const { displayTimeZone, isSlate } = routes;
   const node = routes.data?.nodes[uuid];
   // Empty routes stay out of existing compact dashboards. The reference theme
   // always retains this area, with an honest empty state.
-  if (!node && !appearance.startsWith("slate")) return null;
+  if (!node && !isSlate) return null;
   const rows = node?.[family] || ["电信", "联通", "移动"].map(carrier => ({ carrier, forward: null, return: null }));
   return <section className="carrier-routes" data-compact={compact} aria-label="三网线路">
     <header className="carrier-routes-head"><strong>三网线路</strong><div className="carrier-family-switch" role="group" aria-label="线路地址族">{(["4", "6"] as const).map(f => <button key={f} type="button" aria-pressed={family === f} onClick={() => setFamily(f)}>IPv{f}</button>)}</div></header>

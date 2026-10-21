@@ -1,5 +1,4 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { usePreferences } from "@/hooks/usePreferences";
 import { PingHistoryBars } from "./PingHistoryBars";
 import { Link } from "react-router-dom";
 import { BarChart3 } from "lucide-react";
@@ -152,13 +151,13 @@ export function PingSourceMatrix({
   rows,
   compareUrl,
   density = "regular",
+  segmented = false,
 }: {
   rows: HomepagePingSourceRow[];
   compareUrl: string;
   density?: "regular" | "compact";
+  segmented?: boolean;
 }) {
-  const { appearance } = usePreferences();
-  const segmented = appearance.startsWith("slate");
   const [showAll, setShowAll] = useState(false);
   if (rows.length === 0) return null;
 

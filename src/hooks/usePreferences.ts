@@ -85,7 +85,10 @@ function persistAppearance(value: Appearance) {
   writeStorageItem(APPEARANCE_STORAGE_KEY, JSON.stringify(value));
 }
 
+let lastPersistedDefault: Appearance | null = null;
 function persistDefaultAppearance(value: Appearance) {
+  if (lastPersistedDefault === value) return;
+  lastPersistedDefault = value;
   writeStorageItem(APPEARANCE_DEFAULT_STORAGE_KEY, JSON.stringify(value));
 }
 
@@ -127,11 +130,10 @@ function commit(next: Partial<PrefsState>) {
     merged.resolvedAppearance = resolveAppearance(merged.appearance);
   }
   if (
-    snapshot.resolvedAppearance !== merged.resolvedAppearance ||
-    snapshot.appearance !== merged.appearance
-  ) {
-    markThemeFlip();
-  }
+    snapshot.resolvedAppearance === merged.resolvedAppearance &&
+    snapshot.appearance === merged.appearance
+  ) return;
+  markThemeFlip();
   snapshot = merged;
   applyAppearance(merged.appearance, merged.resolvedAppearance);
   emit();

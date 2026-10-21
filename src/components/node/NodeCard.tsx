@@ -163,6 +163,7 @@ export const NodeCard = memo(function NodeCard({
             ping={ping}
             hasHomepagePingBinding={hasHomepagePingBinding}
             sourceRows={sourceRows}
+            segmented={slate}
           />
         </div>
 
@@ -386,11 +387,13 @@ const NodeHealthSection = memo(function NodeHealthSection({
   ping,
   hasHomepagePingBinding,
   sourceRows,
+  segmented,
 }: {
   uuid: string;
   ping: PingOverviewItem;
   hasHomepagePingBinding: boolean;
   sourceRows: ReturnType<typeof buildHomepagePingSourceRows>;
+  segmented: boolean;
 }) {
   const { title: emptyTitle, text: emptyText } = pingEmptyLabels(hasHomepagePingBinding);
   const compareUrl = buildHomepagePingCompareUrl(uuid, ping.taskIds ?? []);
@@ -399,7 +402,7 @@ const NodeHealthSection = memo(function NodeHealthSection({
   return (
     <div className="card-metric-section card-metric-divided server-health-grid">
       {canShowSources ? (
-        <PingSourceMatrix rows={sourceRows} compareUrl={compareUrl} />
+        <PingSourceMatrix rows={sourceRows} compareUrl={compareUrl} segmented={segmented} />
       ) : (
         <div className="server-health-placeholder" title={emptyTitle}>
           {emptyText}

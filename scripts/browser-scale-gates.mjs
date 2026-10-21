@@ -401,7 +401,7 @@ const server = createServer(async (request, response) => {
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if (url.pathname === '/api/aster-network-observatory/v3/public/routes') {
     count('home-routes');
-    if (!fixture.slate) { response.statusCode = 404; return sendJson(response, { error: 'plugin unavailable' }); }
+    if (!fixture.slate) { response.writeHead(404, { 'Content-Type':'application/json' }); response.end(JSON.stringify({error:'plugin unavailable'})); return; }
     const evidence = (label, asn, state = 'ok') => ({ label, asns: [asn], at: new Date().toISOString(), samples: 1, state });
     const family4 = [
       {carrier:'电信',forward:evidence('CN2','4809'),return:evidence('CN2','4809')},
@@ -900,6 +900,14 @@ try {
   await cdp.call("Page.enable");
   await cdp.call("Runtime.enable");
   await cdp.call("HeapProfiler.enable");
+  await cdp.call("Page.addScriptToEvaluateOnNewDocument", { source: `
+    window.__asterDefaultAppearanceWrites = 0;
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'appearance_default') window.__asterDefaultAppearanceWrites++;
+      return originalSetItem.call(this, key, value);
+    };
+  ` });
 
   if (!process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
@@ -917,6 +925,7 @@ try {
       await waitUntil(cdp, "document.querySelectorAll('.ping-task-sparkline-line').length > 0", budgetMs);
       const metrics = await cdp.value(`(() => ({
       renderMs: performance.now(),
+      defaultAppearanceWrites: window.__asterDefaultAppearanceWrites,
       cards: document.querySelectorAll('.home-node-card-slot').length,
       canvases: document.querySelectorAll('canvas').length,
       activeCanvases: document.querySelectorAll('canvas[data-render-active="true"]').length,
@@ -927,6 +936,7 @@ try {
       , hiddenCostRows: document.querySelector('.cost-summary-panel[aria-hidden="true"]')?.querySelectorAll('.cost-summary-detail-item').length ?? 0
     }))()`);
       if (metrics.renderMs > budgetMs) throw new Error(`${backend.label} ${nodes}-node render ${metrics.renderMs}ms > ${budgetMs}ms`);
+      if (metrics.defaultAppearanceWrites > 2) throw new Error(`Appearance default written ${metrics.defaultAppearanceWrites} times for ${nodes} nodes`);
       if (metrics.hiddenCostRows !== 0) throw new Error("Closed asset panel rendered fleet details during initial load");
       if (nodes >= 300 && metrics.contentVisibility !== "auto") {
         throw new Error(`${backend.label} ${nodes}-node browser card virtualization is disabled`);
