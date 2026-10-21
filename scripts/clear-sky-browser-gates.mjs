@@ -59,6 +59,14 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
   console.log("Clear Sky input", await cdp.value(`({fine:matchMedia('(hover: hover) and (pointer: fine)').matches,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,hitCard:!!document.elementFromPoint(${center.x},${center.y})?.closest('.compact-node-card')})`));
   await cdp.call("Input.dispatchMouseEvent", { type: "mouseMoved", pointerType: "mouse", ...center });
   await waitUntil(cdp, "document.querySelector('.sky-is-tilted') !== null", 3_000);
+  await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  await waitUntil(cdp, "document.querySelector('.sky-is-tilted') === null && matchMedia('(pointer: coarse)').matches", 3_000);
+  failGate(await cdp.value("getComputedStyle(document.querySelector('.compact-node-card')).transform === 'none'"), "Touch input did not disable 3D transforms");
+  await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: false });
+  await cdp.value("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseMoved", pointerType: "mouse", x: 0, y: 0 });
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseMoved", pointerType: "mouse", ...center });
+  await waitUntil(cdp, "document.querySelector('.sky-is-tilted') !== null", 3_000);
   await cdp.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
   await waitUntil(cdp, "document.querySelector('.sky-is-tilted') === null", 3_000);
   failGate(await cdp.value("getComputedStyle(document.querySelector('.compact-node-card')).transform === 'none'"), "Reduced motion did not disable 3D transforms");

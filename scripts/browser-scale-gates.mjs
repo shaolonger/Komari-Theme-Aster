@@ -607,6 +607,10 @@ const child = spawn(chrome, [
   "--disable-component-update",
   "--disable-dev-shm-usage",
   "--disable-sync",
+  // Linux headless hosts can advertise no pointing device. Start with an
+  // explicit desktop mouse; the input gates separately emulate touch/reduced
+  // motion so they assert product behavior, not the runner's hardware.
+  "--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2",
   "--remote-debugging-address=127.0.0.1",
   // Let Chromium select an unused port. It writes that port to
   // DevToolsActivePort in this isolated profile, avoiding a flaky random-port
