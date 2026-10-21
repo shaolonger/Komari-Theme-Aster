@@ -401,7 +401,7 @@ export function useResponsiveChartSize(mode: "grid" | "wide") {
         scheduleApply();
       }
     },
-    [mode, scheduleApply],
+    [scheduleApply],
   );
 
   useEffect(() => {

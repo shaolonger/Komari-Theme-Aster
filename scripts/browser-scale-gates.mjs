@@ -372,7 +372,9 @@ const server = createServer(async (request, response) => {
         desktopNodeViewMode: fixture.docs ? "large" : "compact",
         mobileNodeViewMode: "compact",
         showCostSummary: true,
-        costRateApiUrl: "/api/docs-rates",
+        // Use an absolute URL: production correctly rejects relative rate
+        // endpoints, which otherwise sends CI to the real public API.
+        costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
         homepagePingBindings: { "1": nodeList(fixture.nodes).map((node) => node.uuid) },
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
