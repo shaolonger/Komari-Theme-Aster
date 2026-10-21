@@ -77,7 +77,7 @@ export async function checkSlate({ cdp, origin, waitUntil, failGate, captureScre
     await cdp.value(`document.querySelector('input[value="${appearance}"]').click()`);
     const storage = await cdp.value("JSON.stringify(Object.entries(localStorage).sort())");
     await cdp.value("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='打开首页预览').click()");
-    await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe')?.contentDocument?.documentElement.dataset.appearance === '${appearance === 'slate' ? 'dark' : 'light'}' && document.querySelector('.studio-home-preview iframe')?.contentDocument?.documentElement.dataset.themeStyle === 'slate'`, 8000);
+    await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe')?.contentDocument?.documentElement?.dataset.appearance === '${appearance === 'slate' ? 'dark' : 'light'}' && document.querySelector('.studio-home-preview iframe')?.contentDocument?.documentElement?.dataset.themeStyle === 'slate'`, 8000);
     failGate(await cdp.value("JSON.stringify(Object.entries(localStorage).sort())") === storage, "Preview changed personal preferences");
     await cdp.value("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='关闭预览').click()");
     await cdp.value("Array.from(document.querySelectorAll('.aster-studio-savebar button')).find(b=>b.textContent.includes('保存')).click()");

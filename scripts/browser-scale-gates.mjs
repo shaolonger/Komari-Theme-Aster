@@ -712,7 +712,7 @@ class CDP {
   }
   async value(expression) {
     const result = await this.call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result.value;
   }
   close() { this.socket.close(); }
@@ -1124,7 +1124,7 @@ try {
   await cdp.value(`document.querySelector('.studio-home-preview iframe').dataset.originalFrame = 'true'; document.querySelector('.studio-preview-status button').click()`);
   await waitUntil(cdp, `!document.querySelector('.studio-home-preview iframe').dataset.originalFrame && document.querySelector('.studio-preview-status').textContent.includes('草稿已同步')`, 6_000);
   await cdp.value(`document.querySelector('.studio-visual-options input[value="dark"]').click()`);
-  await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.documentElement.dataset.appearance === 'dark'`, 4_000);
+  await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe')?.contentDocument?.documentElement?.dataset.appearance === 'dark'`, 4_000);
   failGate(await cdp.value(`JSON.stringify(Object.entries(localStorage).sort())`) === storageBeforePreview, 'preview changed outer storage');
   await cdp.value(`document.querySelector('.studio-device-layouts fieldset input[value="list"]').click()`);
   await waitUntil(cdp, `document.querySelector('.studio-home-preview iframe').contentDocument.querySelectorAll('.node-list-row:not(.is-loading)').length === 3`, 4_000);
