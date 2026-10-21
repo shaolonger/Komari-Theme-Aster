@@ -906,8 +906,10 @@ try {
       emptyPingTrends: document.querySelectorAll('.ping-task-sparkline-empty').length,
       contentVisibility: getComputedStyle(document.querySelector('.home-node-card-slot')).contentVisibility,
       bodyWidth: document.body.scrollWidth
+      , hiddenCostRows: document.querySelector('.cost-summary-panel[aria-hidden="true"]')?.querySelectorAll('.cost-summary-detail-item').length ?? 0
     }))()`);
       if (metrics.renderMs > budgetMs) throw new Error(`${backend.label} ${nodes}-node render ${metrics.renderMs}ms > ${budgetMs}ms`);
+      if (metrics.hiddenCostRows !== 0) throw new Error("Closed asset panel rendered fleet details during initial load");
       if (nodes >= 300 && metrics.contentVisibility !== "auto") {
         throw new Error(`${backend.label} ${nodes}-node browser card virtualization is disabled`);
       }

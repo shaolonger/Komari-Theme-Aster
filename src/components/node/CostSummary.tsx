@@ -98,8 +98,8 @@ export function CostSummary({
   const ignoredNodes = themeSettings.costIgnoredNodes;
   const rate = rateQuery.data;
   const summary = useMemo(
-    () => (rate ? calculateCostSummary(nodes, ignoredNodes, rate.rates) : null),
-    [nodes, ignoredNodes, rate],
+    () => (resolvedOpen && rate ? calculateCostSummary(nodes, ignoredNodes, rate.rates) : null),
+    [nodes, ignoredNodes, rate, resolvedOpen],
   );
   const detailRows = useMemo(() => {
     const rows = summary?.details.slice() ?? [];
@@ -188,6 +188,7 @@ export function CostSummary({
         aria-label="服务器花费"
         aria-hidden={!resolvedOpen}
       >
+        {resolvedOpen && <>
         <div className="cost-summary-header">
           <h3 className="cost-summary-title">资产统计</h3>
           <button
@@ -317,6 +318,7 @@ export function CostSummary({
             )}
           </details>
         </div>
+        </>}
       </section>
       {showLauncher && (
         <button

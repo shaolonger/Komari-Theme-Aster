@@ -35,6 +35,11 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
   failGate(await cdp.value("document.querySelectorAll('.compact-node-card .sky-traffic-quota').length === document.querySelectorAll('.compact-node-card').length && document.querySelector('.sky-traffic-quota-foot').textContent.includes('剩余') && document.querySelector('.sky-traffic-quota-foot').textContent.includes('已用')"), "Compact cards lost quota totals or percentage");
   failGate(await cdp.value("Array.from(document.querySelectorAll('.sky-traffic-quota-foot')).some(n=>n.textContent.includes('未设限')) && Array.from(document.querySelectorAll('.sky-traffic-quota-foot')).some(n=>/已用 125/.test(n.textContent))"), "Unlimited or over-quota billing was lost");
   await waitUntil(cdp, "!Array.from(document.querySelectorAll('.home-fleet-metric strong')).some(n=>n.textContent.includes('计算中'))", 8_000);
+  failGate(await cdp.value("document.querySelectorAll('.cost-summary-detail-item').length === 0"), "Closed asset panel rendered hidden details");
+  await cdp.value("document.querySelector('button[title=\"打开资产统计\"]').click()");
+  await waitUntil(cdp, "document.querySelectorAll('.cost-summary-detail-item').length === 8", 4_000);
+  await cdp.value("document.querySelector('button[aria-label=\"关闭服务器花费\"]').click()");
+  await waitUntil(cdp, "document.querySelectorAll('.cost-summary-detail-item').length === 0", 4_000);
   for (const w of [1440, 1024, 390, 320]) {
     await width(w);
     await waitUntil(cdp, "document.querySelector('.clear-sky-view-switch') !== null", 3_000);
