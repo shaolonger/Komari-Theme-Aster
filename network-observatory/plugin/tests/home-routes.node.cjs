@@ -4,13 +4,34 @@ const { project, homeRouteStore } = require('../src/home-routes.js');
 const { registerReportController, BASE } = require('../src/report-controller.js');
 const A = 'c388e74d-a922-4ae1-bd10-1fb30e2e53de', B = '59d6e276-1d4b-4657-9021-908460853ba3';
 const sample = (override = {}) => ({ nodeUuid:A,operation:'route',direction:'VPS→大陆',options:{family:'4',protocol:'tcp'},source:{carrier:'电信',city:'上海',token:'SECRET'},target:'SECRET_TARGET',completedAt:new Date().toISOString(),data:{kind:'route',state:'ok',complete:true,hops:[{asn:'AS4809'},{asn:'4134'}]},...override });
+test('cross-carrier CTGNet, registry CN2 and unknown networks are retained without product certification',()=>{
+ const input=sample({source:{carrier:'联通'},data:{kind:'route',state:'partial',complete:false,hops:[{ttl:1,asn:'23764',address:'8.8.8.8'},{ttl:2,asn:'',address:'59.43.246.117'},{ttl:3,asn:'9929',address:'1.1.1.1'},{ttl:4,asn:'65001',address:'9.9.9.9'}]}});
+ const row=project(input).evidence;
+ assert.equal(row.label,'CTGNet / CN2 / 9929'); assert.ok(row.asns.includes('65001'));
+ assert.equal(row.state,'partial'); assert.ok(!row.asns.includes('4809'));
+ const facts=require('../src/route-evidence.js').routeFacts(input.data.hops);
+ assert.equal(facts.productStatus,'unverified');
+ assert.equal(facts.networks.find(n=>n.basis==='registry-prefix').ttls[0],2);
+ assert.equal(facts.labels.some(label=>/GIA|GT$/.test(label)),false);
+});
+test('homepage keeps per-measurement sequences and never combines separate rounds',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'aster-route-rounds-'));
+ try {
+  const store=homeRouteStore(root,e=>e.code==='ENOENT'),at=Date.now();
+  store.observe(sample({roundId:A,completedAt:new Date(at).toISOString(),source:{carrier:'电信',city:'上海'}}));
+  store.observe(sample({roundId:B,completedAt:new Date(at+1).toISOString(),source:{carrier:'电信',city:'北京'},data:{kind:'route',state:'partial',complete:false,hops:[{asn:'23764'},{asn:''},{asn:'23764'}]}}));
+  const row=store.summary([A])[A]['4'][0].return;
+  assert.equal(row.label,'CTGNet'); assert.equal(row.samples,1); assert.equal(row.confirmed,0);
+  assert.deepEqual(row.observations[0].asPath,['23764','?','23764']);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
 test('ASN evidence never guesses carrier, IP family or opposite direction; recognizes observed networks only', () => {
   assert.equal(project(sample()).evidence.label, 'CN2 / 163');
   for (const [carrier, asn, label] of [['联通','9929','9929'],['移动','58807','CMIN2']]) assert.equal(project(sample({source:{carrier},data:{kind:'route',state:'ok',complete:true,hops:[{asn}]}})).evidence.label,label);
   assert.equal(project(sample({source:{carrier:''}})),null);
   assert.equal(project(sample({direction:'VPS→目标'})),null);
   assert.equal(project(sample({options:{family:''}})),null);
-  assert.equal(project(sample({data:{kind:'route',state:'ok',hops:[{asn:'AS48090'}]}})).evidence.label,'未识别');
+  assert.equal(project(sample({data:{kind:'route',state:'ok',hops:[{asn:'AS48090'}]}})).evidence.label,'AS48090');
 });
 test('projection preserves separate IPv4/6 and directions, ages evidence, survives restart and redacts private data', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'aster-home-routes-')); let now = Date.parse('2026-10-22T00:00:00.000Z');

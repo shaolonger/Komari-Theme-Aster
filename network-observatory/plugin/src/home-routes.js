@@ -4,7 +4,7 @@ const fs = require("fs"),
   crypto = require("crypto");
 const { UUID } = require("./model.js");
 const CARRIERS = ["电信", "联通", "移动"];
-const { networks: NETWORKS } = require("./route-networks.json");
+const { routeFacts } = require("./route-evidence.js");
 function carrierName(value) {
   const text = String(value || "")
     .trim()
@@ -43,16 +43,9 @@ function project(result) {
     !Number.isFinite(Date.parse(result.completedAt))
   )
     return null;
-  const asns = [
-    ...new Set(
-      (result.data.hops || []).flatMap(
-        (h) => String(h.asn || "").match(/\d+/g) || [],
-      ),
-    ),
-  ];
-  const labels = NETWORKS.filter(
-    (rule) => rule.carrier === carrier && asns.includes(rule.asn),
-  ).map((rule) => rule.label);
+  const facts = routeFacts(result.data.hops || []);
+  const asns = facts.networks.filter(row => row.basis === "asn").map(row => row.asn);
+  const labels = facts.headlineLabels;
   const usable = ["ok", "partial"].includes(result.data.state);
   return {
     carrier,
@@ -65,6 +58,12 @@ function project(result) {
           ? "测量失败"
           : "无覆盖",
       asns: usable ? asns.slice(0, 64) : [],
+      asPath: usable ? facts.asPath : [],
+      city: String(result.source?.city || "未声明地区").slice(0, 64),
+      provider: String(result.source?.provider || "未声明来源").slice(0, 64),
+      protocol: String(result.options?.protocol || "tcp").slice(0, 16),
+      ruleVersion: facts.ruleVersion,
+      networkLabels: labels,
       at: result.completedAt,
       reportId: result.roundId || "",
       diagnostic: usable
@@ -124,7 +123,7 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
     const keys = Object.keys(records).sort((a, b) =>
       records[b].at.localeCompare(records[a].at),
     );
-    for (const old of keys.slice(12)) delete records[old];
+    for (const old of keys.slice(250)) delete records[old];
     if (persist) save();
   }
   function save() {
@@ -163,15 +162,24 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
               continue;
             }
             const latest = records[0];
-            // Only combine measurements from the same observation day.
-            const current = records.filter(
-              (e) => e.at.slice(0, 10) === latest.at.slice(0, 10),
-            );
+            // A card describes one round. Never stitch cities/protocols from older rounds.
+            const current = records.filter(e => latest.reportId
+              ? e.reportId === latest.reportId : e.at === latest.at);
+            const usable = current.filter(e => e.state !== "missing");
+            const networkLabels = [...new Set((usable.length ? usable : current).flatMap(e => e.networkLabels?.length ? e.networkLabels : [e.label]))];
+            const combinedLabel = networkLabels.join(" / ");
+            const confirmed = current.filter(e => e.state === "ok").length;
+            const observed = current.filter(e => e.state !== "missing").length;
             row[direction] = {
-              label: [...new Set(current.map((e) => e.label))].join(" · "),
+              label: combinedLabel.length > 160 ? `${networkLabels.length} 个网络（展开）` : combinedLabel,
               asns: [...new Set(current.flatMap((e) => e.asns))].slice(0, 64),
               at: latest.at,
               samples: current.length,
+              confirmed, observed,
+              variants: [...new Set(current.filter(e => e.state !== "missing").map(e => e.label))].length,
+              observations: current.slice(0, 12).map(e => ({ label: e.label, at: e.at, city: e.city || "未声明地区",
+                provider: e.provider || "未声明来源", protocol: e.protocol || "未声明协议",
+                asPath: e.asPath || [], state: e.state, reportId: e.reportId || "" })),
               reportId: latest.reportId || "",
               diagnostic: latest.diagnostic || "",
               state:

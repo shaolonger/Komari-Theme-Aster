@@ -6,7 +6,8 @@ import { formatLatency, formatPacketLoss } from "@/utils/format";
 
 /** 卡片标签行的完整 tag 列表 tooltip(两种卡片布局共用同一文案)。 */
 export function joinTagTitle(tags: { label: string }[]) {
-  return tags.map((tag) => tag.label).join(" / ");
+  const label = tags.map((tag) => tag.label).join(" / ");
+  return label + (tags.some(tag => /cn2|ctg|gia|cmin2|9929/i.test(tag.label)) ? "（用户标注；不代表线路测量认证）" : "");
 }
 
 /**

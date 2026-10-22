@@ -14,7 +14,7 @@ export function SpeedReport({
   onInspect: (slot: ReportSlot, result?: ReportMeasurement) => void;
 }) {
   const [direction, setDirection] = useState("download"),
-    [streams, setStreams] = useState(1);
+    [streams, setStreams] = useState(1), [view, setView] = useState("cards");
   const rows = round.slots.map((slot) => {
     const result = round.measurements.find((r) => r.slotId === slot.id);
     const run = result?.data.runs?.find(
@@ -67,11 +67,24 @@ export function SpeedReport({
         </div>
       </div>
       <p className="report-caption">
-        不设置带宽上限 · 接收端均值 · 最大值仅取完整一秒区间 · 预热{" "}
+        全程均值与完整秒峰值分开 · 每项注明计量侧 · 预热{" "}
         {round.parameters.warmupSeconds} 秒，测量 {round.parameters.seconds}{" "}
         秒。共享端点、CPU 和 TCP 拥塞控制会影响实际结果。
       </p>
-      <div className="report-table-scroll">
+      <div className="report-filter-row">
+        <p className="report-caption">{rows.filter(row => row.run && ["ok", "partial"].includes(row.run.state)).length}/{rows.length} 个目标取得速率 · 已记录 {(traffic / 1e9).toFixed(3)} GB</p>
+        <div className="report-pills" aria-label="测速展示方式">{[["cards", "测量卡片"], ["table", "完整指标"]].map(([key, label]) => <button key={key} aria-pressed={view === key} onClick={() => setView(key)}>{label}</button>)}</div>
+      </div>
+      {view === "cards" && <div className="report-throughput-grid">{rows.map(({ slot, result, run }) => <button className="report-throughput-card" key={slot.id} onClick={() => onInspect(slot, result)} data-state={run?.state || slot.state}>
+        <span>{[slot.source.city, slot.source.carrier].filter(Boolean).join(" ") || slot.endpoint?.name || slot.target}</span>
+        <strong>{numberText(run?.bitsPerSecond == null ? null : run.bitsPerSecond / 1e6)}<small> Mbps</small></strong>
+        <svg viewBox="0 0 220 42" preserveAspectRatio="none" role="img" aria-label="逐秒速率">{run?.intervals.map((interval, i, all) => <rect key={i} x={i * 220 / all.length} y={42 - (interval.bitsPerSecond || 0) / maximum * 42} width={220 / all.length} height={(interval.bitsPerSecond || 0) / maximum * 42} />)}</svg>
+        <span className="report-throughput-metrics"><small>峰值 {numberText(run?.maxBitsPerSecond == null ? null : run.maxBitsPerSecond / 1e6)}</small><small>TCP RTT {numberText(run?.tcpRttMs)} ms</small></span>
+        <small>{!run ? "尚无计量证据" : run.measurementBasis === "sender-tcp-acked" ? "发送端 TCP 已确认 · 非应用接收回执" : run.measurementBasis === "sender-write" ? "本地写入估算 · 未确认接收" : "接收端计量"} · {reportLabels[run?.state || slot.state] || slot.state}</small>
+        {result?.data.actualEndpoint && <small>实际：{result.data.actualEndpoint.name} · {result.data.actualEndpoint.ip}</small>}
+        <small>{run?.diagnostic || result?.data.diagnostic || slot.missingReason || "点击查看逐秒样本及测量条件"}</small>
+      </button>)}</div>}
+      {view === "table" && <div className="report-table-scroll">
         <table className="report-speed-table">
           <thead>
             <tr>
@@ -99,6 +112,8 @@ export function SpeedReport({
                       slot.target ||
                       "未覆盖"}
                   </button>
+                  <small>{result?.data.actualEndpoint ? `${result.data.actualEndpoint.name} · ${result.data.actualEndpoint.ip}` : slot.source.provider}</small>
+                  <small>{run?.measurementBasis === "sender-tcp-acked" ? "发送端 TCP 已确认" : run?.measurementBasis === "sender-write" ? "本地写入估算" : run ? "接收端计量" : "尚无计量证据"}</small>
                   <small>
                     {slot.source.provider} ·{" "}
                     {run?.state
@@ -116,7 +131,7 @@ export function SpeedReport({
                       viewBox="0 0 200 40"
                       preserveAspectRatio="none"
                       role="img"
-                      aria-label="每秒接收端速率"
+                      aria-label="每秒实测速率"
                     >
                       {run?.intervals.map((i, index, all) => (
                         <rect
@@ -145,7 +160,7 @@ export function SpeedReport({
                         result?.data.diagnostic ||
                         slot.missingReason ||
                         slot.waitReason ||
-                        "暂无接收端逐秒区间"}
+                        "暂无逐秒区间"}
                     </small>
                   )}
                 </td>
@@ -176,7 +191,7 @@ export function SpeedReport({
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
       <p className="report-caption">
         本轮所有方向和连接数组合的已记录应用流量：{(traffic / 1e9).toFixed(3)}{" "}
         GB。协议开销和未确认的失败流量可能未计入。

@@ -153,7 +153,7 @@ class NativeMeasurements(unittest.TestCase):
             {"count": 2, "host": "???", "Snt": 20, "Loss%": 100, "Last": 0, "Avg": 0, "Best": 0, "Wrst": 0, "StDev": 0},
             {"count": 3, "host": "8.8.8.8", "Snt": 20, "Loss%": 10, "Last": 30, "Avg": 25, "Best": 20, "Wrst": 50, "StDev": 7},
         ]}}
-        with patch.object(native, "resolve_ip", return_value="8.8.8.8"), patch.object(native.shutil, "which", return_value="mtr"), patch.object(native, "execute", return_value=(0, json.dumps(payload), "")) as execute:
+        with patch.object(native, "resolve_ip", return_value="8.8.8.8"), patch.object(native.shutil, "which", side_effect=lambda tool: "mtr" if tool == "mtr" else None), patch.object(native, "execute", return_value=(0, json.dumps(payload), "")) as execute:
             data = native.route("example.net", {"fullMtr": True, "protocol": "tcp", "family": "4", "port": 80})
             self.assertEqual(data["method"], "MTR")
             self.assertTrue(data["complete"])

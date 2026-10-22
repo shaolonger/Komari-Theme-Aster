@@ -25,7 +25,7 @@ import {
   type HomepagePingSourceRow,
 } from "@/utils/homepagePingSources";
 import { speedRateColor } from "@/utils/metricTone";
-import { CarrierRoutes } from "./CarrierRoutes";
+import { CarrierRoutes } from "./LazyCarrierRoutes";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";

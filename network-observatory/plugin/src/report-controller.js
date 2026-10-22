@@ -43,13 +43,14 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed",
+      "http-speed", "tcp-quality", "public-speed",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
     retention: { detailDays: 7, summaryDays: 90 },
   };
   function completeAndProject(job, data, source) {
+    if (data.kind === "route") data = { ...data, routeEvidence: require("./route-evidence.js").routeFacts(data.hops || []) };
     const result = store.complete(job, data, source);
     if (result) {
       try { homeRoutes.observe(result); }
@@ -98,12 +99,12 @@ function registerReportController(ctx, native) {
     if (job.executor === "globalping")
       return previewOnly ? native.coverage(s, job) : ""; // Discovery at execution occurs outside the state lock.
     if (
-      !["latency", "route", "benchmark", "http-speed", "iperf-speed"].includes(
+      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality"].includes(
         job.operation,
       )
     )
       return "当前采集器未提供此测量操作";
-    const required =
+    const required = ["tcp-quality", "public-speed"].includes(job.operation) ? job.operation :
       job.operation === "latency"
         ? "latency-samples"
         : job.operation === "route"
@@ -139,10 +140,10 @@ function registerReportController(ctx, native) {
               ? mod.timing.times.length
               : 1440 / mod.timing.minutes;
           usage.measurementsPerDay += times * plan.jobs.length;
-          if (["international", "idc"].includes(mod.module)) {
-            usage.samplesPerDay += times * plan.jobs.length * 10;
+          if (["international", "idc", "tcp-quality"].includes(mod.module)) {
+            usage.samplesPerDay += times * plan.jobs.length * (mod.samples || 10) * (mod.module === "tcp-quality" ? 1 + (mod.packetSizes || []).length : 1);
             usage.estimatedLightSecondsPerDay +=
-              (times * plan.jobs.length * 18) / 4;
+              times * plan.jobs.length * (mod.module === "tcp-quality" ? 18 + 15 * (mod.packetSizes || []).length : 18 / 4);
           }
           if (mod.module.endsWith("speed"))
             usage.speedSecondsPerDay +=
@@ -176,6 +177,7 @@ function registerReportController(ctx, native) {
               plan.jobs.filter((j) => !readiness(s, j)).length *
               (mod.module.endsWith("speed")
                 ? 2 * (mod.seconds + mod.warmupSeconds)
+                : mod.module === "tcp-quality" ? 18 + 15 * (mod.packetSizes || []).length
                 : ["international", "idc"].includes(mod.module)
                   ? 18 / 4
                   : 45),
@@ -190,7 +192,7 @@ function registerReportController(ctx, native) {
       ),
     };
   }
-  function enqueue(s, suite, mod, nodeUuid, batchId, plannedAt) {
+  function enqueue(s, suite, mod, nodeUuid, batchId, plannedAt, scheduled = false) {
     // One unfinished module round per suite/node. Repeated clicks do not duplicate traffic.
     if (
       s.jobs.some(
@@ -228,6 +230,7 @@ function registerReportController(ctx, native) {
       _jobs: plan.jobs,
     });
     for (const job of plan.jobs) {
+      if (scheduled && job.operation === "public-speed") job.availableAt = plannedAt + parseInt(crypto.createHash("sha256").update(nodeUuid).digest("hex").slice(0, 6), 16) % 120000;
       job.reportModule = mod.module;
       const reason = readiness(s, job);
       if (reason)
@@ -264,8 +267,8 @@ function registerReportController(ctx, native) {
   route("GET", "/home-routes", (_req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);
     // Rebuild once after upgrading the projection, using only retained v3 rounds.
-    if (s.homeRouteProjectionVersion !== 2) {
-      rebuildHomeRoutes(ids); s.homeRouteProjectionVersion = 2; native.save(s);
+    if (s.homeRouteProjectionVersion !== 3) {
+      rebuildHomeRoutes(ids); s.homeRouteProjectionVersion = 3; native.save(s);
     }
     ctx.respond(res, 200, homePayload(s, ids, true));
   });
@@ -576,8 +579,8 @@ function registerReportController(ctx, native) {
   function tick(s) {
     state(s);
     const now = Date.now();
-    if (s.homeRouteProjectionVersion !== 2 && s.inventory.length) {
-      rebuildHomeRoutes(s.inventory.map(n => n.uuid)); s.homeRouteProjectionVersion = 2;
+    if (s.homeRouteProjectionVersion !== 3 && s.inventory.length) {
+      rebuildHomeRoutes(s.inventory.map(n => n.uuid)); s.homeRouteProjectionVersion = 3;
     }
     if (!recovered && s.inventory.length) {
       const pending = s.inventory.flatMap((node) => store.pending(node.uuid));
@@ -665,7 +668,7 @@ function registerReportController(ctx, native) {
       )) {
         const batchId = crypto.randomUUID();
         for (const node of members(suite, s))
-          enqueue(s, suite, mod, node.uuid, batchId, mod.nextAt);
+          enqueue(s, suite, mod, node.uuid, batchId, mod.nextAt, true);
         mod.nextAt = M.next(mod.timing, now);
       }
     if (!s.reportMaintenanceAt || now - s.reportMaintenanceAt > 3600000) {

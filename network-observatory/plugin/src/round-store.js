@@ -5,6 +5,7 @@ const fs = require("fs"),
 const { UUID } = require("./model.js");
 const MODULES = [
   "routes",
+  "tcp-quality",
   "china-speed",
   "international",
   "idc",
@@ -226,6 +227,9 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       family: data.family,
       resolvedIp: data.resolvedIp,
       warmupSeconds: data.warmupSeconds,
+      actualEndpoint: data.actualEndpoint,
+      routeEvidence: data.routeEvidence,
+      synProbes: data.synProbes,
     };
     if (data.tcpQuality)
       Object.assign(value, {
@@ -243,6 +247,9 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     if (data.runs)
       value.runs = data.runs.map((r) => ({
         state: r.state,
+        measurementBasis: r.measurementBasis,
+        intervalSource: r.intervalSource,
+        remoteIp: r.remoteIp,
         streams: r.streams,
         vpsDirection: r.vpsDirection,
         bitsPerSecond: r.bitsPerSecond,

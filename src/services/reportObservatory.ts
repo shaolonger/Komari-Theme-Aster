@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const reportModules = [
   "routes",
+  "tcp-quality",
   "china-speed",
   "international",
   "idc",
@@ -71,6 +72,9 @@ export const moduleSchema = z.object({
   protocols: z.array(z.enum(["tcp", "icmp"])),
   sources: z.array(z.string()),
   publicSources: z.boolean(),
+  samples: z.number().optional(),
+  packetSizes: z.array(z.number()).optional(),
+  maxTrafficMiB: z.number().optional(),
   seconds: z.number(),
   warmupSeconds: z.number(),
   streams: z.array(z.number()),
@@ -157,6 +161,10 @@ const speedRunSchema = z
     vpsDirection: z.string().optional(),
     intervalSource: z.string().optional(),
     congestionControl: z.string().optional(),
+    measurementBasis: z.string().optional(),
+    medianBitsPerSecond: nullableNumber.optional(),
+    receiverConfirmed: z.boolean().optional(),
+    remoteIp: z.string().optional(),
     trafficBytesObserved: nullableNumber.optional(),
     warmupBytesObserved: nullableNumber.optional(),
     tcpRttMethod: z.string().optional(),
@@ -221,6 +229,11 @@ const measurementDataSchema = z
         conditions: z.string(),
       })
       .optional(),
+    synProbes: z.array(z.object({ method: z.string(), payloadBytes: z.number(), state: z.string(), sent: z.number(), received: z.number(),
+      unansweredPercent: nullableNumber, minMs: nullableNumber, avgMs: nullableNumber, maxMs: nullableNumber,
+      diagnostic: z.string().optional(), conditions: z.string().optional(), rawOutput: z.string().max(8000).optional() })).optional(),
+    actualEndpoint: z.object({ id: z.string(), name: z.string(), ip: z.string(), port: z.number(), city: z.string(), carrier: z.string(), family: z.string() }).passthrough().optional(),
+    missingCoverage: z.boolean().optional(),
     runs: z.array(speedRunSchema).optional(),
     https: z
       .object({

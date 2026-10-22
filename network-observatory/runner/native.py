@@ -274,6 +274,16 @@ def route(target, options):
     if options.get("fullMtr") and shutil.which("mtr"):
         result = mtr_route(target, options)
         if result["hops"]:
+            if options.get("routeMetadata", True) and shutil.which("nexttrace") and not cancelled():
+                metadata = route(target, {**options, "fullMtr": False, "quality": False, "metadataOnly": True})
+                matching = {h["address"]: h for h in metadata.get("hops", []) if h.get("address") and h.get("asn")}
+                for hop in result["hops"]:
+                    peer = matching.get(hop["address"])
+                    if peer:
+                        for key in ("asn", "asnSource", "network", "location", "prefix", "asnStatus"):
+                            if key in peer:
+                                hop[key] = peer[key]
+                result["metadataObservation"] = {"method": metadata.get("method"), "matchedIps": [h["address"] for h in result["hops"] if h.get("asn")], "conditions": "独立 NextTrace 观测仅按相同 IP 补充元数据；不合并路径或 RTT", "queriedAt": datetime.now(timezone.utc).isoformat()}
             return result
     protocol = options.get("protocol", "tcp")
     if protocol not in {"tcp", "icmp"}:
@@ -282,10 +292,10 @@ def route(target, options):
     hops, output, diagnostic, code = [], "", "", 127
     stop_reason, method = "unknown", "nexttrace"
     if shutil.which("nexttrace"):
-        command = ["nexttrace", *family_args(options), "--json", "--no-rdns", "--max-hops", "32", "--queries", "3"]
+        command = ["nexttrace", *family_args(options), "--json", "--no-rdns", "--max-hops", "32", "--queries", "1" if options.get("metadataOnly") else "3"]
         if protocol == "tcp":
             command += ["--tcp", "--port", str(port)]
-        code, output, diagnostic = execute([*command, target], 85)
+        code, output, diagnostic = execute([*command, options.get("pinnedIp") or target], 25 if options.get("metadataOnly") else 85)
         try:
             payload = json.loads(output[output.index("{"):output.rindex("}") + 1])
             for index, probes in enumerate(payload.get("Hops", [])):
@@ -303,7 +313,7 @@ def route(target, options):
             stop_reason = (payload.get("StopReason") or {}).get("reason", "unknown")
         except (ValueError, TypeError, KeyError):
             pass
-    if code != 0 or not hops:
+    if (code != 0 or not hops) and not options.get("metadataOnly"):
         first_error = diagnostic or output[:2000]
         method = "traceroute"
         command = ["traceroute", *family_args(options), "-n", "-q", "3", "-m", "32", "-w", "0.5"]
@@ -452,11 +462,12 @@ def tcp_info(connection):
     """Read only the data socket. Unsupported layouts return unavailable."""
     try:
         import struct
-        raw = connection.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+        raw = connection.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 232)
         if len(raw) < 104 or not sys.platform.startswith("linux"):
             return {"tcpRttMs": None, "retransmits": None}
         return {"tcpRttMs": struct.unpack_from("=I", raw, 68)[0] / 1000,
-                "retransmits": struct.unpack_from("=I", raw, 100)[0]}
+                "retransmits": struct.unpack_from("=I", raw, 100)[0],
+                "bytesAcked": struct.unpack_from("=Q", raw, 120)[0] if len(raw) >= 128 else None}
     except (OSError, AttributeError):
         return {"tcpRttMs": None, "retransmits": None}
 
@@ -666,7 +677,7 @@ class Listener:
 
 
 def measure(job):
-    if not isinstance(job, dict) or job.get("operation") not in {"route", "benchmark", "latency", "http-speed", "iperf-speed"}:
+    if not isinstance(job, dict) or job.get("operation") not in {"route", "benchmark", "latency", "http-speed", "iperf-speed", "public-speed", "tcp-quality"}:
         raise ValueError("原生测量任务无效")
     options = job.get("options") or {}
     if not isinstance(options, dict):
@@ -677,6 +688,12 @@ def measure(job):
         if not ip.is_global or ip.is_multicast:
             raise ValueError("新版测量端点必须解析为公网地址；未对私网或代理保留地址测量")
         options = {**options, "pinnedIp": address}
+    if job["operation"] == "public-speed":
+        import public_speed
+        return public_speed.measure(options, sys.modules[__name__])
+    if job["operation"] == "tcp-quality":
+        import tcp_quality
+        return tcp_quality.measure(job["target"], options, sys.modules[__name__])
     if job["operation"] == "latency":
         return latency(job["target"], options)
     if job["operation"] == "route":

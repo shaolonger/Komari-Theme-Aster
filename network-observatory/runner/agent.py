@@ -25,7 +25,7 @@ import native
 
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.8.0"
+RUNNER_VERSION = "1.9.0"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")
@@ -109,7 +109,7 @@ def heartbeat(config, stop):
     # A long route/throughput test must not make a healthy worker appear offline.
     while not stop.is_set():
         try:
-            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed"], "activeJobIds": native.active_tasks()})
+            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"], "activeJobIds": native.active_tasks()})
             if "activeJobIds" in response:
                 native.reconcile_tasks(set(response["activeJobIds"]))
         except (urllib.error.URLError, OSError, ValueError):
@@ -237,7 +237,9 @@ def _native_task(config, task, listeners):
         else:
             data = native.measure(task)
     except (ValueError, OSError, KeyError, TypeError) as error:
-        data = {"kind": "speed" if task.get("operation") in {"benchmark", "listen", "http-speed", "iperf-speed"} else task.get("operation"), "state": "failed", "diagnostic": str(error)[:4000]}
+        data = {"kind": "speed" if task.get("operation") in {"benchmark", "listen", "http-speed", "iperf-speed", "public-speed"} else task.get("operation"), "state": "failed", "diagnostic": str(error)[:4000]}
+        if task.get("operation") in {"latency", "tcp-quality"}:
+            data["tcpQuality"] = native.tcp_connect_quality("", 443, 1)
     cached = persist_result(config, task_id, data) if task.get("operation") != "listen" else None
     # A failed result upload is retried; never repeat a bandwidth measurement.
     for attempt in range(3):

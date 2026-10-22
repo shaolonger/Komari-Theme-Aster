@@ -55,7 +55,7 @@ function txt(value) {
 }
 function createEnricher({
   fetcher = (...args) => fetch(...args),
-  budgetMs = 4000,
+  budgetMs = 6000,
 } = {}) {
   const cache = new Map(),
     inflight = new Map();
@@ -104,6 +104,41 @@ function createEnricher({
       inflight.delete(name);
     }
   }
+  async function secondary(hop, signal) {
+    if (signal.aborted || hop.asnStatus === "available") return;
+    const key = "ripe:" + hop.address;
+    try {
+      let record = cache.get(key);
+      if (!record || record.until <= Date.now()) {
+        let pending = inflight.get(key);
+        if (!pending) {
+          pending = (async () => {
+            const response = await fetcher("https://stat.ripe.net/data/network-info/data.json?resource=" + encodeURIComponent(hop.address), { signal, redirect: "error" });
+            if (!response.ok) throw new Error("RIPE lookup failed");
+            const raw = await response.text();
+            if (raw.length > 32768) throw new Error("RIPE response too large");
+            const value = JSON.parse(raw).data || {};
+            const item = { value, queriedAt: new Date().toISOString(), until: Date.now() + 300000 };
+            if (cache.size >= 4096) cache.delete(cache.keys().next().value);
+            cache.set(key, item);
+            return item;
+          })();
+          inflight.set(key, pending);
+        }
+        try { record = await pending; }
+        finally { if (inflight.get(key) === pending) inflight.delete(key); }
+      }
+      const asns = (Array.isArray(record.value.asns) ? record.value.asns : []).map(String).filter(a => /^\d+$/.test(a));
+      hop.asnLookups = [hop.asnSource, "RIPE RIS network-info"];
+      if (asns.length) {
+        hop.asn = [...new Set(asns)].join(" / ");
+        hop.prefix = String(record.value.prefix || "");
+        hop.asnStatus = "available";
+        hop.asnSource = "RIPE RIS network-info";
+        hop.asnQueriedAt = record.queriedAt;
+      }
+    } catch { /* Preserve the primary source's not-found vs failed distinction. */ }
+  }
   async function enrich(data) {
     if (data.kind !== "route" || !Array.isArray(data.hops)) return data;
     const controller = new AbortController(),
@@ -145,6 +180,7 @@ function createEnricher({
               ];
               if (!asns.length) {
                 h.asnStatus = "not-found";
+                await secondary(h, controller.signal);
                 continue;
               }
               h.asn = asns.join(" / ");
@@ -168,6 +204,7 @@ function createEnricher({
               }
             } catch {
               h.asnStatus = "lookup-failed";
+              await secondary(h, controller.signal);
             }
           }
         }),

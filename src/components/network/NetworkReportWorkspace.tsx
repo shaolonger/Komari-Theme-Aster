@@ -26,6 +26,7 @@ import { NetworkDrawer } from "./NetworkDrawer";
 import { NetworkBadge, NetworkSectionHeading } from "./NetworkUi";
 import {
   foldHops,
+  hopIdentity,
   numberText,
   reportLabels,
   routeEvidence,
@@ -35,10 +36,12 @@ import { formatNetworkTime } from "./shared";
 import { exportReportPng } from "./reportExport";
 import { SpeedReport } from "./SpeedReport";
 import { BgpReport } from "./BgpReport";
+import { ReportHistory } from "./ReportHistory";
 import "@/styles/network-reports.css";
 
 const moduleTitles: Record<ReportModule, string> = {
   routes: "大陆路由",
+  "tcp-quality": "大陆 TCP 质量",
   "china-speed": "大陆单连接测速",
   international: "国际延迟",
   idc: "常见 IDC 延迟",
@@ -86,6 +89,7 @@ function LatencyMatrix({
     : availableGroups[0];
   const actualProvider = providers.includes(provider) ? provider : providers[0];
   const names: Record<string, string> = {
+    "china-route": "大陆三网",
     aws: "AWS",
     websites: "网站",
     cdn: "CDN",
@@ -119,7 +123,7 @@ function LatencyMatrix({
         TCP 建连延迟 · 主数值为成功样本中位数 ·
         每块对应本轮一次握手，失败不计入延迟
       </p>
-      <div className="report-latency-grid">
+      <div className="report-latency-grid" data-module={round.module}>
         {visible.map((slot) => {
           const result = round.measurements.find((r) => r.slotId === slot.id),
             q = result?.data.tcpQuality;
@@ -144,9 +148,9 @@ function LatencyMatrix({
               </div>
               <div
                 className="report-samples"
-                aria-label="本轮十次 TCP 建连样本"
+                aria-label={`本轮 ${round.parameters.samples || 10} 次 TCP 建连样本`}
               >
-                {Array.from({ length: 10 }, (_, i) => {
+                {Array.from({ length: round.parameters.samples || 10 }, (_, i) => {
                   const sample = q?.samples.find((s) => s.index === i + 1);
                   const label = `第 ${i + 1} 次：${sample ? (sample.state === "ok" ? numberText(sample.rttMs) + " ms" : (sample.state === "timeout" ? "超时" : sample.state === "refused" ? "连接被拒绝" : "建连失败") + " · " + sample.error) : "尚未采样"}`;
                   return (
@@ -170,6 +174,11 @@ function LatencyMatrix({
                   {slot.endpoint?.country || slot.endpoint?.regionCode || ""}
                 </span>
               </div>
+              {round.module === "tcp-quality" && <div className="report-tcp-comparisons">
+                {(result?.data.synProbes || []).map(probe => <p key={probe.payloadBytes}>
+                  SYN +{probe.payloadBytes} B：{probe.state === "unavailable" ? probe.diagnostic : `${probe.received}/${probe.sent} 响应 · 未响应 ${numberText(probe.unansweredPercent)}% · RTT ${numberText(probe.avgMs)} ms`}
+                </p>)}
+              </div>}
               {slot.state === "missing" && (
                 <p>{result?.data.diagnostic || slot.missingReason}</p>
               )}
@@ -335,14 +344,15 @@ function MtrReport({
         <div className="report-evidence">
           {evidence.map((e) => (
             <span
-              key={e.asn}
-              title={`AS${e.asn}；证据跳号 ${e.ttls.join(", ")}；规则 ${e.ruleVersion}`}
+              key={e.id}
+              title={`${e.basis}；证据跳号 ${e.ttls.join(", ")}；来源 ${e.source}；规则 ${e.ruleVersion}`}
             >
               {e.label}
             </span>
           ))}
         </div>
       )}
+      {result && <p className="report-caption">终点{result.data.complete ? "已确认到达" : "未确认到达（末跳未响应不代表业务 100% 丢包）"} · 商业产品未核验</p>}
       {!!hops.length && (
         <div className="report-table-scroll">
           <table className="report-mtr-table">
@@ -376,12 +386,7 @@ function MtrReport({
                     </td>
                     <td>
                       <strong>
-                        {hop.asn
-                          ? "AS" +
-                            hop.asn.replace(/AS/g, "").replace(/ /g, " / AS")
-                          : hop.address
-                            ? "未取得公网 AS 归属"
-                            : "未响应"}
+                        {hopIdentity(hop)}
                       </strong>
                       <small>{hop.network || hop.location || ""}</small>
                       {multi && (
@@ -431,7 +436,7 @@ function MtrReport({
       )}
       <p className="report-caption">
         中间跳点未响应可能来自回包限速，不能据此认定业务丢包。折叠段不合并丢包或延迟；线路标签只说明观察到的
-        ASN，不认证 GIA 等商业产品。
+        网络证据，不认证 GIA 等商业产品；中间跳 RTT 包含回包路径，不能作为单向耗时。
       </p>
       {result?.data.routeChange && (
         <details>
@@ -641,6 +646,14 @@ function RoundModule({
           {rounds[0].counts.expected} · 查看进度
         </button>
       )}
+      {round && <div className="report-round-health" aria-label="本轮完成情况">
+        <span><strong>{round.counts.completed}/{round.counts.expected}</strong>任务已结束</span>
+        <span><strong>{round.counts.ok}</strong>完整结果</span>
+        <span><strong>{round.counts.partial}</strong>不完整结果</span>
+        <span><strong>{round.counts.missing}</strong>缺少覆盖</span>
+        <span><strong>{round.counts.failed}</strong>测量失败</span>
+      </div>}
+      {round && module === "routes" && <p className="report-caption">任务结束包含失败和未确认终点；终点是否到达以每条路径的实际观测为准。</p>}
       {!!rounds.length && (
         <div className="report-round-selector">
           <span>检测轮次</span>
@@ -736,7 +749,7 @@ function RoundModule({
         </div>
       )}
       {round?.detailAvailable &&
-        (["international", "idc"].includes(module) ? (
+        (["international", "idc", "tcp-quality"].includes(module) ? (
           <LatencyMatrix
             key={round.id}
             round={round}
@@ -765,6 +778,7 @@ function RoundModule({
             ))}
           </div>
         ))}
+      {round && module !== "routes" && module !== "bgp" && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
       {inspected && (
         <NetworkDrawer
           title={
@@ -842,11 +856,12 @@ export function NetworkReportWorkspace({
   onConfigure: () => void;
   availableModules: ReportModule[];
 }) {
-  const [tab, setTab] = useState<"routes" | "speed" | "international">(
-    new URLSearchParams(window.location.search).get("tab") === "routes" ? "routes" : "international",
+  const [tab, setTab] = useState<"routes" | "tcp-quality" | "speed" | "international">(
+    (() => { const value = new URLSearchParams(window.location.search).get("tab"); return value === "routes" || value === "speed" || value === "tcp-quality" ? value : "international"; })(),
   );
   const tabs = {
     routes: ["routes", "bgp"],
+    "tcp-quality": ["tcp-quality"],
     speed: ["china-speed"],
     international: ["international", "idc", "international-speed"],
   } as const;
@@ -866,13 +881,13 @@ export function NetworkReportWorkspace({
         </button>
       </div>
       <div className="report-main-tabs" aria-label="网络报告标签">
-        {(["routes", "speed", "international"] as const).map((key) => (
+        {(["routes", "tcp-quality", "speed", "international"] as const).map((key) => (
           <button
             key={key}
             aria-pressed={tab === key}
             onClick={() => setTab(key)}
           >
-            {{ routes: "路由", speed: "测速", international: "国际" }[key]}
+            {{ routes: "路由", "tcp-quality": "TCP 质量", speed: "测速", international: "国际" }[key]}
           </button>
         ))}
       </div>

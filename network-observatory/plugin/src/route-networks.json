@@ -1,6 +1,12 @@
 {
-  "version": "2026-10-22.1",
+  "version": "2026-10-22.2",
   "networks": [
+    {
+      "carrier": "电信",
+      "asn": "23764",
+      "label": "CTGNet",
+      "description": "观察到 CTGNet（不等同于 CTG GIA）"
+    },
     {
       "carrier": "电信",
       "asn": "4809",
@@ -48,6 +54,18 @@
       "asn": "9808",
       "label": "9808",
       "description": "观察到 CMNET"
+    }
+  ],
+  "prefixes": [
+    {
+      "id": "cn2-backbone",
+      "prefix": "59.43.0.0/16",
+      "startsWith": [
+        "59.43."
+      ],
+      "label": "CN2",
+      "description": "观察到 CN2-BB 登记地址段（不代填 BGP ASN）",
+      "sourceUrl": "https://wq.apnic.net/apnic-bin/whois.pl?object_type=inetnum&searchtext=59.43.0.0"
     }
   ]
 }

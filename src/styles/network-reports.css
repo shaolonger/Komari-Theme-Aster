@@ -725,3 +725,34 @@
 }
 :where(.aster-studio-panel .network-form) button:hover:not(:disabled) { border-color: var(--accent-500); }
 :where(.aster-studio-panel .network-form) :is(button, a, summary):focus-visible { outline: 2px solid var(--accent-500); outline-offset: 3px; }
+
+/* Shared semantic colours keep all theme variants consistent. */
+.report-throughput-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.network-report-workspace .report-throughput-card { display: grid; gap: 10px; padding: 16px; text-align: left; min-width: 0; border-radius: 12px; background: linear-gradient(140deg, color-mix(in srgb, var(--accent-500) 5%, var(--surface-a)), var(--surface-a)); }
+.report-throughput-card > strong { font-size: 26px; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.report-throughput-card small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.report-throughput-card svg { width: 100%; height: 42px; fill: var(--accent-500); opacity: .8; }
+.report-throughput-card[data-state="failed"], .report-throughput-card[data-state="missing"] { background: var(--surface-a); opacity: .8; }
+.report-throughput-metrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
+.report-history { padding: 14px; border: 1px solid var(--border-subtle); border-radius: 12px; margin-top: 16px; }
+.report-history summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.report-history-controls { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.report-history-controls label { display: grid; gap: 6px; min-width: 0; max-width: 100%; font-size: 12px; }
+.report-history-controls select { max-width: 100%; }
+.report-history-chart { display: block; width: 100%; max-height: 180px; overflow: visible; }
+.report-history-chart line { stroke: var(--accent-500); stroke-width: 2; }
+.report-history-chart circle { fill: var(--accent-500); cursor: pointer; }
+.report-history-chart circle:focus-visible { outline: 2px solid var(--text-primary); }
+.report-history-chart text { fill: var(--text-secondary); font: 10px sans-serif; }
+.report-history-values { display: flex; overflow-x: auto; gap: 8px; margin-top: 10px; }
+.report-history-values button { display: grid; gap: 4px; text-align: left; flex: 0 0 120px; font-size: 11px; }
+.report-history-values small { color: var(--text-secondary); }
+.report-tcp-comparisons p { font-size: 11px; line-height: 1.6; margin: 6px 0; }
+@media (max-width: 700px) { .report-throughput-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .report-throughput-grid { grid-template-columns: 1fr; } }
+
+.report-round-health { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.report-round-health span { display: grid; gap: 4px; padding: 10px 14px; border-radius: 9px; background: color-mix(in srgb, var(--border-subtle) 30%, var(--surface-a)); color: var(--text-secondary); font-size: 11px; }
+.report-round-health strong { color: var(--text-primary); font-size: 17px; font-variant-numeric: tabular-nums; }
+.report-latency-grid[data-module="tcp-quality"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 600px) { .report-latency-grid[data-module="tcp-quality"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

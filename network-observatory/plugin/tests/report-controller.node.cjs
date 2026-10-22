@@ -684,3 +684,28 @@ test('instance run limits a shared suite to its current VPS and rejects nodes ou
   assert.equal((await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`,{nodeUuids:['9f9bc89f-05fd-4b39-8b5b-342edee81d88']})).status,400);
  }finally{f.close();}
 });
+
+test("native TCP quality and public speed use the same plans, claims, history and missing coverage semantics", async () => {
+ const f=await fixture();
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.9.0',tools:[],features:['report-v3','tcp-quality','public-speed']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],trafficAccepted:true,modules:[{module:'tcp-quality',endpoints:['route:pek_ipv4_4134'],packetSizes:[0,1200]},{module:'china-speed',preset:'china-public',endpoints:['taier:北京:电信'],maxTrafficMiB:64}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  assert.equal(started.status,202);
+  let claimed=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal(claimed.operation,'tcp-quality');
+  assert.deepEqual(claimed.options.packetSizes,[0,1200]);
+  const quality={...result(),kind:'tcp-quality'};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:claimed.id,data:quality},false,true)).status,200);
+  claimed=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal(claimed.operation,'public-speed');
+  assert.equal(claimed.options.maxTrafficMiB,64);
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:claimed.id,data:{kind:'speed',state:'failed',missingCoverage:true,runs:[],diagnostic:'严格匹配无覆盖'}},false,true)).status,200);
+  const rows=(await f.invoke('GET',`${v3}/nodes/${A}/rounds?module=china-speed`)).body.rounds;
+  assert.equal(rows[0].counts.missing,9); // unselected grid cells and directory absence
+  assert.equal(rows[0].counts.failed,0);
+  const history=(await f.invoke('GET',`${v3}/nodes/${A}/rounds?module=tcp-quality`)).body.rounds;
+  assert.equal(history[0].counts.ok,1);
+ }finally{f.close();}
+});

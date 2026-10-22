@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { foldHops, numberText, routeEvidence, sampleBand } from "../reportMetrics";
 import type { ReportHop, ReportSample } from "@/services/reportObservatory";
 const hop = (ttl: number, asn: string): ReportHop => ({ ttl, asn, address: "202.97.1." + ttl, rttMs: 12, lossPercent: 40 });
+it("retains prefix evidence and unknown ASN without inventing a BGP origin", () => {
+  const evidence = routeEvidence([{ ...hop(1, "23764"), address: "8.8.8.8" }, { ...hop(2, ""), address: "59.43.22.17" }, hop(3, "65001")]);
+  expect(evidence.map(e => e.id)).toEqual(["asn:23764", "prefix:cn2-backbone", "asn:65001"]);
+  expect(evidence[1].asn).toBe("");
+  expect(evidence[1].source).toContain("apnic.net");
+});
 describe("network report metric semantics", () => {
   it("folds only contiguous single-AS hops and preserves unknown and multi-origin segments", () => {
     const hops = [hop(1, "4134"), hop(2, "4134"), hop(3, ""), hop(4, "4134"), hop(6, "4134"), hop(7, "4134 4809"), hop(8, "4134 4809")];

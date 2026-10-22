@@ -132,3 +132,15 @@ test("one bounded deadline aborts unavailable DNS and returns the successful rou
   assert.equal(r.state, "ok");
   assert.ok(r.hops.every((h) => h.asnStatus === "lookup-failed"));
 });
+
+test("RIPE fallback coalesces repeated unknown IPs and never substitutes registration for origin ASN", async () => {
+ let fallbackCalls=0;
+ const enricher=createEnricher({fetcher:async url=>{
+  if(url.includes('cloudflare-dns.com'))return {ok:true,text:async()=>'{"Status":3}'};
+  fallbackCalls++; await new Promise(resolve=>setTimeout(resolve,5));
+  return {ok:true,text:async()=>JSON.stringify({data:{asns:[4809],prefix:'59.43.0.0/16'}})};
+ }});
+ const result=await enricher.enrich(data(['59.43.22.17','59.43.22.17','59.43.22.17']));
+ assert.equal(fallbackCalls,1);assert.ok(result.hops.every(h=>h.asn==='4809' && h.asnSource==='RIPE RIS network-info'));
+ assert.ok(result.hops.every(h=>h.location===undefined));
+});

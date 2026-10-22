@@ -316,7 +316,7 @@ function registerNativeController(ctx) {
                   "traceroute",
                   "mtr",
                   "iperf3",
-                  "openssl",
+                  "openssl", "nping",
                 ].includes(x),
               )
             : [],
@@ -330,7 +330,7 @@ function registerNativeController(ctx) {
                   "latency-samples",
                   "full-mtr",
                   "speed-intervals",
-                  "http-speed",
+                  "http-speed", "public-speed", "tcp-quality",
                 ].includes(f),
               )
             : [],
@@ -383,15 +383,16 @@ function registerNativeController(ctx) {
         if (
           j.phase === "queued" &&
           (!j.availableAt || j.availableAt <= Date.now()) &&
+          (j.operation !== "public-speed" || !s.publicSpeedBlockedUntil || s.publicSpeedBlockedUntil <= Date.now()) &&
           j.executor === w.key &&
           j.operation !== "benchmark" &&
           !(
-            ["http-speed", "iperf-speed"].includes(j.operation) &&
+            ["http-speed", "iperf-speed", "public-speed"].includes(j.operation) &&
             occupied.some(
               (x) =>
-                ["http-speed", "iperf-speed"].includes(x.operation) &&
-                x.target === j.target &&
-                x.options.port === j.options.port,
+                ["http-speed", "iperf-speed", "public-speed"].includes(x.operation) &&
+                (j.operation === "public-speed" || (x.target === j.target &&
+                x.options.port === j.options.port)),
             )
           ) &&
           !occupied.some(
@@ -416,7 +417,7 @@ function registerNativeController(ctx) {
           const problem = coverage(s, j);
           if (problem) {
             finish(s, j, {
-              kind: ["benchmark", "http-speed", "iperf-speed"].includes(
+              kind: ["benchmark", "http-speed", "iperf-speed", "public-speed"].includes(
                 j.operation,
               )
                 ? "speed"
@@ -563,7 +564,7 @@ function registerNativeController(ctx) {
             return;
           }
           const data = b.data,
-            kind = ["benchmark", "http-speed", "iperf-speed"].includes(
+            kind = ["benchmark", "http-speed", "iperf-speed", "public-speed"].includes(
               j.operation,
             )
               ? "speed"
@@ -572,17 +573,18 @@ function registerNativeController(ctx) {
           const busyOnly =
             kind === "speed" &&
             data.state === "failed" &&
-            data.runs?.length &&
+            ((j.operation === "public-speed" && data.retryable === true && !(data.runs || []).some(r => r.trafficBytesObserved > 0)) || (data.runs?.length &&
             data.runs.every(
               (r) =>
                 r.state === "failed" &&
                 !r.bytes &&
                 /server is busy|server busy/i.test(r.diagnostic || ""),
-            );
+            )));
           if (j.roundId && busyOnly && (j.busyAttempts || 0) < 2) {
             j.busyAttempts = (j.busyAttempts || 0) + 1;
             j.phase = "queued";
             j.availableAt = Date.now() + j.busyAttempts * 60000;
+            if (j.operation === "public-speed") s.publicSpeedBlockedUntil = j.availableAt;
             j.expiresAt = Date.now() + 6 * 3600000;
             delete j.deadlineAt;
             j.waitReason = "公共端点繁忙，尚未传输测速数据；等待退避后重试";
@@ -591,6 +593,7 @@ function registerNativeController(ctx) {
             respond(res, 200, { ok: true, retrying: true });
             return;
           }
+          if (j.operation === "public-speed" && data.missingCoverage === true) data.state = "missing";
           finish(s, j, data, {
             ...j.source,
             runnerVersion: s.workers[w.key]?.version || "",
@@ -663,12 +666,7 @@ function registerNativeController(ctx) {
         for (const j of s.jobs.slice())
           if (j.expiresAt < now)
             finish(s, j, {
-              kind:
-                j.operation === "benchmark"
-                  ? "speed"
-                  : j.operation === "globalping"
-                    ? "route"
-                    : j.operation,
+              kind: require("./report-model.js").kindFor(j.operation),
               state: j.phase === "queued" ? "missing" : "failed",
               diagnostic:
                 "任务超时：" + (coverage(s, j) || "测量或排队没有按期完成"),

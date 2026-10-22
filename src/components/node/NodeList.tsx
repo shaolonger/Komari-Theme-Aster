@@ -1,4 +1,4 @@
-import { CarrierRoutes } from "./CarrierRoutes";
+import { CarrierRoutes } from "./LazyCarrierRoutes";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { memo, type CSSProperties, type FocusEvent } from "react";
 import { Link } from "react-router-dom";

@@ -1,7 +1,7 @@
 const { WEBSITE_CATALOG } = require("./website-catalog.js");
 const { CATALOG } = require("./catalog.js");
-const VERSION = "2026-09-30.1";
-const CHECKED_AT = "2026-09-30";
+const VERSION = "2026-10-22.2";
+const CHECKED_AT = "2026-10-22";
 const AWS_SOURCE = "https://docs.aws.amazon.com/general/latest/gr/sts.html";
 const TELEGRAM_SOURCE =
   "https://github.com/telegramdesktop/tdesktop/blob/8c0d1e5691a28637ee99084662f49c4ca0254e24/Telegram/SourceFiles/mtproto/mtproto_dc_options.cpp";
@@ -110,7 +110,7 @@ const routes = CATALOG.find((c) => c.id === "china-route").items.map((row) => ({
   carrierId: row.carrierId,
   address: row.target,
   family: row.id.includes("ipv6") ? "6" : "4",
-  uses: ["route"],
+  uses: ["route", "tcp-quality"],
   sourceUrl: CATALOG.find((c) => c.id === "china-route").source,
   restrictions: "公开路由目标；不作为吞吐端点",
   provider: "NextTrace",
@@ -213,8 +213,21 @@ const xtom = xtomLocations.map(([location, city, country]) => ({
   conditions:
     "官方地区 Looking Glass 的接入延迟；保存实际解析 IP，网站可能由代理/CDN 接入，不能据此证明机房内部延迟",
 }));
-const ENDPOINTS = [...aws, ...sites, ...dcs, ...routes, ...leaseweb, ...xtom];
+const publicSpeed = ["北京", "上海", "广州"].flatMap(city => ["电信", "联通", "移动"].map(carrier => ({
+  ...common, id: "taier:" + city + ":" + carrier, category: "speed", name: city + " " + carrier + " · 公共测速",
+  city, carrier, country: "CN", provider: "泰尔公共测速（实验）", address: "dlcv2.cnspeedtest.cn", port: 8443,
+  method: "taier", uses: ["speed"], authorized: true,
+  sourceUrl: "https://github.com/MiaM1ku/taierspeedtest/tree/ed67e6e92ca189afe29ef07eba0815fe56bda62d",
+  restrictions: "第三方共享服务，需实时发现并严格匹配；不承诺城市/三网/双栈覆盖。低频排队运行",
+  conditions: "由 VPS 主动连接；保留实际节点与计量位置，未匹配不更换城市。未运行上游脚本",
+})));
+const ENDPOINTS = [...aws, ...sites, ...dcs, ...routes, ...leaseweb, ...xtom, ...publicSpeed];
 const PRESETS = [
+  { id: "tcp-quality", name: "大陆 TCP 质量", module: "tcp-quality",
+    endpoints: routes.filter(e => e.family === "4" && /(?:pek|sha|can)_ipv4_(?:4134|4837|9808)$/.test(e.id)).map(e => e.id),
+    timing: { type: "interval", minutes: 60 } },
+  { id: "china-public", name: "大陆公共测速 · 泰尔", module: "china-speed", endpoints: publicSpeed.map(e => e.id),
+    timing: { type: "daily", times: ["21:00"], timezone: "Asia/Shanghai" }, traffic: true },
   {
     id: "international-basic",
     name: "国际基础",

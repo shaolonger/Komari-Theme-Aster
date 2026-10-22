@@ -48,6 +48,13 @@ export function ReportPlanPanel({
         <p>{query.error?.message || "正在读取报告预设…"}</p>
       </div>
     );
+  function forFamily(ids: string[], family: "4" | "6") {
+    return [...new Set(ids.map(id => {
+      const source = catalog!.endpoints.find(item => item.id === id);
+      if (!source || source.family === "auto" || source.family === family) return id;
+      return catalog!.endpoints.find(item => item.category === source.category && item.city === source.city && item.carrier === source.carrier && item.provider === source.provider && item.dc === source.dc && item.regionCode === source.regionCode && item.family === family)?.id || "";
+    }).filter(Boolean))];
+  }
   function presetModule(id: string): ReportModuleConfig {
     const preset = catalog!.presets.find((p) => p.id === id)!;
     return {
@@ -60,7 +67,7 @@ export function ReportPlanPanel({
       publicSources: preset.publicSources === true,
       seconds: 10,
       warmupSeconds: 2,
-      streams: [1],
+      streams: [1], samples: 10, packetSizes: [], maxTrafficMiB: 1024,
       enabled: true,
       timing: preset.timing,
       nextAt: 0,
@@ -226,6 +233,7 @@ export function ReportPlanPanel({
                     onChange={(e) =>
                       moduleChange(mod.module, {
                         family: e.target.value as "4" | "6",
+                        endpoints: forFamily(mod.endpoints, e.target.value as "4" | "6"),
                       })
                     }
                   >
@@ -254,6 +262,16 @@ export function ReportPlanPanel({
                   </label>
                 )}
               </div>
+              {mod.module === "tcp-quality" && <div className="network-inline-fields">
+                <label>完整 TCP 建连样本<select value={mod.samples || 10} onChange={e => moduleChange(mod.module, { samples: Number(e.target.value) })}>
+                  {[3, 5, 10].map(n => <option key={n} value={n}>{n} 次</option>)}
+                </select></label>
+                <label>可选 SYN 载荷比较<select value={(mod.packetSizes || []).join(",")} onChange={e => moduleChange(mod.module, { packetSizes: e.target.value ? e.target.value.split(",").map(Number) : [] })}>
+                  <option value="">仅完整 TCP 建连</option><option value="0">原始 SYN · 0 B</option><option value="0,512,1200">原始 SYN · 0 / 512 / 1200 B</option>
+                </select></label>
+                <p className="report-caption">SYN 比较需要探测器安装 nping 及 CAP_NET_RAW；未响应率不等同于业务丢包，包长结果不认证 MTU。不可用时注明原因。</p>
+              </div>}
+              {mod.module === "routes" && <p className="report-caption">目标名称表示目的网络，不强制选路。默认京沪广三网 9 点；增加 CN2/9929/CMIN2 可比较不同目的网络。公共去程仅按实际国家与 ASN 匹配，不承诺京沪广对称覆盖。</p>}
               {mod.module === "bgp" ? (
                 <p className="report-caption">
                   使用此 VPS 登记的公网 IPv4/IPv6 自动查询实际宣告前缀。公开 BGP
@@ -266,7 +284,7 @@ export function ReportPlanPanel({
                       type="button"
                       onClick={() =>
                         moduleChange(mod.module, {
-                          endpoints: presetModule(mod.preset!).endpoints,
+                          endpoints: forFamily(presetModule(mod.preset!).endpoints, mod.family),
                         })
                       }
                     >
@@ -286,7 +304,7 @@ export function ReportPlanPanel({
                     {catalog.endpoints
                       .filter(
                         (e) =>
-                          ((mod.module === "routes"
+                          ((mod.module === "tcp-quality" ? e.uses.some(use => ["tcp-quality", "latency"].includes(use)) : mod.module === "routes"
                             ? e.uses.includes("route")
                             : mod.module.endsWith("speed")
                               ? e.uses.includes("speed")
@@ -308,6 +326,7 @@ export function ReportPlanPanel({
                         <label key={endpoint.id}>
                           <input
                             type="checkbox"
+                            disabled={endpoint.family !== "auto" && endpoint.family !== mod.family}
                             checked={mod.endpoints.includes(endpoint.id)}
                             onChange={(e) =>
                               moduleChange(mod.module, {
@@ -339,6 +358,13 @@ export function ReportPlanPanel({
               )}
               {mod.module.endsWith("speed") && (
                 <>
+                  {mod.endpoints.some(id => id.startsWith("taier:")) && <>
+                    <p className="report-caption">公共测速由 VPS 主动连接，无需大陆自建测量机；严格匹配实际城市/运营商，缺少覆盖会明确记录。第三方协议和节点可能变化；队列串行执行并在繁忙时退避。</p>
+                    <label>每测量点应用载荷上限（含所有方向、连接数和预热）<select value={mod.maxTrafficMiB || 1024} onChange={e => moduleChange(mod.module, { maxTrafficMiB: Number(e.target.value) })}>
+                      {[64, 256, 512, 1024, 2048, 4096].map(n => <option value={n} key={n}>{n} MiB</option>)}
+                    </select></label>
+                    <p className="report-caption">达到上限提前结束并注明原因；协议开销另计。当前每 VPS 每次最多 {(mod.endpoints.filter(id => id.startsWith("taier:")).length * (mod.maxTrafficMiB || 1024) / 1024).toFixed(1)} GiB 应用载荷。</p>
+                  </>}
                   <div className="network-inline-fields">
                     <label>
                       有效测速时长
@@ -383,10 +409,10 @@ export function ReportPlanPanel({
                       >
                         <option value="1">单连接 P1</option>
                         <option value="1,4">
-                          P1 与 P4 独立测试 · 仅 iperf3
+                          P1 与 P4 独立测试 · iperf3 / 公共测速
                         </option>
                         <option value="1,8">
-                          P1 与 P8 独立测试 · 仅 iperf3
+                          P1 与 P8 独立测试 · iperf3 / 公共测速
                         </option>
                       </select>
                     </label>

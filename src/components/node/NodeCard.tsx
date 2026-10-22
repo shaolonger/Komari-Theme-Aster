@@ -30,7 +30,7 @@ import {
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { MetricBar } from "./MetricBar";
-import { CarrierRoutes } from "./CarrierRoutes";
+import { CarrierRoutes } from "./LazyCarrierRoutes";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
@@ -119,7 +119,7 @@ export const NodeCard = memo(function NodeCard({
     >
       <div className="server-card-content">
         <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} reference={slate} />
-        {slate && <div className="slate-node-badges"><span>{node.region ? regionNames.of(getDisplayRegionCode(node.region)) : "节点"}</span>{node.ipv4 && <span data-kind="ip">V4</span>}{node.ipv6 && <span data-kind="ip">V6</span>}{footerTags.map((tag, i) => <span key={i} data-kind="tag">{tag.label}</span>)}</div>}
+        {slate && <div className="slate-node-badges"><span>{node.region ? regionNames.of(getDisplayRegionCode(node.region)) : "节点"}</span>{node.ipv4 && <span data-kind="ip">V4</span>}{node.ipv6 && <span data-kind="ip">V6</span>}{footerTags.map((tag, i) => <span key={i} data-kind="tag" title="用户标注；不代表线路测量认证">{tag.label}</span>)}</div>}
 
         <div className="server-card-stack">
           <NodeMetricSection

@@ -7,6 +7,10 @@ const evidence = z.object({
   reportId: z.string().default(""),
   diagnostic: z.string().default(""),
   samples: z.number().int().nonnegative(),
+  confirmed: z.number().int().nonnegative().optional(),
+  observed: z.number().int().nonnegative().optional(),
+  variants: z.number().int().nonnegative().optional(),
+  observations: z.array(z.unknown()).max(12).default([]),
   state: z.enum(["ok", "partial", "missing", "stale"]),
 });
 const row = z.object({

@@ -1,10 +1,14 @@
 # 网络报告 v3：从升级到定时报告
 
-本指南对应主题 **1.12.1**、插件 **1.9.1**、runner **1.8.0**。支持 Komari **≥1.4.3**；使用独立 HTTPS worker，不要求修改 Komari 或 komari-agent，不依赖 Web SSH。目标是实例详情中的「路由 / 测速 / 国际」成组报告。
+本指南对应主题 **1.13.0**、插件 **1.10.0**、runner **1.9.0**。支持 Komari **≥1.4.3**；使用独立 HTTPS worker，不要求修改 Komari 或 komari-agent，不依赖 Web SSH。实例详情统一展示「路由 / TCP 质量 / 测速 / 国际」成组报告。
+
+新增方案“大陆 TCP 质量”和“大陆公共测速 · 泰尔”。后者无需自建大陆服务器或固定入站 IPv4，按实际目录匹配京沪广三网及所选地址族；缺覆盖不改选其他城市。原生探测器不调用上游脚本。SYN 比较需要 nping/CAP_NET_RAW，一键安装会检查这些工具；没有工具时保留明确缺测。
+
+公共测速上限按每个测量点计，覆盖预热和全部方向/连接数，协议开销另计；九点每轮预算为单点的九倍。全程均值、完整秒峰值、TCP 已确认与本地写入估算分别注明。结果可切换卡片/完整指标并展开历史趋势；节点或计量方法变化时断开连线。详见[原生计量规范](network-native-measurements.md)。
 
 ## 一、升级三个部分
 
-1. 从 GitHub Release 下载 `Komari-Theme-Aster-v1.12.1.zip` 和 `Aster-Network-Observatory-v1.9.1.zip`，分别更新主题和插件。插件允许 API 路由与读取节点清单的系统 RPC。已有探测器密钥不会自动重置。
+1. 从 GitHub Release 下载 `Komari-Theme-Aster-v1.13.0.zip` 和 `Aster-Network-Observatory-v1.10.0.zip`，分别更新主题和插件。插件允许 API 路由与读取节点清单的系统 RPC。已有探测器密钥不会自动重置。
 2. 每台执行检测的 VPS 运行下面的一键命令。它自动识别受支持的 Linux 包管理器、安装缺失依赖、校验发布 ZIP/NextTrace 文件，安装 systemd 服务，然后进入凭证向导。
 
    ```sh
@@ -12,7 +16,7 @@
    ```
 
 3. 向导填写面板 URL、**节点 UUID**、网络观测探测器密钥。UUID 来自 Komari 节点信息，不是 komari-agent token。已有相同面板/UUID 的配置可回车保留旧密钥。没有密钥时，在工作室 → 网络观测 → 探测器与测量点生成一次性凭证。
-4. 确认服务在线且实例页显示 `runner 1.8.0`。只升级面板不会升级 VPS。若新配置覆盖旧安装，重新执行此命令会保留现有凭证；向导核实连接后启动服务。
+4. 确认服务在线且实例页显示 `runner 1.9.0`。只升级面板不会升级 VPS。若新配置覆盖旧安装，重新执行此命令会保留现有凭证；向导核实连接后启动服务。
 
 支持 systemd 的 Debian/Ubuntu、RHEL 系 dnf/yum、openSUSE zypper；NextTrace 支持已校验的 amd64、arm64、armv7、riscv64。容器、非 systemd 或其他系统并不冒称一键支持。软件更新依赖联网访问 GitHub 与系统软件源。
 
@@ -56,7 +60,7 @@ Aster 不设置 `iperf3 -b` 或 HTTP 流量速率上限；测到的是两端、�
 
 - [Leaseweb 官方测速文档](https://kb.leaseweb.com/kb/network/network-link-speeds/)明确发布测试文件及 iperf3 端口 5201–5210，共享端口一次一个会话；目录固定使用 5201，不静默切换节点或地址。
 - [xTom 官方 Looking Glass](https://xtom.com/looking-glass/)发布 23 个访问目标；此处只采集这些入口的接入延迟，可能由代理/CDN接入，不能冒称机房内部 RTT。
-- [TcpQuality](https://github.com/ibsgss/TcpQuality) 的远端大陆 TOS 目录可以作为候选调查来源；尚未取得其定时批量上传/清理接口用途的明确授权，因此新版不自动启用 PUT/DELETE，也不宣称内置免费九格已全覆盖。原有 TcpQuality 图片诊断仍可读取/运行。
+- [TcpQuality](https://github.com/ibsgss/TcpQuality) 的远端大陆 TOS 目录没有被当作可任意上传/删除的接口。旧脚本和图片诊断已删除；原生 TCP 质量、公共测速不执行上游脚本。
 
 ### 可选：自有 HTTPS 接收器
 

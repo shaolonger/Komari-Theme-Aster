@@ -17,7 +17,7 @@ const INTERNATIONAL_CITIES = [
   "阿姆斯特丹",
 ];
 const kindFor = (op) =>
-  ["benchmark", "http-speed", "iperf-speed"].includes(op)
+  ["benchmark", "http-speed", "iperf-speed", "public-speed"].includes(op)
     ? "speed"
     : op === "globalping"
       ? "route"
@@ -29,7 +29,7 @@ function normalizeSuite(input, resources = []) {
     !input.modules.length ||
     input.modules.length > MODULES.length
   )
-    throw new Error("请选择 1–6 个报告模块");
+    throw new Error("请选择有效的报告模块");
   const range = M.normalizeRange(input);
   const directory = [...ENDPOINTS, ...resources];
   const seen = new Set();
@@ -39,6 +39,7 @@ function normalizeSuite(input, resources = []) {
     seen.add(value.module);
     const preset =
       PRESETS.find((p) => p.id === value.preset && p.module === value.module) ||
+      PRESETS.find((p) => p.id === (value.module === "china-speed" ? "china-single" : "")) ||
       PRESETS.find((p) => p.module === value.module);
     const endpoints = [
       ...new Set(
@@ -76,6 +77,12 @@ function normalizeSuite(input, resources = []) {
       ![0, 2].includes(warmupSeconds)
     )
       throw new Error("测速有效时长须为 5–20 秒，预热为 0 或 2 秒");
+    const samples = value.samples === undefined ? 10 : value.samples;
+    const packetSizes = [...new Set(value.packetSizes || [])];
+    const maxTrafficMiB = value.maxTrafficMiB === undefined ? 1024 : value.maxTrafficMiB;
+    if (!Number.isInteger(samples) || samples < 3 || samples > 10 || packetSizes.length > 3 || packetSizes.some(n => ![0, 512, 1200].includes(n)))
+      throw new Error("TCP 质量样本为 3–10 次，SYN 载荷只允许 0、512、1200 字节");
+    if (!Number.isInteger(maxTrafficMiB) || maxTrafficMiB < 16 || maxTrafficMiB > 4096) throw new Error("公共测速载荷上限须为 16–4096 MiB/测量点");
     const streams = [...new Set(value.streams || [1])];
     if (
       !streams.includes(1) ||
@@ -111,7 +118,7 @@ function normalizeSuite(input, resources = []) {
       publicSources: value.publicSources !== false && value.module === "routes",
       seconds,
       warmupSeconds,
-      streams,
+      streams, samples, packetSizes, maxTrafficMiB,
       timing,
       enabled: value.enabled !== false,
       nextAt: M.next(timing),
@@ -198,7 +205,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
   }
   const common = { family: module.family, reportVersion: 3 };
   const source = { provider: "runner", name: "当前 VPS" };
-  if (["international", "idc"].includes(module.module)) {
+  if (["international", "idc", "tcp-quality"].includes(module.module)) {
     for (const id of module.endpoints) {
       const e = all.find((r) => r.id === id);
       const mismatch = e.family !== "auto" && e.family !== module.family;
@@ -207,16 +214,17 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
         e.address,
         source,
         "VPS→目标",
-        "latency",
+        module.module === "tcp-quality" ? "tcp-quality" : "latency",
         "node:" + nodeUuid,
         {
           ...common,
+          samples: module.samples || 10, packetSizes: module.packetSizes || [],
           port: e.port,
           path: e.path || "/",
           https: e.https === true,
         },
         e,
-        !e.uses.includes("latency")
+        !(e.uses.includes(module.module === "tcp-quality" ? "tcp-quality" : "latency") || (module.module === "tcp-quality" && e.uses.includes("latency")))
           ? "端点未允许延迟测试"
           : mismatch
             ? "端点不支持所选地址族"
@@ -340,6 +348,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
         seconds: module.seconds,
         warmupSeconds: module.warmupSeconds,
         streams: module.streams,
+        maxTrafficMiB: module.maxTrafficMiB || 1024, city: pair.city, carrier: pair.carrier,
         port: e?.port || endpoint?.port || 25201,
       };
       if (e) {
@@ -349,7 +358,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
           e.address,
           { provider: e.provider, city: pair.city, carrier: pair.carrier },
           "VPS↔端点",
-          e.method === "iperf3" ? "iperf-speed" : "http-speed",
+          e.method === "taier" ? "public-speed" : e.method === "iperf3" ? "iperf-speed" : "http-speed",
           "node:" + nodeUuid,
           { ...options, endpoint: e },
           e,
@@ -396,7 +405,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
         e.address,
         { provider: e.provider, city: e.city, carrier: e.carrier, carrierId: e.carrierId },
         "VPS↔端点",
-        e.method === "iperf3" ? "iperf-speed" : "http-speed",
+        e.method === "taier" ? "public-speed" : e.method === "iperf3" ? "iperf-speed" : "http-speed",
         "node:" + nodeUuid,
         {
           ...common,

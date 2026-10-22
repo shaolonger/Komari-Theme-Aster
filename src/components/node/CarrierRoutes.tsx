@@ -1,7 +1,8 @@
-import { memo, useState } from "react";
+import { lazy, memo, Suspense, useState } from "react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { type RouteEvidence } from "@/services/homeRoutes";
-import { formatDisplayDateTime } from "@/utils/timeDisplay";
+
+const RouteDetails = lazy(() => import("./RouteEvidenceDetails"));
 
 function Evidence({
   value,
@@ -12,22 +13,23 @@ function Evidence({
   direction: string;
   timeZone: string;
 }) {
+  const [open, setOpen] = useState(false);
   const state = value?.state || "missing";
-  const title = value
-    ? `${direction} · ${value.label}${value.diagnostic ? " · " + value.diagnostic : ""} · ${value.asns.map((a) => `AS${a}`).join(" → ")} · ${formatDisplayDateTime(Date.parse(value.at), timeZone, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${value.samples} 组观测${state === "partial" ? " · 路径不完整" : state === "stale" ? " · 超过24小时" : ""}`
-    : `${direction}尚无探测结果`;
-  return (
-    <span
-      className="carrier-route-evidence"
-      data-state={state}
-      title={title}
-      aria-label={title}
-    >
-      {value?.label || "未探测"}
-      {state === "stale" && <small>过期</small>}
-      {state === "partial" && <small>部分</small>}
-    </span>
-  );
+  const status = !value ? "暂无观测" : state === "stale" ? "超过 24 小时"
+    : value.observed === 0 || state === "missing" ? "缺少有效测量"
+    : value.confirmed !== undefined ? `终点 ${value.confirmed}/${value.samples} 确认`
+    : state === "partial" ? "终点未确认" : "终点已确认";
+  const title = `${direction} · ${value?.label || "未探测"} · ${status} · 点击查看证据`;
+  return <>
+    <button type="button" className="carrier-route-evidence" data-state={state}
+      title={title} aria-label={title} onClick={() => setOpen(true)}>
+      <span>{value?.label || "未探测"}</span><small>{status}</small>
+    </button>
+    {open && <Suspense fallback={<span role="status">正在打开线路证据…</span>}>
+      <RouteDetails value={value} direction={direction} status={status} timeZone={timeZone} onClose={() => setOpen(false)} />
+    </Suspense>}
+  </>;
+
 }
 export const CarrierRoutes = memo(function CarrierRoutes({
   uuid,

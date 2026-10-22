@@ -70,6 +70,8 @@ expected = {
     "runner/agent.py",
     "runner/install.sh",
     "runner/native.py",
+    "runner/public_speed.py",
+    "runner/tcp_quality.py",
     "runner/http_receiver.py",
     "runner/aster-network-observatory-http.service",
     "runner/aster-network-observatory-agent.service",

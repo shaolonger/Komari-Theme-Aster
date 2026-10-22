@@ -120,7 +120,7 @@ function validateResult(data, kind) {
       ))
   )
     bad();
-  if (["website", "latency"].includes(kind) && data.tcpQuality != null) {
+  if (["website", "latency", "tcp-quality"].includes(kind) && data.tcpQuality != null) {
     const q = data.tcpQuality;
     if (
       typeof q.method !== "string" ||
@@ -161,7 +161,7 @@ function validateResult(data, kind) {
       bad();
   }
   if (
-    kind === "latency" &&
+    ["latency", "tcp-quality"].includes(kind) &&
     (!data.tcpQuality || !Array.isArray(data.tcpQuality.samples))
   )
     bad();

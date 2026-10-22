@@ -20,6 +20,8 @@ PLUGIN_FILES = {
     "runner/agent.py": b"agent",
     "runner/install.sh": b"installer",
     "runner/native.py": b"native",
+    "runner/public_speed.py": b"public-speed",
+    "runner/tcp_quality.py": b"tcp-quality",
     "runner/http_receiver.py": b"receiver",
     "runner/aster-network-observatory-http.service": b"http-service",
     "runner/aster-network-observatory-probe@.service": b"probe service",

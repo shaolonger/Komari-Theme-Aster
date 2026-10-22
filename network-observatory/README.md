@@ -1,6 +1,6 @@
 # Aster 网络观测
 
-主题 **1.12.1** / 插件 **1.9.1** / 探测器 **1.8.0**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
+主题 **1.13.0** / 插件 **1.10.0** / 探测器 **1.9.0**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
 
 所有配置统一在 **Aster 工作室 → 网络观测**：
 
@@ -24,7 +24,7 @@
 
 1. 从[最新 Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/latest) 下载主题和插件 ZIP，在 Komari 分别上传更新。批准插件 API 路由与读取节点清单的系统 RPC 权限。插件只调用 `admin:listClients`，不调用远程命令接口。
 2. 在「探测器与测量点」选 VPS，生成凭证，复制安装命令到 VPS 运行，在隐藏提示中粘贴密钥。已有相同面板 / UUID 的密钥可在升级向导中回车保留。
-3. 每台 VPS 执行一键升级，确认探测器显示 **1.8.0**：
+3. 每台 VPS 执行一键升级，确认探测器显示 **1.9.0**：
 
    ```sh
    curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh

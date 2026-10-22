@@ -22,6 +22,25 @@ TASK = {
 
 
 class AgentValidationTests(unittest.TestCase):
+    def test_syn_capture_service_allows_packet_sockets_without_network_admin(self):
+        for filename in ['aster-network-observatory-agent.service', 'aster-network-observatory-probe@.service']:
+            unit = (AGENT_PATH.parent / filename).read_text()
+            self.assertIn('RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_PACKET', unit)
+            self.assertIn('CapabilityBoundingSet=CAP_NET_RAW', unit)
+            self.assertNotIn('CAP_NET_ADMIN', unit)
+
+    def test_tcp_quality_preflight_error_is_a_valid_zero_sample_failure(self):
+        config = {"serverUrl": "https://panel.example.net", "nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "operation": "tcp-quality", "target": "example.net", "options": {}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT.native, "measure", side_effect=ValueError("DNS failed")), patch.object(AGENT, "api_request") as api:
+            AGENT.native_task(config, task, {})
+        data = api.call_args.kwargs["body"]["data"]
+        self.assertEqual(data["kind"], "tcp-quality")
+        self.assertEqual(data["state"], "failed")
+        self.assertEqual(data["tcpQuality"]["sent"], 0)
+        self.assertEqual(data["tcpQuality"]["samples"], [])
+        self.assertIsNone(data["tcpQuality"]["medianMs"])
+
     def test_result_outbox_survives_failed_upload_and_never_repeats_measurement(self):
         import json
         config = {"serverUrl": "https://panel.example.net", "nodeUuid": TASK["taskId"], "role": "node"}
