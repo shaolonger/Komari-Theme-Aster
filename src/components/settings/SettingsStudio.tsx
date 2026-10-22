@@ -7,8 +7,10 @@ const sections = [
   { id: 'overview', title: '巡检与指标', description: '决定首页首先呈现哪些信号', keywords: '指标 评级 流量 带宽 在线 连接 TCP UDP 排序', panels: ['首页巡检', '小卡片显示项'] },
   { id: 'views', title: '节点与视图', description: '把节点组织成适合日常工作的视图', keywords: '节点 VPS 标签 分组 厂商 地区 用途 筛选', panels: ['VPS 标签与视图'] },
   { id: 'assets', title: '资产与成本', description: '设定成本统计的范围与计算方式', keywords: '汇率 费用 计费 价格 排除 资产 成本', panels: ['服务器花费'] },
-  { id: 'network', title: '网络观测', description: '为每个节点选择值得持续关注的探测任务', keywords: 'Ping 网络 延迟 丢包 任务 绑定 探测', panels: ['网络检测方案', '主页延迟检测'] },
+  { id: 'network', title: '网络观测', description: '统一管理首页信号、检测方案、探测器和目标端点', keywords: 'Ping 网络 延迟 丢包 任务 绑定 探测', panels: ['主页延迟检测', '主页三网线路', '检测方案', '探测器与测量点', '目标端点'] },
 ];
+const networkPanels = [['ping','主页延迟检测'],['routes','主页三网线路'],['plans','检测方案'],['agents','探测器与测量点'],['targets','目标端点']] as const;
+
 function matchesSection(section: (typeof sections)[number], query: string) {
   return `${section.title} ${section.keywords} ${section.panels.join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
 }
@@ -25,6 +27,13 @@ export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty
     headingRef.current?.focus({ preventScroll: true });
     headingRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
   }, [navigation]);
+  useEffect(() => {
+    if (active !== 'network') return;
+    const panel = new URLSearchParams(window.location.search).get('panel');
+    if (!panel) return;
+    const frame = requestAnimationFrame(() => document.getElementById('network-' + panel)?.closest('.aster-studio-panel')?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
   const section = sections.find(item => item.id === active)!;
   const searchId = useId();
   const matches = sections.filter(item => matchesSection(item, query)).flatMap(item => item.panels);
@@ -41,10 +50,11 @@ export function SettingsStudio({ children, dirty }: { children: ReactNode; dirty
         <label className="aster-studio-search" htmlFor={searchId}><Search size={16} /><input id={searchId} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="查找设置分区" /></label>
         <nav aria-label="设置分区">{sections.map((item, index) => <button key={item.id} type="button" aria-current={active === item.id && !query ? 'page' : undefined} onClick={() => navigate(item.id)}><span className="aster-studio-index">0{index + 1}</span><span>{item.title}</span></button>)}</nav>
         <p className="aster-studio-state" role="status"><span data-dirty={dirty} />{dirty ? '草稿有未保存的修改' : '设置已与站点同步'}</p>
-        <p className="aster-studio-note">切换分区会保留草稿。保存后，设置将应用到整个站点。</p>
+        <p className="aster-studio-note">切换分区会保留草稿。主题草稿需保存；网络插件各面板独立保存并立即生效。</p>
       </aside>
       <div className="aster-studio-content">
         <header className="aster-studio-heading"><span>ASTER / WORKSPACE</span><h1 ref={headingRef} tabIndex={-1}>{query ? '查找设置' : section.title}</h1><p>{query ? `与“${query}”匹配的设置分区` : section.description}</p></header>
+        {active === 'network' && !query && <nav className="studio-network-nav" aria-label="网络观测配置"><span>跳转到</span>{networkPanels.map(([panel,title]) => <a key={panel} href={'#network-' + panel} onClick={event => { event.preventDefault(); document.getElementById('network-' + panel)?.closest('.aster-studio-panel')?.scrollIntoView({block:'start',behavior:'smooth'}); }}>{title}</a>)}</nav>}
         {query && matches.length === 0 && <p className="aster-studio-empty" role="status">没有找到匹配分区。试试“外观”“视图”或“延迟”。</p>}
         {children}
       </div>
@@ -66,3 +76,5 @@ export function StudioPanel({ title, description, aside, children }: { title: st
     <div className="aster-studio-fields">{children}</div>
   </section>;
 }
+
+export function useStudioSectionActive(section: string) { const { active, query } = useContext(StudioContext); return active === section || !!query; }

@@ -195,3 +195,6 @@
 .studio-appearance-drawing[data-appearance="clearsky"] .studio-layout-drawing > div { border-color: white; border-radius: 7px; box-shadow: 0 4px 6px -4px #6a89b860; }
 .studio-appearance-drawing[data-appearance="slate"] { background: #252b34; color: #c8cdd7; }
 .studio-appearance-drawing[data-appearance="slate-light"] { background: #edf0f5; color: #394454; }
+.studio-network-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -8px 0 20px; font-size: 12px; color: var(--text-tertiary); }
+.studio-network-nav a { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-a); color: var(--text-secondary); }
+.studio-network-nav a:hover { border-color: var(--accent-500); color: var(--accent-500); }

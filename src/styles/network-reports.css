@@ -371,10 +371,6 @@
   color: var(--text-secondary);
   margin: 0;
 }
-.network-legacy-reports {
-  margin-top: 1.3rem;
-  font-size: 0.82rem;
-}
 .report-plan-steps,
 .report-target-actions,
 .report-plan-footer,
@@ -710,3 +706,22 @@
 .home-routes-publish p { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 .home-routes-publish-nodes { max-height: 220px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 8px; margin: 12px 0; }
 .home-routes-publish-nodes label { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+
+.home-routes-publish-nodes label > span { display: grid; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
+.home-routes-publish-nodes small { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+.home-routes-publish-nodes a { font-size: 12px; color: var(--accent-500); }
+.aster-studio-panel:has([id^="network-"]) { scroll-margin-top: 80px; }
+[id^="network-"] { scroll-margin-top: 90px; min-width: 0; }
+.measurement-points-panel :is(code, pre) { overflow-wrap: anywhere; white-space: pre-wrap; }
+:where(.aster-studio-panel .network-form) button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-a);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+:where(.aster-studio-panel .network-form) button:hover:not(:disabled) { border-color: var(--accent-500); }
+:where(.aster-studio-panel .network-form) :is(button, a, summary):focus-visible { outline: 2px solid var(--accent-500); outline-offset: 3px; }

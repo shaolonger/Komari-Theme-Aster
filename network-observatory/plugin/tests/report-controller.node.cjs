@@ -80,6 +80,7 @@ async function fixture(existingRoot) {
     c,
     root,
     invoke,
+    routes,
     close: () => fs.rmSync(root, { recursive: true, force: true }),
   };
 }
@@ -323,7 +324,7 @@ test("Globalping MTR uses official packet maximum, numeric IP version and raw ho
     global.fetch = original;
   }
 });
-test("central resources redact tokens, migration disables old trigger, and shared JSON is revocable", async () => {
+test("central resources redact tokens and shared JSON is revocable", async () => {
   const f = await fixture();
   try {
     const resource = await f.invoke("POST", v3 + "/resources", {
@@ -386,28 +387,6 @@ test("central resources redact tokens, migration disables old trigger, and share
         .status,
       404,
     );
-    const legacy = await f.invoke("POST", v2 + "/policies", {
-      revision: 2,
-      clients: [A],
-      kind: "websites",
-      sites: ["api.example.net"],
-    });
-    const converted = await f.invoke("POST", v3 + "/migration/preview", {
-      id: legacy.body.policy.id,
-    });
-    assert.equal(converted.status, 200);
-    assert.equal(converted.body.additional[0].category, "websites");
-    assert.equal(
-      (
-        await f.invoke("POST", v3 + "/migration/apply", {
-          id: legacy.body.policy.id,
-          revision: 3,
-        })
-      ).status,
-      200,
-    );
-    assert.equal(f.c.read().policies[0].enabled, false);
-    assert.ok(f.c.read().policies[0].migratedSuiteId);
   } finally {
     f.close();
   }
@@ -475,53 +454,7 @@ test("overlapping equal measurements share work across suites, while distinct ta
   }
 });
 
-test("batch migration previews cumulative use, shares new resources, and applies with revision guard", async () => {
-  const f = await fixture();
-  try {
-    const a = await f.invoke("POST", v2 + "/policies", {
-      revision: 0,
-      clients: [A],
-      kind: "websites",
-      sites: ["api.example.net"],
-    });
-    const b = await f.invoke("POST", v2 + "/policies", {
-      revision: 1,
-      name: "second",
-      clients: [A],
-      kind: "websites",
-      sites: ["api.example.net"],
-    });
-    const ids = [a.body.policy.id, b.body.policy.id];
-    const preview = await f.invoke("POST", v3 + "/migration/preview", { ids });
-    assert.equal(preview.status, 200);
-    assert.equal(preview.body.migrations.length, 2);
-    assert.equal(
-      preview.body.migrations.reduce((n, m) => n + m.additional.length, 0),
-      1,
-    );
-    assert.ok(
-      preview.body.migrations[0].coverage.nodes[0].capacity.samplesPerDay >= 20,
-    );
-    assert.equal(f.c.read().reportSuites?.length || 0, 0);
-    assert.equal(
-      (await f.invoke("POST", v3 + "/migration/apply", { ids, revision: 1 }))
-        .status,
-      409,
-    );
-    assert.equal(
-      (await f.invoke("POST", v3 + "/migration/apply", { ids, revision: 2 }))
-        .status,
-      200,
-    );
-    assert.equal(f.c.read().reportSuites.length, 2);
-    assert.equal(f.c.read().reportResources.length, 1);
-    assert.ok(
-      f.c.read().policies.every((p) => !p.enabled && p.migratedSuiteId),
-    );
-  } finally {
-    f.close();
-  }
-});
+
 test("restart reconstructs shared queues and finishes a result committed before queue save", async () => {
   for (const committed of [false, true]) {
     const f = await fixture();
@@ -738,4 +671,16 @@ test("recovered active lease accepts durable results without repeating a measure
   } finally {
     f.close();
   }
+});
+
+test('instance run limits a shared suite to its current VPS and rejects nodes outside the suite',async()=>{
+ const f=await fixture();
+ try {
+  const saved=await f.invoke('POST',v3+'/suites',{...draft(),clients:[A,B]});
+  const run=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`,{nodeUuids:[A]});
+  assert.equal(run.status,202);assert.equal(run.body.rounds.length,1);
+  assert.equal(f.c.roundController.store.get(A,run.body.rounds[0]).nodeUuid,A);
+  assert.equal((await f.invoke('GET',`${v3}/nodes/${B}/rounds?module=international`)).body.rounds.length,0);
+  assert.equal((await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`,{nodeUuids:['9f9bc89f-05fd-4b39-8b5b-342edee81d88']})).status,400);
+ }finally{f.close();}
 });

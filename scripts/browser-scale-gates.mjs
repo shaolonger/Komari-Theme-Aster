@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { spawn } from "node:child_process";
 
-const { WEBSITE_CATALOG, WEBSITES } = createRequire(import.meta.url)("../network-observatory/plugin/src/website-catalog.js");
 const ROOT = new URL("../dist/", import.meta.url).pathname;
 const chromeCandidates = [
   process.env.CHROME_BIN,
@@ -81,20 +80,9 @@ const requestPayloads = new Map();
 let savedUiSettings = null;
 let rejectNextStudioSave = false;
 let studioSaveBarrier = null;
-const networkPluginFixture = { schedules: [], agents: new Map(), applications: 0 };
-const networkReportFixture = {
-  completedAt: new Date().toISOString(), taskId: "report-1", mode: "https",
-  target: "www.cloudflare.com", status: "success", exitCode: 0,
-  rawOutput: "status=200 dns_seconds=0.011 connect_seconds=0.032 tls_seconds=0.079 ttfb_seconds=0.185",
-  scheduleId: "basic-node-0-cloudflare", nodeUuid: "node-0", nodeName: "Scale Node 0",
-  carrier: "", region: "", runnerVersion: "1.2.0", catalogVersion: "2026-09-28.1",
-};
-
-const nativeFixture={revision:0,policies:[],probes:[],applications:0};
-const nativeReportFixture={id:'native-1',nodeUuid:'node-0',policyId:'native-policy',completedAt:new Date().toISOString(),operation:'website',target:'www.cloudflare.com',source:{provider:'runner',name:'当前 VPS'},executor:'node:node-0',direction:'VPS→网站',pairId:'',fingerprint:'native-fingerprint',options:{family:'4'},data:{kind:'website',state:'application',httpStatus:403,resolvedIp:'203.0.113.5',tlsVerified:true,tcpQuality:{method:"TCP connect",state:"partial",address:"203.0.113.40",sent:10,received:9,failurePercent:10,avgMs:24.5,minMs:22,maxMs:30,stdevMs:1.5},timingsMs:{dns:10,connect:20,tls:30,ttfb:100,total:120},diagnostic:'fixture application response'}};
-const nativeRouteFixture = { ...nativeReportFixture, id: 'native-route', operation: 'route', target: '203.0.113.1', source: {provider:'controlled',name:'上海电信家庭宽带',city:'上海',carrier:'电信',accessType:'家庭宽带'},direction:'大陆→VPS',pairId:'route-pair',fingerprint:'route-fingerprint',data:{kind:'route',state:'ok',complete:true,method:'NextTrace',hops:[{ttl:1,address:'192.168.1.1',asn:'',asnStatus:'non-public',rttMs:1.2},{ttl:2,address:'202.97.1.1',asn:'4134',network:'CHINANET-BACKBONE',location:'中国 · 北京',prefix:'202.97.0.0/16',asnSource:'NextTrace / NextTrace-API',rttMs:12.4},{ttl:3,address:'203.0.113.1',asn:'64500',network:'Example Network',asnSource:'Team Cymru / Cloudflare DoH',asnQueriedAt:new Date().toISOString(),rttMs:98.2}],quality:{address:'203.0.113.1',sent:20,lossPercent:0,avgMs:98.2,jitterMs:1.1,terminalConfirmed:true}}};
-const nativeReverseFixture={...nativeRouteFixture,id:'native-reverse',direction:'VPS→大陆',target:'203.0.113.20',fingerprint:'reverse-fingerprint',data:{...nativeRouteFixture.data,complete:false,hops:[{ttl:1,address:'198.51.100.1',asn:'64500',rttMs:1.7},{ttl:2,address:'',asn:'',rttMs:null},{ttl:3,address:'202.97.1.1',asn:'4134',rttMs:110}],quality:null}};
-const nativeSpeedFixture={...nativeRouteFixture,id:'native-speed',operation:'benchmark',direction:'大陆↔VPS',pairId:'',fingerprint:'speed-fingerprint',data:{kind:'speed',state:'ok',runs:[1,4].flatMap(streams=>['source-to-target','target-to-source'].map((direction,i)=>({direction,streams,state:'ok',bitsPerSecond:(i?650:420)*1e6,bytes:(i?650:420)*1e6/8*10,seconds:10,retransmits:i?12:4,remoteIp:'203.0.113.1',diagnostic:''})))}};
+const pointFixture = { probes: [] };
+let homeRouteNodes = [];
+let homeRouteDisplay = true;
 const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
 const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki'],modules:['routes','china-speed','international','idc','international-speed','bgp'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
@@ -103,12 +91,23 @@ const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module
  const config={module,preset:reportPresets.find(p=>p.module===module).id,endpoints:[],family:'4',protocols:['tcp','icmp'],sources:[],publicSources:true,seconds:10,warmupSeconds:2,streams:[1,4],enabled:true,timing:{type:'interval',minutes:30},nextAt:Date.now()+60000};
  const selected=module==='international'?reportEndpoints.filter(e=>['aws','websites','cdn','telegram'].includes(e.category)&&e.family!=='6'):module==='idc'?reportEndpoints.filter(e=>e.category==='idc'):module==='routes'?reportEndpoints.filter(e=>e.category==='china-route'&&e.family==='4').slice(0,9):module==='bgp'?[reportEndpoints[0]]:reportEndpoints.filter(e=>e.category==='speed').slice(0,module==='china-speed'?9:10);
  const slots=selected.map((e,i)=>({id:e.id,jobId:'job-'+i,target:e.address,direction:module==='routes'?'VPS→大陆':'VPS↔端点',source:{provider:e.provider,city:module==='china-speed'?['北京','上海','广州'][Math.floor(i/3)]:e.city||'北京',carrier:module==='china-speed'?['电信','联通','移动'][i%3]:e.carrier||'电信'},endpoint:e,options:{protocol:'tcp',port:e.port},state:i===1?'missing':'ok',missingReason:i===1?'此地区尚未配置授权端点':'',metrics:{medianMs:20+i}}));
- const measurements=slots.map((slot,i)=>({id:slot.jobId,roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:slot.target,direction:slot.direction,operation:module==='routes'?'route':module.endsWith('speed')?'benchmark':'latency',pairId:'',executor:'node:node-0',source:slot.source,options:slot.options,startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),data:i===1?{kind:module.endsWith('speed')?'speed':'latency',state:'missing',diagnostic:slot.missingReason}:module==='routes'?{...nativeRouteFixture.data,method:'MTR',hops:nativeRouteFixture.data.hops.map(h=>({...h,sent:20,received:20,lossPercent:0,lastMs:h.rttMs,avgMs:h.rttMs,bestMs:h.rttMs,worstMs:h.rttMs}))}:module.endsWith('speed')?{...nativeSpeedFixture.data,runs:nativeSpeedFixture.data.runs.map(r=>({...r,vpsDirection:r.direction==='source-to-target'?'download':'upload',tcpRttMs:25,maxBitsPerSecond:r.bitsPerSecond*1.2,trafficBytesObserved:r.bytes,intervals:Array.from({length:10},(_,n)=>({start:n,end:n+1,seconds:1,bytes:r.bytes/10,bitsPerSecond:r.bitsPerSecond*(.7+n/30)}))}))}:module==='bgp'?{kind:'bgp',state:'ok',prefix:'8.8.8.0/24',originAsns:['15169'],coveringPrefixes:[],queriedAt:new Date().toISOString(),cacheHit:false,sources:[{source:'RIPE RIS',state:'ok',url:'https://stat.ripe.net/',collectors:['rrc00'],peers:['8.8.8.8'],retainedPaths:1,returnedPaths:1,truncated:false,diagnostic:'fixture',dataTime:new Date().toISOString()}],paths:[{id:'ris:0',source:'RIPE RIS',prefix:'8.8.8.0/24',collector:'rrc00',peer:'8.8.8.8',peerAsn:'3356',path:['3356','15169'],observedAt:new Date().toISOString(),routeUpdatedAt:null,communities:[]}],graph:{nodes:[{id:'3356',origin:false,kind:'asn'},{id:'15169',origin:true,kind:'asn'}],edges:[{id:'3356>15169',from:'3356',to:'15169',pathIds:['ris:0']}]},rpki:[{asn:'15169',state:'valid',validator:'RIPEstat',queriedAt:new Date().toISOString()}],changes:{baseline:true,comparableSources:[],addedPaths:[],removedPaths:[],addedAdjacentAsns:[],removedAdjacentAsns:[],coverageChanged:false}}:{kind:'latency',state:'ok',method:'TCP connect',tcpQuality:{method:'TCP connect',address:'8.8.8.8',state:'partial',sent:10,received:9,failurePercent:10,avgMs:20+i,medianMs:20+i,minMs:18,maxMs:50,stdevMs:1,samples:Array.from({length:10},(_,n)=>({index:n+1,state:n===9?'timeout':'ok',rttMs:n===9?null:20+i+n,address:'8.8.8.8',error:n===9?'Timed out':''}))},https:{state:'application',httpStatus:403,tlsVerified:true}}}));
+ const measurements=slots.map((slot,i)=>({id:slot.jobId,roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:slot.target,direction:slot.direction,operation:module==='routes'?'route':module.endsWith('speed')?'benchmark':'latency',pairId:'',executor:'node:node-0',source:slot.source,options:slot.options,startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),data:i===1?{kind:module.endsWith('speed')?'speed':'latency',state:'missing',diagnostic:slot.missingReason}:module==='routes'?{kind:'route',state:'ok',hops:[]}:module.endsWith('speed')?{kind:'speed',state:'ok',runs:[1,4].flatMap(streams=>['source-to-target','target-to-source'].map((direction,i)=>({direction,streams,state:'ok',bitsPerSecond:(i?650:420)*1e6,bytes:(i?650:420)*1e6/8*10,seconds:10,retransmits:i?12:4,diagnostic:'',vpsDirection:i?'upload':'download',tcpRttMs:25,maxBitsPerSecond:(i?650:420)*1.2e6,trafficBytesObserved:(i?650:420)*1e6/8*10,intervals:Array.from({length:10},(_,n)=>({start:n,end:n+1,seconds:1,bytes:1e6,bitsPerSecond:400e6}))})))}:module==='bgp'?{kind:'bgp',state:'ok',prefix:'8.8.8.0/24',originAsns:['15169'],coveringPrefixes:[],queriedAt:new Date().toISOString(),cacheHit:false,sources:[{source:'RIPE RIS',state:'ok',url:'https://stat.ripe.net/',collectors:['rrc00'],peers:['8.8.8.8'],retainedPaths:1,returnedPaths:1,truncated:false,diagnostic:'fixture',dataTime:new Date().toISOString()}],paths:[{id:'ris:0',source:'RIPE RIS',prefix:'8.8.8.0/24',collector:'rrc00',peer:'8.8.8.8',peerAsn:'3356',path:['3356','15169'],observedAt:new Date().toISOString(),routeUpdatedAt:null,communities:[]}],graph:{nodes:[{id:'3356',origin:false,kind:'asn'},{id:'15169',origin:true,kind:'asn'}],edges:[{id:'3356>15169',from:'3356',to:'15169',pathIds:['ris:0']}]},rpki:[{asn:'15169',state:'valid',validator:'RIPEstat',queriedAt:new Date().toISOString()}],changes:{baseline:true,comparableSources:[],addedPaths:[],removedPaths:[],addedAdjacentAsns:[],removedAdjacentAsns:[],coverageChanged:false}}:{kind:'latency',state:'ok',method:'TCP connect',tcpQuality:{method:'TCP connect',address:'8.8.8.8',state:'partial',sent:10,received:9,failurePercent:10,avgMs:20+i,medianMs:20+i,minMs:18,maxMs:50,stdevMs:1,samples:Array.from({length:10},(_,n)=>({index:n+1,state:n===9?'timeout':'ok',rttMs:n===9?null:20+i+n,address:'8.8.8.8',error:n===9?'Timed out':''}))},https:{state:'application',httpStatus:403,tlsVerified:true}}}));
  return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',batchId:'batch-fixture',plannedAt:new Date().toISOString(),startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),state:'partial',counts:{expected:slots.length,completed:slots.length,ok:slots.length-1,partial:0,failed:0,missing:1,cancelled:0},detailAvailable:true,parameters:config,catalogVersion:reportCatalogVersion,slots,measurements}];
 }));
-const nativeRecords=[nativeReportFixture,nativeRouteFixture,nativeReverseFixture,nativeSpeedFixture];
-const nativeInventory=()=>nodeList(17).map(({uuid,name,group},i)=>({uuid,name:i<3?name:`长期观测香港节点-${i} · Premium-Transit-1000Mbps-IPv4-IPv6`,group}));
-const nativeSummaries=nativeRecords.flatMap(r=>[1,0].map(days=>({day:new Date(Date.now()-days*86400000).toISOString().slice(0,10),fingerprint:r.fingerprint,operation:r.operation,target:r.target,source:r.source,direction:r.direction,samples:2,ok:r.data.state==='ok'?2:0,application:r.data.state==='application'?2:0,missing:0,failed:0,ttfbTotal:200,ttfbSamples:2,speed:r.data.kind==='speed'?Object.fromEntries(r.data.runs.map(run=>[run.direction+':'+run.streams,{sum:run.bitsPerSecond*2,count:2,bytes:run.bytes*2}])):{}})));
+
+// Real preset → normalized measurements → round storage → private projection.
+const routeFixtureRoot = mkdtempSync(join(tmpdir(), 'aster-browser-routes-'));
+const routePipeline = await reportRequire('../network-observatory/plugin/tests/carrier-route-fixture.cjs').carrierFixture(routeFixtureRoot);
+const projectedRouteFamilies = (await routePipeline.invoke('GET', '/home-routes')).body.nodes[routePipeline.A];
+reportRoundData.routes = { ...routePipeline.round, nodeUuid: 'node-0' };
+rmSync(routeFixtureRoot, { recursive: true, force: true });
+// Report date inputs have minute precision; keep fixture evidence safely before the frozen end.
+const measuredAt = new Date(Date.now() - 5 * 60000).toISOString();
+for (const round of Object.values(reportRoundData)) {
+  round.startedAt = round.completedAt = round.plannedAt = measuredAt;
+  for (const measurement of round.measurements) { measurement.nodeUuid = round.nodeUuid; measurement.startedAt = measurement.completedAt = measuredAt; }
+}
+
 function count(label, run = activeFixture.run) {
   const counts = requestCounts.get(run) ?? {};
   counts[label] = (counts[label] ?? 0) + 1;
@@ -399,8 +398,9 @@ const server = createServer(async (request, response) => {
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
-  if (url.pathname === '/api/aster-network-observatory/v3/public/routes') {
+  if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
+    if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid, projectedRouteFamilies])), published: homeRouteNodes, display: homeRouteDisplay, access: fixture.ui ? "admin" : "public" });
     if (!fixture.slate) { response.writeHead(404, { 'Content-Type':'application/json' }); response.end(JSON.stringify({error:'plugin unavailable'})); return; }
     const evidence = (label, asn, state = 'ok') => ({ label, asns: [asn], at: new Date().toISOString(), samples: 1, state });
     const family4 = [
@@ -414,66 +414,26 @@ const server = createServer(async (request, response) => {
   if (fixture.reports && url.pathname.startsWith('/api/aster-network-observatory/v3/')) {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
-    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8'})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],legacyPolicies:[]});
+    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay});
     if(/^nodes\/[^/]+\/rounds$/.test(suffix)){const r=reportRoundData[url.searchParams.get('module')];return sendJson(response,{rounds:[r],nextCursor:null});}
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1);return sendJson(response,Object.values(reportRoundData).find(r=>r.id===id));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
+    if(suffix==='home-routes' && request.method==='PUT'){homeRouteNodes=body.nodeUuids;homeRouteDisplay=body.display;return sendJson(response,{revision:0});}
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}
     if(suffix==='suites'){reportSavedSuite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite:reportSavedSuite,revision:0});}
     return sendJson(response,{ok:true});
   }
-  if(fixture.network&&url.pathname.startsWith('/api/aster-network-observatory/v2/')) {
-    const suffix=url.pathname.slice('/api/aster-network-observatory/v2/'.length),nodes=nodeList(fixture.nodes);
-    if(suffix==='catalog')return sendJson(response,{revision:nativeFixture.revision,policies:nativeFixture.policies,probes:nativeFixture.probes,workers:{},endpoints:{'node-0':{address:'203.0.113.1',port:25201}},inventory:nativeInventory(),inventoryError:'',provider:{used:0,blockedUntil:0,checkedAt:Date.now(),error:'',probes:[{location:{country:'CN',city:'Shanghai',asn:4134,network:'China Telecom'},tags:['eyeball-network']}]},websites:WEBSITES,websiteCatalog:WEBSITE_CATALOG,websiteLimit:64,timezones:['Asia/Shanghai','America/Los_Angeles'],retention:{detailDays:7,summaryDays:90}});
-    if(/^nodes\/[^/]+\/reports$/.test(suffix))return sendJson(response,{records:suffix.includes('node-0')?nativeRecords:[],summaries:nativeSummaries,jobs:[],policies:nativeFixture.policies});
-    const chunks=[];for await(const chunk of request)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')):{};
-    if(suffix==='preview')return sendJson(response,{members:nativeInventory().filter(n=>body.clients.includes(n.uuid)||body.groups.includes(n.group)).map(n=>({id:n.uuid,jobs:[{operation:'website',target:'github.com',direction:'VPS→网站',source:{provider:'runner'},ready:true,reason:''}]})),nextAt:Date.now()+60000,trafficAt1GbpsGB:0});
-    if(suffix==='policies'&&request.method==='POST'){const p={...body,id:body.id||'native-policy',nextAt:Date.now()+60000};nativeFixture.policies.push(p);nativeFixture.revision++;nativeFixture.applications++;return sendJson(response,{policy:p});}
-    if(suffix==='probes'&&request.method==='POST'){nativeFixture.probes.push({...body,id:'probe-fixture',online:false});nativeFixture.revision++;return sendJson(response,{id:'probe-fixture',token:'b'.repeat(64)});}
-    if(suffix==='endpoints')return sendJson(response,{ok:true});
-    if(suffix.endsWith('/run'))return sendJson(response,{ok:true});
+  if (fixture.network && url.pathname.startsWith('/api/aster-network-observatory/v2/')) {
+    const suffix = url.pathname.slice('/api/aster-network-observatory/v2/'.length);
+    if (suffix === 'catalog') return sendJson(response, { revision: 0, inventory: nodeList(fixture.nodes), workers: {}, endpoints: {}, probes: pointFixture.probes, registeredNodes: [] });
+    let raw=''; for await (const part of request) raw += part;
+    const body = raw ? JSON.parse(raw) : {};
+    if (suffix === 'probes' && request.method === 'POST') { pointFixture.probes.push({ ...body, id: 'probe-fixture', online: false }); return sendJson(response, { id: 'probe-fixture', token: 'b'.repeat(64) }); }
+    if (suffix.endsWith('/token')) return sendJson(response, { uuid: suffix.split('/')[1], token: 'a'.repeat(64) });
+    return sendJson(response, { ok: true });
   }
-  if (fixture.network && url.pathname.startsWith("/api/aster-network-observatory/v1/")) {
-    const suffix = url.pathname.slice("/api/aster-network-observatory/v1/".length);
-    const nodes = nodeList(fixture.nodes);
-    if (suffix === "catalog") return sendJson(response, {
-      apiVersion: 2, version: "2026-09-28.1", inventoryAt: new Date().toISOString(), inventoryError: "",
-      inventory: nodes.map(({ uuid, name, group }) => ({ uuid, name, group })),
-      nodes: [...networkPluginFixture.agents.values()], policies: [],
-      presets: [{ id: "basic", name: "基础 HTTPS 可用性", description: "两个公共网站参考目标，每 15 分钟检查。", source: "https://www.cloudflare.com/", requirement: "curl", items: [
-        { id: "cloudflare", name: "Cloudflare 网站", mode: "https", target: "www.cloudflare.com", port: 443, intervalMinutes: 15 },
-        { id: "wikipedia", name: "Wikipedia 网站", mode: "https", target: "www.wikipedia.org", port: 443, intervalMinutes: 15 },
-      ] },{id:"china-route",name:"三网路径 · NextTrace",description:"选择公开路径目标，保留原始线路响应。",source:"https://github.com/nxtrace/NTrace-core",requirement:"nexttrace",selectableTargets:true,defaultTargetIds:["route-sh"],items:[{id:"route-sh",name:"上海电信 IPv4",mode:"route",target:"203.0.113.20",carrier:"电信",region:"上海",port:443,intervalMinutes:360},{id:"route-bj",name:"北京联通 IPv4",mode:"route",target:"203.0.113.21",carrier:"联通",region:"北京",port:443,intervalMinutes:360}]},{id:"speedtest",name:"全速双向测速 · iperf3",description:"上传和下载分别测试，使用授权端点。",source:"https://software.es.net/iperf/",requirement:"speedtest",customTarget:true,traffic:true,targets:[{region:"香港",target:"speed.example.net",port:5201,provider:"公开候选"}],items:[{id:"speed",name:"全速双向测速",mode:"speedtest",target:"",port:5201,intervalMinutes:1440}]}],
-    });
-    const nodeMatch = /^nodes\/([^/]+)\/(status|history|token)$/.exec(suffix);
-    if (nodeMatch && nodeMatch[2] === "status") {
-      const uuid = nodeMatch[1], records = uuid === "node-0" ? [networkReportFixture] : [];
-      return sendJson(response, { apiVersion: 2, schedules: networkPluginFixture.schedules.filter((plan) => plan.clients[0] === uuid), tasks: [], node: networkPluginFixture.agents.get(uuid) ?? null, latest: records, history: { items: records, total: records.length, nextCursor: "" }, policies: [], inventoryError: "" });
-    }
-    if (nodeMatch && nodeMatch[2] === "history") {
-      const records = nodeMatch[1] === "node-0" ? [networkReportFixture] : [];
-      return sendJson(response, { items: records, total: records.length, nextCursor: "" });
-    }
-    if (nodeMatch && nodeMatch[2] === "token" && request.method === "POST") {
-      networkPluginFixture.agents.set(nodeMatch[1], { uuid: nodeMatch[1], tokenIssuedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), capabilities: ["curl", "timeout"], runnerVersion: "1.2.0", capabilitiesAt: new Date().toISOString() });
-      return sendJson(response, { uuid: nodeMatch[1], token: "a".repeat(64) });
-    }
-    if (suffix === "policies/preview" || suffix === "policies/apply") {
-      const chunks = [];
-      for await (const chunk of request) chunks.push(chunk);
-      const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const selected = nodes.filter((node) => input.clients.includes(node.uuid) || input.groups.includes(node.group));
-      const added = selected.length * 2 - networkPluginFixture.schedules.length;
-      if (suffix.endsWith("apply")) {
-        networkPluginFixture.applications += 1;
-        for (const node of selected) for (const [id, target] of [["cloudflare", "www.cloudflare.com"], ["wikipedia", "www.wikipedia.org"]]) {
-          const planId = `basic-${node.uuid}-${id}`;
-          if (!networkPluginFixture.schedules.some((plan) => plan.id === planId)) networkPluginFixture.schedules.push({ id: planId, name: `${node.name} · ${id}`, mode: "https", enabled: true, target, carrier: "", region: "", port: 443, intervalMinutes: 15, clients: [node.uuid], nextRunAt: Date.now() + 60_000, revision: 0, sourcePolicy: "fixture", customized: false, catalogVersion: "2026-09-28.1" });
-        }
-        return sendJson(response, { added });
-      }
-      return sendJson(response, { planCount: selected.length * 2, added, unchanged: networkPluginFixture.schedules.length, nodes: selected.map(({ uuid, name, group }) => ({ uuid, name, group, state: networkPluginFixture.agents.has(uuid) ? "就绪" : "未接入", planCount: 2 })) });
-    }
+  if (url.pathname.startsWith('/api/aster-network-observatory/v1/')) {
+    count('removed-network-api', fixture.run); response.writeHead(404); return response.end('{}');
   }
   if (fixture.ui && url.pathname === "/api/admin/theme/settings") {
     const chunks = [];
@@ -1333,210 +1293,6 @@ try {
     writeFileSync(process.env.BROWSER_GATE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
-  // Exercise the actual instance workspace and bulk drawer against a plugin
-  // wire fixture; the plugin itself is covered by policy.node.cjs.
-  activeFixture = { ...activeFixture, network: true, run: "network-workspace" };
-  await cdp.call("Emulation.setDeviceMetricsOverride", {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/instance/node-0?focus=network` });
-  await waitUntil(cdp, `document.querySelector('.network-workspace .network-latest-card') !== null`, 6_000);
-  failGate(await cdp.value(`document.querySelector('.instance-segmented button[data-active="true"]')?.textContent === '网络检测'`), "network tab did not deep-link into the instance");
-  failGate(await cdp.value(`document.querySelector('input[type="datetime-local"]') === null`), "chart range controls leaked into the network tab");
-  await waitUntil(cdp, `document.querySelectorAll('.native-tabs [role="tab"]').length === 3`, 3000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-tabs button')).find(b=>b.textContent==='国际网站').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-result-card')?.textContent.includes('HTTP 403')`,2000);
-  await cdp.value(`document.querySelector('.native-result-card').click()`);
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open]')?.textContent.includes('已经收到应用响应')`,2000);
-  failGate(await cdp.value(`Array.from(document.querySelectorAll('.native-metrics')).some(e=>e.textContent.includes('TLS 握手'))`),'native timing breakdown missing');
-  failGate(await cdp.value(`document.querySelector('.network-drawer').textContent.includes('建连失败率') && document.querySelector('.network-drawer').textContent.includes('包级丢包率')`),'TCP quality semantics missing');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-website-report.png`);
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  for (const [tab,selector,file] of [['大陆线路','.native-result-card','route'],['大陆测速','.native-result-card','speed']]) {
-    await cdp.value(`Array.from(document.querySelectorAll('.native-tabs button')).find(b=>b.textContent===${JSON.stringify(tab)}).click()`);
-    await waitUntil(cdp, `document.querySelector(${JSON.stringify(selector)})!==null`,2000);
-    await cdp.value(`document.querySelector(${JSON.stringify(selector)}).click()`);
-    await waitUntil(cdp, `document.querySelector('.network-drawer[open]')!==null`,2000);
-    failGate(await cdp.value(`document.querySelector('.network-drawer').scrollWidth<=document.querySelector('.network-drawer').clientWidth+1`),'native '+file+' report overflows desktop');
-    if(file==='route')failGate(await cdp.value(`document.querySelectorAll('.native-paired-paths .native-path').length===2 && document.querySelector('.native-paired-paths').textContent.includes('未响应') && !document.querySelector('.native-paired-paths').textContent.includes('无 ASN 证据')`),'paired route report lost partial hops');
-    else failGate(await cdp.value(`document.querySelectorAll('.native-metrics article').length===4`),'speed report lost directions or stream counts');
-    if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-${file}-report.png`);
-    await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-    failGate(await cdp.value(`document.querySelector('.network-drawer-body').scrollWidth<=document.querySelector('.network-drawer-body').clientWidth+1`),'native '+file+' report overflows mobile');
-    if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-${file}-mobile.png`);
-    await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-    await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  }
-  await cdp.value(`document.querySelector('.native-section-heading button').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-purpose-grid button')!==null`,2000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-purpose-grid button')).find(b=>b.textContent.includes('大陆线路')).click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('选择测量点与 VPS')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-source-reference')!==null`,2000);
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-route-plan.png`);
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  failGate(await cdp.value(`document.querySelector('.network-drawer-body').scrollWidth<=document.querySelector('.network-drawer-body').clientWidth+1`),'mainland source step overflows mobile');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-route-plan-mobile.png`);
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-  await cdp.value(`document.querySelector('.native-steps button').click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-purpose-grid button')).find(b=>b.textContent.includes('国际网站')).click(); Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('选择测量点与 VPS')).click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.native-check-grid label').length>=3`,2000);
-  failGate(await cdp.value(`document.querySelectorAll('.native-site-picker .native-check-grid label').length===48 && document.querySelector('.native-site-picker').textContent.includes('静态资源 CDN')`),'international catalogue groups missing');
-  await cdp.value(`Array.from(document.querySelectorAll('.native-site-picker button')).find(b=>b.textContent==='TcpQuality 网站与 CDN').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-site-picker [role="status"]').textContent.includes('已选 39 项')`,2000);
-  await cdp.value(`document.querySelector('.native-site-picker input[type=search]').focus()`);
-  await cdp.call('Input.insertText',{text:'jsDelivr'});
-  await waitUntil(cdp, `document.querySelectorAll('.native-site-picker .native-check-grid label').length===1`,2000);
-  await cdp.value(`document.querySelector('.native-site-picker input[type=search]').select()`);
-  await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8});
-  await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8});
-  await waitUntil(cdp, `document.querySelectorAll('.native-site-picker .native-check-grid label').length===48`,2000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-site-picker button')).find(b=>b.textContent==='推荐 6 项').click()`);
-  failGate(await cdp.value(`Array.from(document.querySelectorAll('.native-check-grid input')).every(e=>{const r=e.getBoundingClientRect();return r.width<=20&&r.height<=20;})`),'native checkbox inherited text-field dimensions');
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  failGate(await cdp.value(`document.querySelector('.native-site-picker').scrollWidth<=document.querySelector('.native-site-picker').clientWidth+1 && document.querySelector('.native-site-picker-list').getBoundingClientRect().height<=421`),'international target picker overflows mobile');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-site-picker-mobile.png`);
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-
-  failGate(await cdp.value(`document.querySelectorAll('.native-node-picker label').length===17 && Array.from(document.querySelectorAll('.native-node-picker .network-choice-title')).every(e=>e.getBoundingClientRect().right <= document.querySelector('.native-node-picker').getBoundingClientRect().right+1)`),'long VPS names escape selection cards');
-  await cdp.value(`document.querySelector('input[aria-label="搜索网络方案 VPS"]').focus()`);
-  await cdp.call('Input.insertText',{text:'Scale Node 1'});
-  await waitUntil(cdp, `document.querySelectorAll('.native-node-picker label').length===1`,2000);
-  await cdp.value(`document.querySelector('input[aria-label="搜索网络方案 VPS"]').select()`);
-  await cdp.call('Input.insertText',{text:' '});
-  await waitUntil(cdp, `document.querySelectorAll('.native-node-picker label').length===17`,2000);
-  if(process.env.BROWSER_GATE_SCREENSHOT){await cdp.value(`document.querySelector('.network-drawer-body').scrollTop=0`);await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-scope.png`);}
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('设置时间并预览')).click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel select')).find(s=>s.textContent.includes('每天多个')).value='daily'; Array.from(document.querySelectorAll('.native-plan-panel select')).find(s=>s.textContent.includes('每天多个')).dispatchEvent(new Event('change',{bubbles:true}))`);
-  await waitUntil(cdp, `document.querySelector('.native-plan-panel').textContent.includes('IANA 时区')`,2000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-time-editor button')).find(b=>b.textContent.includes('添加时刻')).click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.native-time-editor input[type="time"]').length===2`,2000);
-  await cdp.value(`document.querySelector('button[aria-label="移除每日检测时刻 2"]').click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.native-time-editor input[type="time"]').length===1`,2000);
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-timing.png`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('预览覆盖与下次执行')).click()`);
-  await waitUntil(cdp, `document.querySelector('.native-preview')?.textContent.includes('1 台 VPS')`,2000);
-  // Preview content renders before action() finishes refreshing the catalog.
-  // Wait for the real enabled button rather than clicking during that refresh.
-  await waitUntil(cdp, `Array.from(document.querySelectorAll('.native-preview button')).some(b=>b.textContent.includes('确认保存')&&!b.disabled)`,6000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-preview button')).find(b=>b.textContent.includes('确认保存')).click()`);
-  await waitUntil(cdp, `document.querySelector('.native-plan-panel [role="status"]')?.textContent.includes('方案已保存')`,2000);
-  failGate(nativeFixture.applications===1,'native plan did not submit');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-management.png`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-config-tabs button')).find(b=>b.textContent.includes('测量点接入')).click()`);
-  for(const [label,value] of [['探针名称','Shanghai Telecom'],['大陆城市','上海']]){
-    await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel label')).find(l=>l.textContent.startsWith(${JSON.stringify(label)})).querySelector('input').focus()`);
-    await cdp.call('Input.insertText',{text:value});
-  }
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent==='生成大陆探针凭证').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-plan-panel .network-credential-reveal')?.textContent.includes('--probe-id')`,2000);
-  failGate(await cdp.value(`document.querySelector('.native-plan-panel .network-credential-reveal code').textContent.length===64`),'mainland credential not shown once');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-mainland-setup.png`);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent==='隐藏凭证').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-plan-panel .network-credential-reveal')===null`,2000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-config-tabs button')).find(b=>b.textContent.includes('创建方案')).click()`);
-
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  failGate(await cdp.value(`document.querySelector('.network-drawer').scrollWidth<=document.querySelector('.network-drawer').clientWidth+1`),'native drawer overflows mobile');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.native-mobile.png`);
-  await cdp.value(`document.querySelector('.network-drawer').focus()`);
-  await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open]')===null`,2000);
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-  await cdp.value(`document.querySelector('.network-workspace>details').open=true`);
-
-  await cdp.value(`document.querySelector('.network-latest-card').click()`);
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open] .network-measurements') !== null`, 2_000);
-  failGate(await cdp.value(`document.querySelector('.network-drawer').textContent.includes('首字节累计')`), "structured network report was not rendered");
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-node-banner button')).find(b => b.textContent.includes('启用检测')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open] pre')?.textContent.includes("--node-uuid 'node-0'")`, 2_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-drawer button')).find(b => b.textContent.includes('生成本机探测器密钥')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-credential-reveal code')?.textContent.length === 64`, 2_000);
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-vps-setup.png`);
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await waitUntil(cdp, `document.querySelector('.network-capabilities')?.textContent.includes('curl')`, 2_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.network-preset-grid .network-preset').length === 3`, 2_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-drawer details')).find(d=>d.querySelector('.network-policy-panel')).open=true`);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-steps button')).find(b => b.textContent.includes('范围与预览')).click()`);
-  failGate(await cdp.value(`document.querySelector('.network-editor-intro')?.textContent.includes('Scale Node 0')`), "instance scope did not default to the current VPS");
-  await cdp.value(`Array.from(document.querySelectorAll('.network-editor-intro button')).find(b => b.textContent.includes('扩展到更多')).click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-node-picker label')).find(e => e.textContent.includes('Scale Node 1')).querySelector('input').click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-panel button')).find(b => b.textContent.includes('预览应用范围')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-preview')?.textContent.includes('4 条计划')`, 2_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-panel button')).find(b => b.textContent.includes('确认应用')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-policy-panel [role="status"]')?.textContent.includes('应用成功')`, 3_000);
-  failGate(networkPluginFixture.applications === 1, "bulk preset was not submitted to the plugin API");
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.network-instance-plan').length === 2`, 3_000);
-  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1`), "network workspace overflows mobile viewport");
-  await cdp.value(`if (document.querySelector('.floating-controls-trigger').getAttribute('aria-expanded') !== 'true') document.querySelector('.floating-controls-trigger').click()`);
-  await waitUntil(cdp, `['主题设置', '管理'].every(label => { const action = document.querySelector('.floating-controls-actions [aria-label="' + label + '"]'); const bounds = document.querySelector('.floating-controls-actions').getBoundingClientRect(); const rect = action?.getBoundingClientRect(); return rect && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1; })`, 4_000);
-  failGate(await cdp.value(`['主题设置', '管理'].every(label => { const action = document.querySelector('.floating-controls-actions [aria-label="' + label + '"]'); const bounds = document.querySelector('.floating-controls-actions').getBoundingClientRect(); const rect = action?.getBoundingClientRect(); return rect && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1; })`), "floating controls clip settings or admin on mobile");
-  await cdp.value(`document.querySelector('.floating-controls-trigger').click()`);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b => b.textContent.includes('批量配置')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open]') !== null`, 2_000);
-  failGate(await cdp.value(`document.querySelector('.network-drawer').getBoundingClientRect().width <= innerWidth + 1`), "network configuration drawer overflows mobile viewport");
-  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.network-mobile.png`);
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
-  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.network-desktop.png`);
-  await cdp.value(`document.querySelector('input[aria-label="搜索并切换 VPS"]').focus()`);
-  await waitUntil(cdp, `document.querySelectorAll('.node-switch-results [role="option"]').length === 3`, 2_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.node-switch-results [role="option"]')).find(e => e.textContent.includes('Scale Node 1')).click()`);
-  await waitUntil(cdp, `location.pathname === '/instance/node-1' && location.search === '?focus=network'`, 3_000);
-  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
-  await waitUntil(cdp, `Array.from(document.querySelectorAll('.home-command-action')).some(b => b.textContent.includes('网络检测'))`, 6_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.home-command-action')).find(b => b.textContent.includes('网络检测')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-drawer[open] .network-preset-grid') !== null`, 4_000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-policy-steps button')).find(b => b.textContent.includes('范围与预览')).click()`);
-  failGate(await cdp.value(`document.querySelectorAll('.network-drawer .network-node-picker label').length === 3`), "Home batch launcher did not load the VPS inventory");
-  await cdp.value(`Array.from(document.querySelectorAll('.native-purpose-grid button')).find(b=>b.textContent.includes('国际网站')).click(); Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('选择测量点与 VPS')).click()`);
-  await waitUntil(cdp, `document.querySelectorAll('.native-check-grid label').length>=3`,2000);
-  for(let i=0;i<17;i++){
-    await cdp.value(`(() => {const input=document.querySelector('.native-node-picker').querySelectorAll('input')[${i}];if(input.checked !== ${i<2})input.click();})()`);
-    await waitUntil(cdp, `document.querySelector('.native-node-picker').querySelectorAll('input')[${i}].checked === ${i<2}`,2000);
-  }
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('设置时间并预览')).click()`);
-  await waitUntil(cdp, `Array.from(document.querySelectorAll('.native-plan-panel button')).some(b=>b.textContent.includes('预览覆盖与下次执行'))`,2000);
-  await cdp.value(`Array.from(document.querySelectorAll('.native-plan-panel button')).find(b=>b.textContent.includes('预览覆盖与下次执行')).click()`);
-  await waitUntil(cdp, `document.querySelector('.native-preview')?.textContent.includes('2 台 VPS')`,2000);
-
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-bulk-preview.png`);
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await cdp.call("Page.navigate", {url:`http://127.0.0.1:${address.port}/instance/node-0?focus=network`});
-  await waitUntil(cdp, `document.querySelector('.network-main-actions')!==null`,4000);
-  await cdp.value(`Array.from(document.querySelectorAll('.network-main-actions button')).find(b=>b.textContent.includes('自定义')).click()`);
-  await waitUntil(cdp, `document.querySelector('.network-plan-editor')!==null`,2000);
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-custom.png`);
-  for(const [mode,target] of [['route','203.0.113.20'],['speedtest','speed.example.net']]) {
-    await cdp.value(`(()=>{const s=document.querySelector('.network-plan-editor select');s.value=${JSON.stringify(mode)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await waitUntil(cdp, `document.querySelector('.network-target-source')!==null`,2000);
-    await cdp.value(`(()=>{const s=document.querySelectorAll('.network-plan-editor .network-form-section')[1].querySelector('select');s.value=${JSON.stringify(target)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await waitUntil(cdp, `document.querySelectorAll('.network-plan-editor .network-form-section')[1].querySelector('select').value===${JSON.stringify(target)}`,2000);
-    failGate(await cdp.value(`!Array.from(document.querySelectorAll('.network-plan-editor label')).some(l=>l.textContent.startsWith('目标主机'))`),'public target did not replace manual host field');
-    if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-custom-${mode}.png`);
-  }
-
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  failGate(await cdp.value(`document.querySelector('.network-drawer-body').scrollWidth<=document.querySelector('.network-drawer-body').clientWidth+1`),'custom form overflows mobile');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-custom-mobile.png`);
-  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await cdp.value(`localStorage.setItem('appearance', JSON.stringify('dark'))`);
-  await cdp.call('Page.reload');
-  await waitUntil(cdp, `document.documentElement.dataset.appearance==='dark' && document.querySelector('.native-workspace')!==null`,4000);
-  await cdp.value(`document.querySelector('.native-section-heading button').click()`);
-  await waitUntil(cdp, `document.querySelector('.native-purpose-grid')!==null`,2000);
-  failGate(await cdp.value(`document.querySelector('.network-drawer-body').scrollWidth<=document.querySelector('.network-drawer-body').clientWidth+1`),'dark drawer overflows');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-plan-dark.png`);
-  await cdp.value(`document.querySelector('.network-drawer button[aria-label="关闭面板"]').click()`);
-  await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/network-observatory`});
-  await waitUntil(cdp, `document.querySelector('.network-landing')!==null`,4000);
-  failGate(await cdp.value(`document.querySelectorAll('.network-landing .network-node-picker a').length===3`),'legacy entry page lost instance navigation');
-  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-landing-dark.png`);
-  results.push({ nativeWorkspace: 'three categories, HTTP application status and timings, IANA daily plan preview/save, mainland credentials, two-node bulk preview, mobile layout, Escape keyboard close' });
-  results.push({ networkWorkspace: "deep link, structured report, per-node credential, two-node preset preview/apply, mobile drawer, node switch, Home batch launcher" });
-
   activeFixture = {backend:BACKEND_PROFILES.official.id,nodes:3,soak:false,run:'report-v3',ui:true,network:true,reports:true};
   await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/instance/node-0?focus=network`});
   await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length===3 && document.querySelectorAll('.report-latency-card').length>0`,6000);
@@ -1558,7 +1314,7 @@ try {
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-international-${appearance}.png`);
     await cdp.value(`Array.from(document.querySelectorAll('.report-main-tabs button')).find(b=>b.textContent==='路由').click()`);
     await waitUntil(cdp,`document.querySelector('.report-mtr-table')!==null`,2000);
-    failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('4134')`),'v3 MTR lost ASN evidence');
+    failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('4809')`),'v3 MTR lost ASN evidence');
     await waitUntil(cdp,`document.querySelector('.report-bgp-graph svg')!==null`,2000);
     await cdp.value(`document.querySelector('.report-bgp-graph svg g[tabindex]')?.focus()`);
     await cdp.value(`document.querySelector(".report-main-tabs").scrollIntoView({block:"start"})`);
@@ -1571,8 +1327,8 @@ try {
     await cdp.value(`document.querySelector(".report-main-tabs").scrollIntoView({block:"start"})`);
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-speed-mobile-${appearance}.png`);
     await cdp.value(`document.querySelector('.report-workspace-heading button').click()`);
-    await waitUntil(cdp,`document.querySelector('.report-plan-panel')!==null`,2000);
-    failGate(await cdp.value(`document.querySelector('.network-drawer-body').scrollWidth<=document.querySelector('.network-drawer-body').clientWidth+1`),'v3 plan overflows mobile');
+    await waitUntil(cdp,`document.querySelector('.report-plan-panel')!==null`,6000);
+    failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`),'unified network center overflows mobile');
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-steps button')).find(b=>b.textContent.includes('定时时间')).click()`);
     await cdp.value(`document.querySelector('.report-plan-module select').value='daily';document.querySelector('.report-plan-module select').dispatchEvent(new Event('change',{bubbles:true}))`);
     await waitUntil(cdp,`document.querySelector('.report-plan-panel input[placeholder="04:00, 21:00"]')!==null`,2000);
@@ -1582,17 +1338,53 @@ try {
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-plan-mobile-${appearance}.png`);
-    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('测量资源')).click()`);
-    await waitUntil(cdp,`document.querySelector('.network-drawer[open]')?.textContent.includes('集中测量资源')||document.querySelectorAll('.network-drawer[open]').length>1`,2000);
-    await cdp.value(`Array.from(document.querySelectorAll('.network-drawer button')).find(b=>b.textContent.includes('登记大陆测量点 /')).click()`);
-    await waitUntil(cdp,`document.querySelector('.native-setup-section')!==null`,2000);
-    failGate(await cdp.value(`document.querySelector('.native-plan-panel .native-config-tabs')===null`),'resource drawer exposed old plan editor');
-
-    await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    failGate(await cdp.value(`['主页延迟检测','主页三网线路','检测方案','探测器与测量点','目标端点'].every(title=>Array.from(document.querySelectorAll('.aster-studio-panel h2')).some(e=>e.textContent===title))`), 'network center panels missing');
+    failGate(await cdp.value(`!document.body.textContent.includes('旧版单次检测与历史') && !document.body.textContent.includes('工具诊断与旧计划') && !document.body.textContent.includes('兼容与迁移')`), 'removed network functionality is still visible');
+    failGate(await cdp.value(`Array.from(document.querySelectorAll('.report-target-checklist input:checked')).length===1`),'instance shortcut lost selected VPS');
+    await cdp.value(`document.querySelector('#network-agents').scrollIntoView({block:'start'})`);
+    for (const label of ['探针名称','大陆城市']) {
+      await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel label')).find(l=>l.textContent.startsWith(${JSON.stringify(label)})).querySelector('input').focus()`);
+      await cdp.call('Input.insertText', {text:label==='探针名称'?'上海测试测量点':'上海'});
+    }
+    await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel button')).find(b=>b.textContent==='生成大陆探针凭证').click()`);
+    await waitUntil(cdp, `document.querySelector('.network-credential-reveal')?.textContent.includes('--probe-id')`, 2000);
+    failGate(await cdp.value(`document.querySelector('.network-credential-reveal code').textContent.length===64`), 'probe credentials are unavailable');
+    await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel button')).find(b=>b.textContent==='隐藏凭证').click()`);
+    failGate(await cdp.value(`document.querySelector('.network-credential-reveal')===null`), 'credential reveal did not clear');
+    await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/instance/node-0?focus=network`});
+    await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length===3`, 4000);
     await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   }
   results.push({reportV3:'ten original samples, 403 detail, routes/ASN and BGP evidence, nine speed rows, dark/light 390px, daily multiple times and coverage preview, keyboard Escape'});
   }
+
+  // All six appearances consume summaries produced by the actual built-in preset.
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'network-center' };
+  for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
+    await cdp.value(`localStorage.setItem('appearance', JSON.stringify(${JSON.stringify(appearance)}))`);
+    await cdp.call('Page.navigate', { url: `http://127.0.0.1:${address.port}/` });
+    await waitUntil(cdp, `document.querySelector('.carrier-routes')?.textContent.includes('CMIN2')`, 6000);
+    failGate(await cdp.value(`document.querySelector('.carrier-routes').textContent.includes('管理员预览')`), 'unpublished measurements unavailable to admin in '+appearance);
+    failGate(await cdp.value(`document.querySelectorAll('.carrier-routes')[0].querySelectorAll('.carrier-route-evidence').length===6`), 'carrier directions lost in '+appearance);
+  }
+  await cdp.value(`document.querySelector('.home-command-action[href*="panel=plans"]').click()`);
+  await waitUntil(cdp, `document.querySelector('.home-routes-publish-nodes input')!==null`, 6000);
+  await cdp.value(`document.querySelector('.home-routes-publish-nodes input').click();Array.from(document.querySelectorAll('.home-routes-publish button')).find(b=>b.textContent==='保存显示与发布范围').click()`);
+  await waitUntil(cdp, `document.querySelector('.home-routes-publish [role="status"]')?.textContent.includes('已保存')`, 2000);
+  failGate(homeRouteNodes.length===1 && homeRouteNodes[0]==='node-0','publication selection did not reach plugin');
+  await cdp.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await cdp.value(`document.querySelector('#network-routes').scrollIntoView({block:'start'})`);
+  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-center.png`);
+  activeFixture = {...activeFixture, ui:false};
+  await cdp.call('Page.navigate', {url:`http://127.0.0.1:${address.port}/`});
+  await waitUntil(cdp, `document.querySelectorAll('.carrier-route-evidence[data-state="ok"]').length===6`,6000);
+  failGate(await cdp.value(`!document.querySelector('.carrier-routes').textContent.includes('管理员预览')`),'private preview leaked to visitor');
+  homeRouteDisplay=false;
+  await cdp.call('Page.reload');
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length===3 && document.querySelector('.carrier-routes')===null`,6000);
+  homeRouteDisplay=true;
+  failGate((requestCounts.get('network-center')?.['removed-network-api'] || 0)===0,'removed network APIs still requested');
+  results.push({networkCenter:'real 12-measurement preset feeds six appearances, admin private preview, explicit visitor scope, display switch, shared navigation and no obsolete APIs'});
 
   for (const backend of Object.values(BACKEND_PROFILES)) {
     await clearFixturePage(cdp);
@@ -1614,7 +1406,7 @@ try {
     const html = await cdp.value(`document.querySelector('.instance-report-frame').srcdoc`);
     const model = await cdp.value(`JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent)`);
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-online.png`, { waitForImages: false });
-    failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence');
+    failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence: '+JSON.stringify(model.sources));
     if (backend.id === BACKEND_PROFILES.official.id) failGate(model.metrics.filter(m=>m.key.startsWith('gpu_memory[')).length===2, 'report merged separate GPU devices');
     failGate(!html.includes('203.0.113.19') && !html.includes('8.8.8.8'), 'redacted report leaked an address');
     const rpcMethod = backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords';

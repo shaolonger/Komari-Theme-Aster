@@ -674,68 +674,6 @@ async function networkV3(
   };
 }
 
-async function networkLegacy(
-  uuid: string,
-  range: ReportRange,
-  version: 1 | 2,
-  signal: AbortSignal,
-) {
-  const data = object(
-    await readJson(
-      version === 2
-        ? `/api/aster-network-observatory/v2/nodes/${encodeURIComponent(uuid)}/reports`
-        : "/api/aster-network-observatory/v1/status",
-      signal,
-    ),
-  );
-  if (!Array.isArray(version === 2 ? data.records : data.history))
-    throw new Error("旧版网络历史响应无效");
-  const rows = array(version === 2 ? data.records : data.history);
-  const evidence: NetworkEvidence[] = rows
-    .filter((r) => r.nodeUuid === uuid)
-    .filter((r) => {
-      const t = timestamp(r.completedAt);
-      return t >= range.start && t < range.end;
-    })
-    .map((r) => ({
-      id: `v${version}:${str(r.id) || str(r.taskId) || `${str(r.scheduleId)}:${str(r.completedAt)}`}`,
-      module: str(r.operation) || str(r.mode),
-      time: timestamp(r.completedAt),
-      state: str(object(r.data).state) || str(r.status),
-      target: str(r.target),
-      direction: str(r.direction),
-      source: `旧版 v${version} · ${str(object(r.source).name) || str(r.carrier)}`,
-      detail: projectEvidence(r.data ?? { state: r.status }),
-      summaryOnly: version === 1,
-    }));
-  if (version === 2)
-    for (const r of array(data.summaries)) {
-      const t = Date.parse(str(r.day) + "T00:00:00Z");
-      if (t >= range.start && t + 86400000 <= range.end)
-        evidence.push({
-          id: `v2:summary:${str(r.day)}:${str(r.fingerprint)}`,
-          module: `${str(r.operation)} · UTC 日摘要（不与明细累加）`,
-          time: t,
-          state: "summary",
-          target: str(r.target),
-          direction: str(r.direction),
-          source: "旧版 v2 保留摘要",
-          detail: projectEvidence(r),
-          summaryOnly: true,
-        });
-    }
-  return {
-    evidence,
-    source: {
-      id: `network-v${version}`,
-      name: `旧版网络记录 v${version}`,
-      state: evidence.length ? "partial" : "empty",
-      detail:
-        "接口仅提供当前保留集合，无法证明完整历史。日摘要仅纳入完整落在区间内的 UTC 日，不与明细相加；旧版命令原文不进入档案。",
-    } satisfies ReportSource,
-  };
-}
-
 export interface ReportRequest {
   meta: NodeInfo;
   current?: NodeMetrics;
@@ -808,21 +746,12 @@ export async function collectReportInput(
       }
     })(),
     (async () => {
-      for (const version of [3, 2, 1] as const) {
-        progress(`正在读取网络观测 v${version} 的既有记录…`);
-        try {
-          const r =
-            version === 3
-              ? await networkV3(meta.uuid, range, signal)
-              : await networkLegacy(meta.uuid, range, version, signal);
-          network.push(...r.evidence);
-          sources.push(r.source);
-        } catch (e) {
-          check(signal);
-          sources.push(
-            sourceError(`network-v${version}`, `网络观测 v${version}`, e),
-          );
-        }
+      progress("正在读取网络观测的既有轮次…");
+      try {
+        const r = await networkV3(meta.uuid, range, signal);
+        network.push(...r.evidence); sources.push(r.source);
+      } catch (e) {
+        check(signal); sources.push(sourceError("network-v3", "网络观测", e));
       }
     })(),
   ]);

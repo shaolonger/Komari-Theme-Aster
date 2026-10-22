@@ -30,13 +30,7 @@ function normalizeSuite(input, resources = []) {
     input.modules.length > MODULES.length
   )
     throw new Error("请选择 1–6 个报告模块");
-  const range = M.normalizePolicy({
-    kind: "websites",
-    clients: input.clients,
-    groups: input.groups,
-    inherit: input.inherit,
-    sites: ["www.cloudflare.com"],
-  });
+  const range = M.normalizeRange(input);
   const directory = [...ENDPOINTS, ...resources];
   const seen = new Set();
   const modules = input.modules.map((value) => {
@@ -237,7 +231,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
         add(
           `${id}:${protocol}:return`,
           e.address,
-          { provider: e.provider, city: e.city, carrier: e.carrier },
+          { provider: e.provider, city: e.city, carrier: e.carrier, carrierId: e.carrierId },
           "VPS→大陆",
           "route",
           "node:" + nodeUuid,
@@ -308,7 +302,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
             {
               provider: "Globalping",
               country: "CN",
-              carrier: carrier.name,
+              carrier: carrier.name, carrierId: carrier.id,
               asn: carrier.asn,
             },
             "大陆→VPS",
@@ -400,7 +394,7 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
       add(
         e.id,
         e.address,
-        { provider: e.provider, city: e.city, carrier: e.carrier },
+        { provider: e.provider, city: e.city, carrier: e.carrier, carrierId: e.carrierId },
         "VPS↔端点",
         e.method === "iperf3" ? "iperf-speed" : "http-speed",
         "node:" + nodeUuid,

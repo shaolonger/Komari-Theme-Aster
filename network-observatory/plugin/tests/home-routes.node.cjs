@@ -46,6 +46,7 @@ test('public endpoint is opt-in, hides nonpublic/deleted nodes, checks admin and
    assert.equal((await put({nodeUuids:[A],revision:0})).status,200);
    assert.equal((await get()).body.nodes[A]['4'][0].return.label,'CN2 / 163');
    assert.ok(!JSON.stringify((await get()).body).includes('SECRET'));
+   assert.equal((await get()).body.nodes[A]['4'][0].return.diagnostic,'');
    state.inventory[0].publicVisible=false;assert.deepEqual((await get()).body.nodes,{});
    state.inventory=[];assert.deepEqual((await get()).body.nodes,{});
  }finally{fs.rmSync(root,{recursive:true,force:true});}
@@ -66,4 +67,59 @@ test('v3 route completion and publishing existing rounds both populate the homep
    assert.equal(output.body.nodes[A]['4'][0].forward,null);
    const projected=path.join(root,'home-routes',A+'.json');assert.ok(fs.existsSync(projected));
  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('actual china-routes preset: 9 catalog return + 3 normalized Globalping forward reports reach private preview, explicit publication and rebuild', async () => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'aster-real-preset-'));
+ try {
+   const f=await require('./carrier-route-fixture.cjs').carrierFixture(root);
+   assert.equal(f.plan.jobs.length,12);
+   assert.ok(f.plan.jobs.every(job=>["telecom","unicom","mobile"].includes(job.source.carrierId)));
+   assert.equal(f.plan.jobs.filter(j=>j.operation==='globalping').length,3);
+   assert.equal(f.round.measurements.length,12);
+   const preview=await f.invoke('GET','/home-routes');
+   assert.equal(preview.status,200);
+   assert.equal(preview.body.access,'admin');
+   assert.deepEqual(preview.body.published,[]);
+   assert.equal((await f.invoke('GET','/home-routes',undefined,false)).status,403);
+   for(const [index,label] of ['CN2','9929','CMIN2'].entries()) {
+     const row=preview.body.nodes[A]['4'][index];
+     assert.ok(row.forward.label.includes(label));
+     assert.equal(row.return.label,label);
+     assert.equal(row.return.samples,3);
+     assert.equal(row.forward.reportId,f.round.id);
+     assert.equal(preview.body.nodes[A]['6'][index].return,null);
+   }
+   assert.deepEqual((await f.invoke('GET','/public/routes',undefined,false)).body.nodes,{});
+   assert.equal((await f.invoke('PUT','/home-routes',{revision:0,nodeUuids:[A],display:true})).status,200);
+   const pub=(await f.invoke('GET','/public/routes',undefined,false)).body;
+   assert.equal(pub.nodes[A]['4'][0].return.label,'CN2');
+   assert.ok(!JSON.stringify(pub).includes('8.8.8.8'));
+   assert.equal((await f.invoke('POST','/home-routes/rebuild',{})).status,200);
+   f.state.inventory[0].publicVisible=false;
+   assert.deepEqual((await f.invoke('GET','/public/routes',undefined,false)).body.nodes,{});
+   assert.ok((await f.invoke('GET','/home-routes')).body.nodes[A]);
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('multi-AS observations and all built-in carrier labels use shared evidence rules without guessing from target labels',()=>{
+ for(const label of ['电信 163','电信 CN2','联通 169','联通 9929','移动 CMNET','移动 CMIN2']) {
+  const result=project(sample({source:{carrier:label},data:{kind:'route',state:'ok',complete:true,hops:[{asn:'AS4809 AS4134 9929 58807'}]}}));
+  assert.ok(result); assert.equal(result.evidence.asns.length,4);
+ }
+ assert.equal(project(sample({source:{carrier:'电信 CN2'},data:{kind:'route',state:'ok',complete:true,hops:[]}})).evidence.label,'未识别');
+});
+
+test('private failure diagnostics remain available to admins and are stripped from public summaries', async () => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'aster-route-diagnostics-')),routes=new Map();
+ const state={revision:0,inventory:[{uuid:A,publicVisible:true}],homeRouteNodes:[A],reportSuites:[]};
+ try {
+  homeRouteStore(root,e=>e.code==='ENOENT').observe(sample({data:{kind:'route',state:'failed',diagnostic:'connect PRIVATE_TARGET with PRIVATE_CREDENTIAL',hops:[]}}));
+  registerReportController({storageDir:root,isMissingFile:e=>e.code==='ENOENT',server:{route:(m,p,f)=>routes.set(m+' '+p,f)},authorized:()=>true,readBody:()=>({}),respond:(res,status,body)=>Object.assign(res,{status,body})},{read:()=>state,lock:fn=>Promise.resolve(fn()),save:()=>{}});
+  const admin={};await routes.get('GET '+BASE+'/home-routes')({},admin);
+  assert.ok(admin.body.nodes[A]['4'][0].return.diagnostic.includes('PRIVATE_TARGET'));
+  const pub={};await routes.get('GET '+BASE+'/public/routes')({},pub);
+  assert.equal(pub.body.nodes[A]['4'][0].return.label,'测量失败');
+  assert.ok(!JSON.stringify(pub.body).includes('PRIVATE_'));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

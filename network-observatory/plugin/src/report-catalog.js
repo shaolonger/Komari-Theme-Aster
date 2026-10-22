@@ -107,6 +107,7 @@ const routes = CATALOG.find((c) => c.id === "china-route").items.map((row) => ({
   name: row.name,
   city: row.region,
   carrier: row.carrier,
+  carrierId: row.carrierId,
   address: row.target,
   family: row.id.includes("ipv6") ? "6" : "4",
   uses: ["route"],

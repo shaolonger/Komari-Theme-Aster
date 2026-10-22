@@ -1,6 +1,6 @@
 const { test } = require("node:test"),
   assert = require("node:assert/strict");
-const { normalizeResource, migration } = require("../src/report-resources.js");
+const { normalizeResource } = require("../src/report-resources.js");
 const { ENDPOINTS, PRESETS } = require("../src/report-catalog.js");
 const M = require("../src/native-model.js");
 const { html } = require("../src/report-share.js");
@@ -52,23 +52,7 @@ test("official catalog separates IDC latency from authorized uncapped endpoints 
   assert.equal(new Set(ENDPOINTS.map((e) => e.id)).size, ENDPOINTS.length);
   assert.ok(PRESETS.find((p) => p.id === "idc-complete").endpoints.length > 30);
 });
-test("legacy migration preserves range and timing, creates missing custom site, and prevents P4 being named P1", () => {
-  const old = M.normalizePolicy({
-    clients: [uuid],
-    kind: "websites",
-    sites: ["api.example.net"],
-    timing: {
-      type: "daily",
-      times: ["04:00", "21:00"],
-      timezone: "Asia/Shanghai",
-    },
-  });
-  const converted = migration(old, 4, []);
-  assert.equal(converted.additional.length, 1);
-  assert.equal(converted.suite.modules[0].timing.times.length, 2);
-  assert.deepEqual(converted.suite.clients, [uuid]);
-  assert.equal(converted.disableOldTrigger, true);
-});
+
 test("shared HTML escapes measured text and contains no scripts or credentials", () => {
   const round = {
     module: "international",

@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Layers3, Radio, Timer } from "lucide-react";
+import { Check, Layers3, Timer } from "lucide-react";
 import {
-  applyReportMigrations,
-  previewReportMigrations,
   deleteReportSuite,
   previewReportSuite,
   reportCatalog,
@@ -22,12 +20,10 @@ import "@/styles/network-reports.css";
 export function ReportPlanPanel({
   uuid,
   initialNodes = [],
-  onResources,
   onApplied,
 }: {
   uuid?: string;
   initialNodes?: string[];
-  onResources: () => void;
   onApplied?: () => void;
 }) {
   const query = useQuery({
@@ -43,11 +39,7 @@ export function ReportPlanPanel({
       ReturnType<typeof previewReportSuite>
     > | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const [migrationIds, setMigrationIds] = useState<string[]>([]);
-  const [migration, setMigration] = useState<Awaited<
-    ReturnType<typeof previewReportMigrations>
-  > | null>(null);
+    [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   const [dailyInputs, setDailyInputs] = useState<Record<string, string>>({});
   const catalog = query.data;
   if (!catalog)
@@ -74,7 +66,8 @@ export function ReportPlanPanel({
       nextAt: 0,
     };
   }
-  const current = draft || {
+  const selectedSuite = catalog.suites.find(suite => suite.id === new URLSearchParams(window.location.search).get("suite"));
+  const current = draft || (selectedSuite ? { ...selectedSuite, revision: catalog.revision } : null) || {
     name: "网络报告",
     clients: initialNodes.length ? initialNodes : uuid ? [uuid] : [],
     groups: [],
@@ -109,6 +102,7 @@ export function ReportPlanPanel({
   async function mutate(fn: () => Promise<unknown>) {
     setBusy(true);
     setError("");
+    setMessage("");
     try {
       await fn();
       await client.invalidateQueries({ queryKey: ["report-catalog"] });
@@ -130,13 +124,8 @@ export function ReportPlanPanel({
       <NetworkSectionHeading
         icon={Layers3}
         title="网络报告方案"
-        description="选择模块、执行时间和 VPS；端点及条件随每轮保存。"
-        aside={
-          <button onClick={onResources}>
-            <Radio size={15} />
-            测量资源
-          </button>
-        }
+        description="选择模块、执行时间和 VPS；保存和执行操作直接写入网络插件。探测器与目标端点在网络观测中统一管理。"
+
       />
       <nav className="report-plan-steps" aria-label="配置步骤">
         {[
@@ -731,6 +720,7 @@ export function ReportPlanPanel({
         </p>
       )}
       {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
       <div className="report-plan-footer">
         {step > 1 && <button onClick={() => setStep(step - 1)}>上一步</button>}
         {step < 3 ? (
@@ -749,6 +739,7 @@ export function ReportPlanPanel({
                 setDraft(null);
                 setDailyInputs({});
                 setPreview(null);
+                setMessage("报告方案已保存到网络插件");
                 onApplied?.();
               })
             }
@@ -757,118 +748,6 @@ export function ReportPlanPanel({
           </button>
         )}
       </div>
-      {!!catalog.legacyPolicies.filter((p) => !p.migratedSuiteId).length && (
-        <details>
-          <summary>批量迁移旧版集中方案 · 预览后停用旧触发</summary>
-          <div className="report-target-actions">
-            <button
-              onClick={() => {
-                setMigrationIds(
-                  catalog.legacyPolicies
-                    .filter((p) => !p.migratedSuiteId)
-                    .map((p) => p.id),
-                );
-                setMigration(null);
-              }}
-            >
-              全选旧方案
-            </button>
-            <button
-              onClick={() => {
-                setMigrationIds([]);
-                setMigration(null);
-              }}
-            >
-              清空
-            </button>
-          </div>
-          {catalog.legacyPolicies
-            .filter((p) => !p.migratedSuiteId)
-            .map((p) => (
-              <label key={p.id} className="report-checkbox">
-                <input
-                  type="checkbox"
-                  checked={migrationIds.includes(p.id)}
-                  onChange={(e) => {
-                    setMigrationIds(
-                      e.target.checked
-                        ? [...migrationIds, p.id]
-                        : migrationIds.filter((id) => id !== p.id),
-                    );
-                    setMigration(null);
-                  }}
-                />
-                {p.name} · {p.enabled ? "启用中" : "已暂停"}
-              </label>
-            ))}
-          <button
-            disabled={busy || !migrationIds.length}
-            onClick={() =>
-              void mutate(async () =>
-                setMigration(await previewReportMigrations(migrationIds)),
-              )
-            }
-          >
-            预览所选 {migrationIds.length} 个旧方案
-          </button>
-          {migration && (
-            <>
-              <section className="report-coverage-preview">
-                <p>
-                  确认后关闭所选旧计划的触发；旧报告仍可读取。新方案累计容量已一并计算。
-                </p>
-                {migration.exceedsCapacity && (
-                  <p role="alert">
-                    迁移范围超过资源或累计采集容量；请减少范围或先调整旧计划。
-                  </p>
-                )}
-                {migration.migrations.map((item) => (
-                  <details key={item.legacyId} open>
-                    <summary>
-                      {item.suite.name} · {item.coverage.nodes.length} 台 VPS ·
-                      新增 {item.additional.length} 个目标
-                    </summary>
-                    {item.differences.map((d) => (
-                      <p key={d}>{d}</p>
-                    ))}
-                    {item.coverage.nodes.map((n) => (
-                      <p key={n.uuid}>
-                        {n.name}：
-                        {n.modules
-                          .map(
-                            (m) =>
-                              `${reportLabels[m.module]} 当前可确认 ${m.targets.filter((t) => t.ready).length}/${m.expected}`,
-                          )
-                          .join(" / ")}{" "}
-                        · 累计 {n.capacity.samplesPerDay} 次建连/天
-                      </p>
-                    ))}
-                  </details>
-                ))}
-              </section>
-              <button
-                disabled={
-                  busy ||
-                  migration.exceedsCapacity ||
-                  migration.revision !== catalog.revision
-                }
-                onClick={() =>
-                  void mutate(async () => {
-                    await applyReportMigrations(
-                      migration.migrations.map((m) => m.legacyId),
-                      migration.revision,
-                    );
-                    setMigration(null);
-                    setMigrationIds([]);
-                  })
-                }
-              >
-                迁移所选方案并停用旧触发
-              </button>
-            </>
-          )}
-        </details>
-      )}
       {!!catalog.suites.length && (
         <details>
           <summary>已保存方案 · {catalog.suites.length}</summary>

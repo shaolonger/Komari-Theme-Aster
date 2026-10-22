@@ -69,8 +69,6 @@ expected = {
     "komari-plugin.json",
     "runner/agent.py",
     "runner/install.sh",
-    "runner/probe.sh",
-    "runner/speedtest.py",
     "runner/native.py",
     "runner/http_receiver.py",
     "runner/aster-network-observatory-http.service",
@@ -104,7 +102,7 @@ for name in expected:
     target = root / name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(files[name])
-    os.chmod(target, 0o755 if name.endswith(("install.sh", "probe.sh")) else 0o644)
+    os.chmod(target, 0o755 if name.endswith("install.sh") else 0o644)
 
 print(f"已下载并验证网络观测插件包 v{manifest['version']} 中的 runner。")
 PY
@@ -154,28 +152,8 @@ install_nexttrace() {
   printf '%s\n' '已安装并校验 NextTrace v1.7.3。'
 }
 
-install_tcpquality() {
-  quality_dir=/usr/local/libexec/tcpquality
-  if [ -s "$quality_dir/runTcpQuality-core.sh" ] && [ -x "$quality_dir/runTcpQuality.sh" ]; then
-    printf '%s\n' '已检测到本地 TcpQuality，保留现有安装。'
-    return 0
-  fi
-  source_base=https://raw.githubusercontent.com/ibsgss/TcpQuality/c2295ae096437859ce4bbc36f170428fcac47be9
-  curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 \
-    "$source_base/runTcpQuality.sh" -o "$TEMP_DIR/runTcpQuality.sh" || fail '无法从上游下载 TcpQuality 入口。'
-  curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 \
-    "$source_base/runTcpQuality-core.sh" -o "$TEMP_DIR/runTcpQuality-core.sh" || fail '无法从上游下载 TcpQuality core。'
-  [ "$(sha256sum "$TEMP_DIR/runTcpQuality.sh" | cut -d ' ' -f 1)" = b5fbc67029e6c9371a3fc4cc0c191661c419b5e5c06fe475831ca748f94e675f ] || fail 'TcpQuality 入口 SHA-256 校验失败。'
-  [ "$(sha256sum "$TEMP_DIR/runTcpQuality-core.sh" | cut -d ' ' -f 1)" = a7274458ddd785d637b526e2d337b80326aac1d1663414490f2a20ee161ba5c0 ] || fail 'TcpQuality core SHA-256 校验失败。'
-  install -d -m 0755 "$quality_dir"
-  install -m 0755 "$TEMP_DIR/runTcpQuality.sh" "$quality_dir/runTcpQuality.sh"
-  install -m 0644 "$TEMP_DIR/runTcpQuality-core.sh" "$quality_dir/runTcpQuality-core.sh"
-  printf '%s\n' '已从上游固定提交安装并校验 TcpQuality。'
-}
-
 install_probe_dependencies
 install_nexttrace
-install_tcpquality
 
 sh "$TEMP_DIR/runner/install.sh"
 if [ -r /dev/tty ]; then

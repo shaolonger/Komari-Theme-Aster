@@ -4,7 +4,6 @@ const fs = require("fs"),
 const { UUID } = require("./model.js");
 const M = require("./native-model.js"),
   G = require("./globalping.js");
-const { archive } = require("./native-archive.js");
 const { createEnricher } = require("./route-enrichment.js");
 const BASE = "/api/aster-network-observatory/v2";
 function registerNativeController(ctx) {
@@ -16,9 +15,9 @@ function registerNativeController(ctx) {
     authorized,
     readBody,
     readState,
+    writeState,
   } = ctx;
   const file = path.join(storageDir, "native-state.json"),
-    reports = archive(storageDir, isMissingFile),
     enricher = createEnricher(ctx.enrichmentOptions);
   let queue = Promise.resolve(),
     busy = false;
@@ -33,7 +32,6 @@ function registerNativeController(ctx) {
   };
   const blank = () => ({
     revision: 0,
-    policies: [],
     probes: {},
     workers: {},
     endpoints: {},
@@ -53,10 +51,11 @@ function registerNativeController(ctx) {
       const value = JSON.parse(fs.readFileSync(file, "utf8"));
       if (
         !value ||
-        !Array.isArray(value.policies) ||
         !Array.isArray(value.jobs)
       )
         throw new Error("原生观测状态损坏；停止写入");
+      delete value.policies;
+      value.jobs = value.jobs.filter(job => job.roundId);
       return value;
     } catch (e) {
       if (isMissingFile(e, file)) return blank();
@@ -162,22 +161,6 @@ function registerNativeController(ctx) {
   }
   function finish(s, j, data, source = j.source) {
     if (j.roundId) roundController.complete(j, data, source);
-    else
-      reports.append({
-        id: j.id,
-        nodeUuid: j.nodeUuid,
-        policyId: j.policyId,
-        completedAt: new Date().toISOString(),
-        operation: j.operation,
-        target: j.target,
-        source,
-        executor: j.executor,
-        direction: j.direction,
-        pairId: j.pairId || "",
-        fingerprint: M.fingerprint({ ...j, source }),
-        options: j.options,
-        data,
-      });
     const followers = s.jobs.filter((x) => x.sharedJobId === j.id);
     if (data.state !== "cancelled")
       for (const follower of followers)
@@ -200,141 +183,41 @@ function registerNativeController(ctx) {
     ]);
     s.jobs = s.jobs.filter((x) => !completed.has(x.id));
   }
-  function enqueue(s, p, uuid) {
-    if (s.jobs.filter((x) => x.policyId === p.id && x.nodeUuid === uuid).length)
-      return;
-    for (const job of M.planJobs(p, uuid, s.endpoints[uuid], s.probes)) {
-      if (s.jobs.length >= 2000) throw new Error("原生队列达到上限");
-      s.jobs.push({
-        ...job,
-        id: crypto.randomUUID(),
-        phase: "queued",
-        queuedAt: Date.now(),
-        expiresAt: Date.now() + (job.operation === "website" ? 90 : 20) * 60000,
-      });
-    }
-  }
-  function safe(s) {
-    return {
-      ...s,
-      reportSecrets: undefined,
-      probes: Object.entries(s.probes).map(([id, p]) => {
-        const { tokenHash, ...rest } = p;
-        return { id, ...rest, online: online(s, "probe:" + id) };
-      }),
-      jobs: s.jobs.map((j) => ({
-        id: j.id,
-        nodeUuid: j.nodeUuid,
-        policyId: j.policyId,
-        operation: j.operation,
-        direction: j.direction,
-        phase: j.phase,
-        target: j.target,
-        source: j.source,
-      })),
-      provider: {
-        ...s.provider,
-        probes: s.provider.probes
-          .filter((x) => x.location?.country === "CN")
-          .map((x) => ({ location: x.location, tags: x.tags })),
-      },
-    };
-  }
-  route("GET", "/catalog", true, async (req, res, s) => {
+  route("GET", "/catalog", true, (_req, res, s) => {
     void tick(true);
     respond(res, 200, {
-      ...safe(s),
-      websites: M.WEBSITES,
-      websiteCatalog: M.WEBSITE_CATALOG,
-      websiteLimit: 64,
-      timezones: M.TIMEZONES,
-      retention: { detailDays: 7, summaryDays: 90 },
-      nextRuns: s.policies.map((p) => ({ id: p.id, at: p.nextAt })),
+      revision: s.revision, inventory: s.inventory, inventoryError: s.inventoryError,
+      workers: s.workers, endpoints: s.endpoints,
+      registeredNodes: Object.keys(readState().nodes),
+      probes: Object.entries(s.probes).map(([id, p]) => {
+        const { tokenHash: _hash, ...safe } = p;
+        return { id, ...safe, online: online(s, "probe:" + id) };
+      }),
     });
   });
-  route("GET", "/nodes/:uuid/reports", true, async (req, res, s) => {
-    const id = String(req.url).split("/").slice(-2)[0];
-    if (!UUID.test(id)) throw new Error("节点标识无效");
-    respond(res, 200, {
-      ...reports.history(id),
-      jobs: safe(s).jobs.filter((j) => j.nodeUuid === id),
-      policies: s.policies.filter((p) =>
-        M.members(p, s.inventory).includes(id),
-      ),
-    });
+  route("POST", "/nodes/:uuid/token", true, (req, res, s) => {
+    const uuid = String(req.url).split("/").slice(-2)[0];
+    if (!UUID.test(uuid) || !s.inventory.some(n => n.uuid === uuid)) throw new Error("节点标识无效，请刷新清单");
+    const token = crypto.randomBytes(32).toString("hex"), identities = readState();
+    identities.nodes[uuid] = { tokenHash: crypto.createHash("sha256").update(token).digest("hex"), tokenIssuedAt: new Date().toISOString() };
+    writeState(identities);
+    delete s.workers["node:" + uuid];
+    for (const j of s.jobs.slice()) if (j.executor === "node:" + uuid || j.nodeUuid === uuid) finish(s, j, { kind: require("./report-model.js").kindFor(j.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已重置" });
+    save(s); respond(res, 201, { uuid, token });
   });
-  route("POST", "/preview", true, async (req, res, s) => {
-    const p = M.normalizePolicy(readBody(req));
-    respond(res, 200, {
-      members: M.members(p, s.inventory).map((id) => ({
-        id,
-        jobs: M.planJobs(p, id, s.endpoints[id], s.probes).map((j) => ({
-          operation: j.operation,
-          target: j.target,
-          direction: j.direction,
-          source: j.source,
-          ready: !coverage(s, j),
-          reason: coverage(s, j),
-        })),
-      })),
-      nextAt: M.next(p.timing),
-      trafficAt1GbpsGB:
-        p.kind === "speed" ? (p.seconds * 2 * p.streams.length) / 8 : 0,
-    });
+  route("DELETE", "/nodes/:uuid/token", true, (req, res, s) => {
+    const uuid = String(req.url).split("/").slice(-2)[0];
+    if (!UUID.test(uuid)) throw new Error("节点标识无效");
+    const identities = readState(); delete identities.nodes[uuid]; writeState(identities);
+    delete s.workers["node:" + uuid];
+    for (const j of s.jobs.slice()) if (j.executor === "node:" + uuid || j.nodeUuid === uuid) finish(s, j, { kind: require("./report-model.js").kindFor(j.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已撤销" });
+    save(s); respond(res, 200, { ok: true });
   });
-  route("POST", "/policies", true, async (req, res, s) => {
-    const input = readBody(req);
-    if (input.revision !== s.revision) {
-      respond(res, 409, { error: "配置已被其他窗口修改，请刷新后重试" });
-      return;
-    }
-    const p = M.normalizePolicy(input);
-    if (s.policies.length >= 100 && !s.policies.some((x) => x.id === p.id))
-      throw new Error("最多 100 个集中方案");
-    if (p.sources.some((id) => !s.probes[id]))
-      throw new Error("所选大陆探针不存在");
-    p.nextAt = M.next(p.timing);
-    if (!p.inherit) {
-      p.clients = M.members(p, s.inventory);
-      p.groups = [];
-    }
-    if (!input.id) {
-      const comparable = (x) =>
-        JSON.stringify({
-          ...x,
-          id: undefined,
-          nextAt: undefined,
-          clients: x.clients.slice().sort(),
-          groups: x.groups.slice().sort(),
-          sources: x.sources.slice().sort(),
-          sites: x.sites.slice().sort(),
-        });
-      const existing = s.policies.find((x) => comparable(x) === comparable(p));
-      if (existing) p.id = existing.id;
-    }
-    if (!p.enabled) s.jobs = s.jobs.filter((j) => j.policyId !== p.id);
-    const i = s.policies.findIndex((x) => x.id === p.id);
-    if (i < 0) s.policies.push(p);
-    else s.policies[i] = p;
-    s.revision++;
-    save(s);
-    respond(res, 200, { policy: p });
-  });
-  route("POST", "/policies/:id/run", true, async (req, res, s) => {
-    const id = String(req.url).split("/").slice(-2)[0],
-      p = s.policies.find((x) => x.id === id);
-    if (!p || !p.enabled) throw new Error("计划不存在或已暂停");
-    for (const uuid of M.members(p, s.inventory)) enqueue(s, p, uuid);
-    save(s);
-    respond(res, 202, { ok: true });
-  });
-  route("DELETE", "/policies/:id", true, async (req, res, s) => {
-    const id = String(req.url).split("/").pop();
-    s.policies = s.policies.filter((x) => x.id !== id);
-    s.jobs = s.jobs.filter((x) => x.policyId !== id);
-    s.revision++;
-    save(s);
-    respond(res, 200, { ok: true });
+  // The installed 1.7 worker sends this heartbeat before its v2 heartbeat.
+  // These two credential shims execute no tests and expose no legacy plans/history.
+  for (const action of ["verify", "heartbeat"]) server.route("POST", "/api/aster-network-observatory/v1/nodes/:id/" + action, (req, res) => {
+    const translated = { headers: req.headers, url: String(req.url).replace("/v1/nodes/", "/v2/workers/node/") };
+    if (auth(translated, res, read())) respond(res, 200, { ok: true });
   });
   route("POST", "/endpoints", true, async (req, res, s) => {
     const input = readBody(req);
@@ -342,8 +225,11 @@ function registerNativeController(ctx) {
     const port = Number(input.port || 25201);
     if (!Number.isInteger(port) || port < 20000 || port > 40000)
       throw new Error("测速端口需在 20000–40000");
+    if (!s.inventory.some(n => n.uuid === input.nodeUuid)) throw new Error("节点不存在，请刷新清单");
+    if (input.ipv4 && (!/^[0-9.]+$/.test(input.ipv4) || !require("./model.js").isHost(input.ipv4))) throw new Error("IPv4 地址无效");
+    if (input.ipv6 && (!input.ipv6.includes(":") || !require("./model.js").isHost(input.ipv6))) throw new Error("IPv6 地址无效");
     s.endpoints[input.nodeUuid] = {
-      address: M.host(input.address),
+      address: M.host(input.address || input.ipv4 || input.ipv6),
       ipv4: input.ipv4 ? M.host(input.ipv4) : "",
       ipv6: input.ipv6 ? M.host(input.ipv6) : "",
       port,
@@ -384,14 +270,6 @@ function registerNativeController(ctx) {
     const id = String(req.url).split("/").pop();
     delete s.probes[id];
     delete s.workers["probe:" + id];
-    for (const p of s.policies) {
-      p.sources = p.sources.filter((x) => x !== id);
-      if (
-        !p.sources.length &&
-        (p.kind === "speed" || (p.kind === "routes" && !p.publicSources))
-      )
-        p.enabled = false;
-    }
     for (const j of s.jobs.slice())
       if (j.executor === "probe:" + id)
         finish(s, j, {
@@ -477,19 +355,6 @@ function registerNativeController(ctx) {
     route("GET", `/workers/${role}/:id/poll`, false, async (req, res, s) => {
       const w = auth(req, res, s);
       if (!w) return;
-      const legacy = readState(),
-        heavy = legacy.tasks.some(
-          (j) =>
-            j.status === "running" &&
-            [
-              "speedtest",
-              "throughput",
-              "tcpquality-all",
-              "tcpquality-report",
-              "tcpquality-intl",
-              "tcpquality-intl-report",
-            ].includes(j.mode),
-        );
       const occupied = s.jobs.filter((j) =>
         ["listening", "ready", "running", "submitting", "provider"].includes(
           j.phase,
@@ -534,22 +399,6 @@ function registerNativeController(ctx) {
             occupied.filter(
               (x) => x.executor === w.key && x.operation === "latency",
             ).length >= 4
-          ) &&
-          !(
-            j.roundId &&
-            legacy.tasks.some(
-              (x) =>
-                x.nodeUuid === j.nodeUuid &&
-                x.status === "running" &&
-                [
-                  "speedtest",
-                  "throughput",
-                  "tcpquality-all",
-                  "tcpquality-report",
-                  "tcpquality-intl",
-                  "tcpquality-intl-report",
-                ].includes(x.mode),
-            )
           )
         ) {
           const problem = coverage(s, j);
@@ -585,7 +434,6 @@ function registerNativeController(ctx) {
           j.phase === "queued" &&
           (!j.availableAt || j.availableAt <= Date.now()) &&
           w.key === "node:" + j.nodeUuid &&
-          !heavy &&
           !occupied.some(
             (x) =>
               (x.operation === "benchmark" &&
@@ -795,7 +643,7 @@ function registerNativeController(ctx) {
               s.endpoints[n.uuid] = { address: n.ip || n.ipv6, port: 25201 };
           for (const n of inventory) {
             const endpoint = s.endpoints[n.uuid];
-            if (endpoint && n.ipv6 && require("./model.js").isHost(n.ipv6))
+            if (endpoint && endpoint.ipv6 === undefined && n.ipv6 && require("./model.js").isHost(n.ipv6))
               endpoint.ipv6 = n.ipv6;
           }
         }
@@ -814,11 +662,6 @@ function registerNativeController(ctx) {
                 "任务超时：" + (coverage(s, j) || "测量或排队没有按期完成"),
             });
         roundController.tick(s);
-        for (const p of s.policies)
-          if (p.enabled && p.nextAt <= now) {
-            for (const uuid of M.members(p, s.inventory)) enqueue(s, p, uuid);
-            p.nextAt = M.next(p.timing, now);
-          }
         for (const j of s.jobs.slice())
           if (!j.target)
             finish(s, j, {
@@ -857,7 +700,6 @@ function registerNativeController(ctx) {
         }
         if (
           (refreshProvider ||
-            s.policies.some((p) => p.kind === "routes" && p.publicSources) ||
             s.reportSuites?.some(
               (p) =>
                 p.enabled &&
@@ -868,7 +710,6 @@ function registerNativeController(ctx) {
           s.provider.checkedAt = now;
           out.push({ operation: "probes" });
         }
-        for (const n of s.inventory) reports.cleanup(n.uuid, now);
         save(s);
         return out;
       });
@@ -949,6 +790,6 @@ function registerNativeController(ctx) {
     { read, lock, save, finish, coverage, online, tick },
   );
   void tick();
-  return { tick, read, lock, reports, enqueue, roundController };
+  return { tick, read, lock, roundController };
 }
 module.exports = { registerNativeController, BASE };

@@ -1,3 +1,18 @@
+# 网络观测当前实施状态
+
+2026-10-22：主题 **1.12.0** / 插件 **1.9.0** / 探测器 **1.8.0**。
+
+- 统一工作室网络观测配置：主页延迟、三网线路、检测方案、探测器与测量点、目标端点。
+- 删除旧工具诊断、旧计划、旧单次报告、旧图片报告、旧调度与迁移功能；全面报告停止请求旧接口。
+- 新版轮次、测量工具、必要 worker 通信和已登记凭证继续使用。
+- 修复内置运营商名称和 Globalping 去程的摘要过滤；稳定运营商标识、共享 ASN 规则、多 ASN、双向双栈独立观测。
+- 管理员直接预览；访客明确发布；支持显示开关、摘要重建、对应报告入口及公开诊断脱敏。
+- 默认 9 个回程 + 3 个公共去程的真实格式测量贯穿轮次保存、摘要、管理员和公开接口；浏览器覆盖六种外观与统一配置中心。
+
+当前操作步骤见[网络观测指南](../network-observatory/README.md)。以下记录是 2026-10-01 首次实现时的历史资料，其中旧功能与迁移界面已删除。
+
+---
+
 # 网络报告实施与验收记录
 
 2026-10-01：六阶段的软件实现与本地验收完成，版本为 **主题 1.8.0 / 插件 1.7.0 / runner 1.7.0**。设计基线见[重构方案](network-observatory-report-redesign-plan.md)，操作见[逐步指南](network-report-v3-guide.md)，发布资产与最终 CI 结果见 [v1.8.0 Release](https://github.com/shaolonger/Komari-Theme-Aster/releases/tag/v1.8.0) 和[标签构建](https://github.com/shaolonger/Komari-Theme-Aster/actions/workflows/build-package.yml)。

@@ -17,9 +17,9 @@
 
 ## 网络观测
 
-Aster 可在每台 VPS 的实例详情页配置、运行和查看网络检测；内置 HTTPS、NextTrace 三网路径、TcpQuality 回程/国际互联、自有站点与授权 iperf3 方案。可预览并批量套用到多台 VPS，或按 Komari 分组自动继承，新节点接入后无需逐个填写目标。节点探测器通过出站 HTTPS 领取任务，Agent 可保持 `--disable-web-ssh`，无需改造 Komari/Agent。插件适配 Komari 1.4.3 及以上，分组自动继承需批准其系统 RPC 权限；代码只读取节点清单。安装步骤、公开目标来源、工具许可与流量影响见 [网络检测使用指南](network-observatory/README.md)。
+Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、主页三网线路、检测方案、探测器与测量点、目标端点各自独立。首页 / 实例页快捷入口带上 VPS 范围，实例页专注当前节点报告与立即检测。旧工具诊断、旧单次报告、旧计划和迁移功能已删除。
 
-Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR、单连接双向测速、十次延迟矩阵、IDC 和 BGP/RPKI 分别保存轮次。批量计划、集中资源、迁移与升级步骤见 [新版网络报告指南](docs/network-report-v3-guide.md)，设计与测量口径见 [重构方案](docs/network-observatory-report-redesign-plan.md)。大陆九格需要实际可用且允许该用途的端点；缺少覆盖会明确记录。
+插件 **1.9.0** 修复内置回程及 Globalping 去程无法进入卡片的问题；管理员可直接预览，访客按明确发布范围查看。探测器 **1.8.0** 保留完整 MTR、单连接双向测速、延迟矩阵、IDC 和 BGP/RPKI 能力，不再安装或调用 TcpQuality。使用出站 HTTPS，不依赖 Web SSH。安装和统一配置步骤见[网络观测指南](network-observatory/README.md)，测量口径见[详细报告指南](docs/network-report-v3-guide.md)。
 
 ## 效果预览
 
@@ -43,7 +43,7 @@ Aster 1.8.0 将实例报告统一为「路由 / 测速 / 国际」：完整 MTR�
 
 ### 曜石外观与三网线路
 
-v1.11.1 新增「曜石」石墨灰和对应的「曜石·明」亮色外观，按参考图呈现四宫格资源、分段指标、逐任务延迟 / 丢包趋势及 IPv4 / IPv6 三网去程和回程。三网线路同步支持全部既有外观；使用真实路径 ASN，需要网络观测插件 **1.8.0** 并选择发布节点。缺测、未识别、部分路径和过期结果明确区分。详见[使用与配置指南](docs/obsidian.md)。
+v1.11.1 新增「曜石」石墨灰和对应的「曜石·明」亮色外观，按参考图呈现四宫格资源、分段指标、逐任务延迟 / 丢包趋势及 IPv4 / IPv6 三网去程和回程。三网线路同步支持全部既有外观；使用真实路径 ASN，需要网络观测插件 **1.9.0**；管理员直接预览，访客需选择发布节点。缺测、未识别、部分路径和过期结果明确区分。详见[使用与配置指南](docs/obsidian.md)。
 
 <p align="center">
   <img src="docs/images/current/obsidian-dark-card.png" alt="曜石深色卡片" width="40%">
@@ -135,4 +135,4 @@ Aster 工作室按外观、巡检、节点、资产和网络组织配置，支�
  </picture>
 </a>
 
-Aster v1.8.0 的新版网络报告支持完整 MTR、HTTP/iperf3 单连接双向、AWS/网站/CDN/Telegram 矩阵及 BGP/RPKI。请同步升级插件和 runner 至 1.7.0；使用步骤见[新版指南](docs/network-report-v3-guide.md)。
+Aster v1.8.0 的新版网络报告支持完整 MTR、HTTP/iperf3 单连接双向、AWS/网站/CDN/Telegram 矩阵及 BGP/RPKI。请同步升级插件至 1.9.0、runner 至 1.8.0；使用步骤见[新版指南](docs/network-report-v3-guide.md)。

@@ -1,5 +1,4 @@
-import {NativePlanPanel} from "@/components/network/NativePlanPanel";
-import { NetworkPolicyPanel } from "@/components/network/NetworkPolicyPanel";
+import { NetworkSettingsPanel } from "@/components/network/NetworkSettingsPanel";
 import { HomepagePreview } from "@/components/settings/HomepagePreview";
 import { validateStudioInputs } from "@/utils/studioValidation";
 import { useStudioDraft } from "@/hooks/useStudioDraft";
@@ -1116,7 +1115,6 @@ export function ThemeManage() {
         <AssetEditor nodes={sortedClients} excluded={normalizeCostIgnoredNodes(draftCostIgnoredText)} onExcludedChange={value => setDraftCostIgnoredText(value.join('\n'))} showSummary={draftShowCostSummary} onSummaryChange={setDraftShowCostSummary} showShortcut={draftShowCostSummaryFloatingButton} onShortcutChange={setDraftShowCostSummaryFloatingButton} rateUrl={draftCostRateApiUrl} onRateUrlChange={setDraftCostRateApiUrl} invalid={draftCostRateApiUrlInvalid}/>
       </StudioPanel>
 
-      <StudioPanel title="网络检测方案" description="批量套用方案和管理分组继承；操作直接保存到网络插件。检测结果位于各 VPS 实例详情。"><NativePlanPanel initialNodes={[]} /><details className="network-advanced-tools"><summary>高级工具方案与旧计划</summary><NetworkPolicyPanel /></details></StudioPanel>
       <StudioPanel
         title="主页延迟检测"
         description={
@@ -1138,7 +1136,7 @@ export function ThemeManage() {
           </div>
         }
       >
-        <div className="flex flex-col gap-4">
+        <div id="network-ping" className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
             <p className="text-xs text-[var(--text-secondary)]">按 VPS 勾选需要展示的任务，拖拽任务可直接调整卡片顺序，也可使用箭头微调。修改后点击页面顶部保存设置。</p>
             <div className="surface-inset flex items-center justify-between gap-3 px-3 py-2 text-[12px] text-[var(--text-secondary)]">
@@ -1182,6 +1180,10 @@ export function ThemeManage() {
           {!tasksLoading && !clientsLoading && <NetworkBindingEditor clients={sortedClients} tasks={sortedTasks} bindings={prunedDraftBindings} order={draftPingTaskOrder} onChange={(bindings, order) => { setDraftBindings(bindings); setDraftPingTaskOrder(order); }} />}
         </div>
       </StudioPanel>
+      <StudioPanel title="主页三网线路" description="管理员预览、首页显示与访客发布；每次保存立即生效。"><div id="network-routes"><NetworkSettingsPanel panel="routes" /></div></StudioPanel>
+      <StudioPanel title="检测方案" description="模块、定时、目标与 VPS / 分组范围；保存到网络插件后立即生效。"><div id="network-plans"><NetworkSettingsPanel panel="plans" /></div></StudioPanel>
+      <StudioPanel title="探测器与测量点" description="集中管理 VPS 探测器、大陆测量点与公网地址；凭证与地址操作立即生效。"><div id="network-agents"><NetworkSettingsPanel panel="agents" /></div></StudioPanel>
+      <StudioPanel title="目标端点" description="登记自定义目标、协议与使用条件；端点保存立即生效。"><div id="network-targets"><NetworkSettingsPanel panel="targets" /></div></StudioPanel>
     </SettingsStudio>
   );
 }

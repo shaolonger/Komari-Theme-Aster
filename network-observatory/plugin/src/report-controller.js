@@ -240,6 +240,39 @@ function registerReportController(ctx, native) {
     }
     return round.id;
   }
+  function rebuildHomeRoutes(uuids) {
+    for (const uuid of uuids) {
+      let cursor = "";
+      do {
+        const page = store.list(uuid, "routes", { limit: 50, cursor });
+        for (const row of page.rounds) {
+          if (!row.detailAvailable) continue;
+          for (const measurement of store.get(uuid, row.id)?.measurements || []) homeRoutes.observe(measurement, false);
+        }
+        cursor = page.nextCursor;
+      } while (cursor);
+    }
+    homeRoutes.save();
+  }
+  function homePayload(s, uuids, admin = false) {
+    const nodes = homeRoutes.summary(uuids);
+    // Tool diagnostics can contain private endpoint addresses; only admins receive them.
+    if (!admin) for (const node of Object.values(nodes)) for (const rows of Object.values(node)) for (const row of rows) for (const key of ["forward", "return"]) if (row[key]) row[key].diagnostic = "";
+    return { available: true, nodes, access: admin ? "admin" : "public",
+      published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false };
+  }
+  route("GET", "/home-routes", (_req, res, s) => {
+    const ids = s.inventory.map(n => n.uuid);
+    // Rebuild once after upgrading the projection, using only retained v3 rounds.
+    if (s.homeRouteProjectionVersion !== 2) {
+      rebuildHomeRoutes(ids); s.homeRouteProjectionVersion = 2; native.save(s);
+    }
+    ctx.respond(res, 200, homePayload(s, ids, true));
+  });
+  route("POST", "/home-routes/rebuild", (_req, res, s) => {
+    rebuildHomeRoutes(s.inventory.map(n => n.uuid));
+    ctx.respond(res, 200, homePayload(s, s.inventory.map(n => n.uuid), true));
+  });
   // Explicit per-node publication; old installations publish nothing by default.
   route("PUT", "/home-routes", (req, res, s) => {
     const body = ctx.readBody(req);
@@ -248,16 +281,9 @@ function registerReportController(ctx, native) {
     const allowed = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
     const selected = [...new Set(body.nodeUuids)];
     if (selected.some(id => !allowed.has(id))) throw new Error("只能发布当前可见节点的线路摘要，请刷新清单");
-    // Backfill only on the administrator's save, never scan history on public reads.
-    for (const uuid of selected) {
-      for (const row of store.list(uuid, "routes", { limit: 50 }).rounds) {
-        if (!row.detailAvailable) continue;
-        const round = store.get(uuid, row.id);
-        for (const measurement of round?.measurements || []) homeRoutes.observe(measurement, false);
-      }
-    }
-    homeRoutes.save();
+    rebuildHomeRoutes(selected);
     s.homeRouteNodes = selected;
+    if (typeof body.display === "boolean") s.homeRouteDisplay = body.display;
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -269,7 +295,7 @@ function registerReportController(ctx, native) {
         // Cached inventory must have been refreshed by this plugin version. Fail closed.
         const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
         const allowed = (s.homeRouteNodes || []).filter(id => visible.has(id));
-        ctx.respond(res, 200, { available: true, nodes: homeRoutes.summary(allowed) });
+        ctx.respond(res, 200, homePayload(s, allowed));
       });
     } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
   });
@@ -285,10 +311,10 @@ function registerReportController(ctx, native) {
       presets: PRESETS,
       suites: s.reportSuites,
       homeRouteNodes: s.homeRouteNodes || [],
+      homeRouteDisplay: s.homeRouteDisplay !== false,
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,
-      legacyPolicies: s.policies,
       probes: Object.entries(s.probes).map(([id, p]) => {
         const { tokenHash: _hash, ...safe } = p;
         return { ...safe, id, online: native.online(s, "probe:" + id) };
@@ -346,96 +372,6 @@ function registerReportController(ctx, native) {
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
   });
-  function migrationBatch(s, body) {
-    const ids = body.ids === undefined ? [body.id] : body.ids;
-    if (
-      !Array.isArray(ids) ||
-      !ids.length ||
-      ids.length > 100 ||
-      ids.some((id) => !UUID.test(id || ""))
-    )
-      throw new Error("请选择 1–100 个旧方案");
-    const policies = [...new Set(ids)].map((id) =>
-      s.policies.find((p) => p.id === id && !p.migratedSuiteId),
-    );
-    if (policies.some((p) => !p)) throw new Error("旧方案不存在或已迁移");
-    const temporary = {
-      ...s,
-      reportResources: [...s.reportResources],
-      reportSuites: [...s.reportSuites],
-    };
-    const converted = policies.map((policy) => {
-      const result = require("./report-resources.js").migration(
-        policy,
-        s.revision,
-        temporary.reportResources,
-      );
-      temporary.reportResources.push(...result.additional);
-      temporary.reportSuites.push(result.suite);
-      return result;
-    });
-    const previews = converted.map((result) => ({
-      ...result,
-      coverage: preview(temporary, result.suite),
-    }));
-    return {
-      policies,
-      temporary,
-      previews,
-      exceedsCapacity:
-        temporary.reportResources.length > 100 ||
-        temporary.reportSuites.length > 100 ||
-        previews.some((p) => p.coverage.exceedsCapacity),
-    };
-  }
-  route("POST", "/migration/preview", (req, res, s) => {
-    const body = ctx.readBody(req),
-      batch = migrationBatch(s, body);
-    ctx.respond(
-      res,
-      200,
-      body.ids === undefined
-        ? batch.previews[0]
-        : {
-            revision: s.revision,
-            migrations: batch.previews,
-            exceedsCapacity: batch.exceedsCapacity,
-          },
-    );
-  });
-  route("POST", "/migration/apply", (req, res, s) => {
-    const body = ctx.readBody(req);
-    if (body.revision !== s.revision) {
-      ctx.respond(res, 409, { error: "配置已变化，请重新预览迁移" });
-      return;
-    }
-    const batch = migrationBatch(s, body);
-    if (batch.exceedsCapacity)
-      throw new Error(
-        "迁移后的累计计划或资源超过容量，请减少迁移范围或先调整旧计划",
-      );
-    s.reportResources = batch.temporary.reportResources;
-    s.reportSuites = batch.temporary.reportSuites;
-    batch.policies.forEach((policy, i) => {
-      for (const job of s.jobs.filter((j) => j.policyId === policy.id))
-        native.finish(s, job, {
-          kind: R.kindFor(job.operation),
-          state: "failed",
-          diagnostic: "旧计划已迁移，停止旧任务避免重复流量",
-        });
-      policy.enabled = false;
-      policy.migratedSuiteId = batch.previews[i].suite.id;
-    });
-    s.revision++;
-    native.save(s);
-    ctx.respond(
-      res,
-      200,
-      body.ids === undefined
-        ? { suite: batch.previews[0].suite, revision: s.revision }
-        : { suites: batch.previews.map((p) => p.suite), revision: s.revision },
-    );
-  });
   route("POST", "/preview", (req, res, s) =>
     ctx.respond(
       res,
@@ -486,12 +422,14 @@ function registerReportController(ctx, native) {
   route("POST", "/suites/:id/run", (req, res, s) => {
     const suite = s.reportSuites.find((p) => p.id === part(req, 2));
     if (!suite || !suite.enabled) throw new Error("报告方案不存在或已停用");
-    const selected = ctx.readBody(req).module;
+    const body = ctx.readBody(req), selected = body.module;
+    const scope = members(suite, s);
+    if (body.nodeUuids !== undefined && (!Array.isArray(body.nodeUuids) || !body.nodeUuids.length || body.nodeUuids.some(id => !scope.some(n => n.uuid === id)))) throw new Error("执行范围必须属于此方案");
     if (selected && !MODULES.includes(selected))
       throw new Error("报告模块无效");
     const batchId = crypto.randomUUID(),
       rounds = [];
-    for (const node of members(suite, s))
+    for (const node of scope.filter(n => !body.nodeUuids || body.nodeUuids.includes(n.uuid)))
       for (const mod of suite.modules.filter(
         (m) => m.enabled && (!selected || m.module === selected),
       )) {
@@ -638,6 +576,9 @@ function registerReportController(ctx, native) {
   function tick(s) {
     state(s);
     const now = Date.now();
+    if (s.homeRouteProjectionVersion !== 2 && s.inventory.length) {
+      rebuildHomeRoutes(s.inventory.map(n => n.uuid)); s.homeRouteProjectionVersion = 2;
+    }
     if (!recovered && s.inventory.length) {
       const pending = s.inventory.flatMap((node) => store.pending(node.uuid));
       const knownIds = new Set(s.jobs.map((j) => j.id));

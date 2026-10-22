@@ -1,16 +1,13 @@
-const crypto = require("crypto");
 const { UUID, isHost } = require("./model.js");
 const tz = require("./timezones.json");
-const { CATALOG } = require("./catalog.js");
 const {
   WEBSITE_CATALOG,
   WEBSITES,
-  RECOMMENDED,
 } = require("./website-catalog.js");
 const CARRIERS = [
-  { name: "电信", asn: 4134 },
-  { name: "联通", asn: 4837 },
-  { name: "移动", asn: 9808 },
+  { id: "telecom", name: "电信", asn: 4134 },
+  { id: "unicom", name: "联通", asn: 4837 },
+  { id: "mobile", name: "移动", asn: 9808 },
 ];
 const TIMEZONES = Object.keys(tz.zones);
 function offset(zone, now) {
@@ -70,243 +67,17 @@ function host(v) {
   if (!isHost(v)) throw new Error("目标必须是域名或 IP");
   return v;
 }
-function normalizePolicy(input) {
-  if (!input || !["routes", "speed", "websites"].includes(input.kind))
-    throw new Error("检测用途无效");
-  const clients = [...new Set(input.clients || [])];
-  if (
-    clients.length > 2000 ||
-    clients.some((x) => typeof x !== "string" || !UUID.test(x))
-  )
-    throw new Error("VPS 范围无效");
-  const groups = [
-    ...new Set((input.groups || []).map((x) => text(x)).filter(Boolean)),
-  ];
-  if ((!clients.length && !groups.length) || groups.length > 100)
-    throw new Error("请选择 VPS 或分组");
-  const sources = [...new Set(input.sources || [])];
-  if (
-    sources.length > 24 ||
-    sources.some((x) => typeof x !== "string" || !UUID.test(x))
-  )
-    throw new Error("大陆探针无效");
-  if (
-    input.kind === "speed" &&
-    (!sources.length || input.trafficAccepted !== true)
-  )
-    throw new Error("全速测速需选择授权大陆探针并确认流量");
-  const sites = [...new Set((input.sites || RECOMMENDED).map(host))];
-  if (!sites.length || sites.length > 64) throw new Error("网站数量需为 1–64");
-  const family = input.family || "4",
-    protocol = input.protocol || "tcp";
-  if (!["4", "6"].includes(family) || !["tcp", "icmp"].includes(protocol))
-    throw new Error("协议或地址族无效");
-  const seconds = Number(input.seconds || 10),
-    streams = Array.isArray(input.streams)
-      ? [...new Set(input.streams)]
-      : [1, 4];
-  if (
-    !Number.isInteger(seconds) ||
-    seconds < 5 ||
-    seconds > 20 ||
-    !Array.isArray(streams) ||
-    !streams.length ||
-    streams.length > 2 ||
-    streams.some((x) => ![1, 4, 8].includes(x))
-  )
-    throw new Error("测速参数无效");
-  const schedule = timing(input.timing, input.kind);
-  const dailyRuns =
-    schedule.type === "daily" ? schedule.times.length : 1440 / schedule.minutes;
-  if (input.kind === "websites" && dailyRuns * sites.length > 9000)
-    throw new Error("本方案网站报告超过每日安全容量，请减少目标或降低检测频率");
-  return {
-    id: UUID.test(input.id || "") ? input.id : crypto.randomUUID(),
-    name:
-      text(input.name) ||
-      {
-        routes: "大陆双向线路",
-        speed: "大陆双向测速",
-        websites: "国际网站体验",
-      }[input.kind],
-    kind: input.kind,
-    clients,
-    groups,
-    sources,
-    sites,
-    family,
-    protocol,
-    seconds,
-    streams,
-    timing: schedule,
-    publicSources: input.publicSources !== false,
-    enabled: input.enabled !== false,
-    inherit: input.inherit !== false,
-    trafficAccepted: input.trafficAccepted === true,
-  };
+function normalizeRange(input) {
+  if (input.clients !== undefined && !Array.isArray(input.clients)) throw new Error("VPS 范围无效");
+  if (input.groups !== undefined && !Array.isArray(input.groups)) throw new Error("分组范围无效");
+  const clients = [...new Set(input.clients || [])], groups = [...new Set((input.groups || []).map(x => text(x)).filter(Boolean))];
+  if (clients.length > 2000 || clients.some(x => !UUID.test(x)) || groups.length > 100 || (!clients.length && !groups.length)) throw new Error("请选择有效 VPS 或分组");
+  return { clients, groups, inherit: input.inherit !== false };
 }
 function members(p, inventory) {
   return inventory
     .filter((n) => p.clients.includes(n.uuid) || p.groups.includes(n.group))
     .map((n) => n.uuid);
-}
-function routeTargets(family) {
-  return CATALOG.find((x) => x.id === "china-route").items.filter(
-    (x) =>
-      x.id.startsWith(`pek_ipv${family}_`) &&
-      [4134, 4837, 9808].some((a) => x.id.endsWith("_" + a)),
-  );
-}
-function planJobs(policy, uuid, endpoint, probes) {
-  function address(value) {
-    if (!value) return "";
-    if (
-      (value.includes(":") && policy.family !== "6") ||
-      (/^[0-9.]+$/.test(value) && policy.family !== "4")
-    )
-      return "";
-    return value;
-  }
-  const jobs = [],
-    common = {
-      policyId: policy.id,
-      nodeUuid: uuid,
-      options: {
-        family: policy.family,
-        protocol: policy.protocol,
-        quality: true,
-      },
-    };
-  const add = (operation, executor, target, source, direction, extra = {}) =>
-    jobs.push({
-      ...common,
-      operation,
-      executor,
-      target,
-      source,
-      direction,
-      ...extra,
-      options: { ...common.options, ...extra.options },
-    });
-  if (policy.kind === "websites")
-    for (const target of policy.sites)
-      add(
-        "website",
-        `node:${uuid}`,
-        target,
-        { provider: "runner", name: "当前 VPS" },
-        "VPS→网站",
-        {
-          options: {
-            path: WEBSITE_CATALOG.find((x) => x.host === target)?.path || "/",
-            tcpSamples: 10,
-            websiteName:
-              WEBSITE_CATALOG.find((x) => x.host === target)?.name || target,
-            websiteGroup:
-              WEBSITE_CATALOG.find((x) => x.host === target)?.group || "自定义",
-          },
-        },
-      );
-  if (policy.kind === "routes") {
-    for (const id of policy.sources) {
-      const probe = probes[id];
-      if (!probe) continue;
-      const source = {
-        provider: "controlled",
-        id,
-        name: probe.name,
-        city: probe.city,
-        carrier: probe.carrier,
-        accessType: probe.accessType,
-      };
-      add(
-        "route",
-        `probe:${id}`,
-        address(endpoint?.address),
-        source,
-        "大陆→VPS",
-        { pairId: `${policy.id}:${uuid}:${id}` },
-      );
-      add(
-        "route",
-        `node:${uuid}`,
-        address(probe.publicAddress),
-        source,
-        "VPS→大陆",
-        { pairId: `${policy.id}:${uuid}:${id}` },
-      );
-    }
-    if (policy.publicSources) {
-      for (const carrier of CARRIERS)
-        add(
-          "globalping",
-          "globalping",
-          address(endpoint?.address),
-          {
-            provider: "Globalping",
-            country: "CN",
-            carrier: carrier.name,
-            asn: carrier.asn,
-          },
-          "大陆→VPS",
-        );
-      for (const target of routeTargets(policy.family))
-        add(
-          "route",
-          `node:${uuid}`,
-          target.target,
-          {
-            provider: "NextTrace 公开目标",
-            carrier: target.carrier,
-            city: target.region,
-          },
-          "VPS→大陆",
-        );
-    }
-  }
-  if (policy.kind === "speed")
-    for (const id of policy.sources)
-      if (probes[id])
-        add(
-          "benchmark",
-          `probe:${id}`,
-          address(endpoint?.address),
-          {
-            provider: "controlled",
-            id,
-            name: probes[id].name,
-            carrier: probes[id].carrier,
-            city: probes[id].city,
-            accessType: probes[id].accessType,
-          },
-          "大陆↔VPS",
-          {
-            options: {
-              family: policy.family,
-              seconds: policy.seconds,
-              streams: policy.streams,
-              port: endpoint?.port || 25201,
-            },
-          },
-        );
-  return jobs;
-}
-function fingerprint(job) {
-  return crypto
-    .createHash("sha256")
-    .update(
-      JSON.stringify([
-        job.nodeUuid,
-        job.operation,
-        job.target,
-        job.executor,
-        job.source,
-        job.direction,
-        job.options,
-      ]),
-    )
-    .digest("hex")
-    .slice(0, 24);
 }
 function validateResult(data, kind) {
   const bad = () => {
@@ -467,10 +238,8 @@ module.exports = {
   offset,
   timing,
   next,
-  normalizePolicy,
+  normalizeRange,
   members,
-  planJobs,
-  fingerprint,
   host,
   text,
 };

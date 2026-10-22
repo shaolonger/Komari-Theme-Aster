@@ -666,7 +666,7 @@ class Listener:
 
 
 def measure(job):
-    if not isinstance(job, dict) or job.get("operation") not in {"website", "route", "benchmark", "latency", "http-speed", "iperf-speed"}:
+    if not isinstance(job, dict) or job.get("operation") not in {"route", "benchmark", "latency", "http-speed", "iperf-speed"}:
         raise ValueError("原生测量任务无效")
     options = job.get("options") or {}
     if not isinstance(options, dict):
@@ -677,8 +677,6 @@ def measure(job):
         if not ip.is_global or ip.is_multicast:
             raise ValueError("新版测量端点必须解析为公网地址；未对私网或代理保留地址测量")
         options = {**options, "pinnedIp": address}
-    if job["operation"] == "website":
-        return website(job["target"], options)
     if job["operation"] == "latency":
         return latency(job["target"], options)
     if job["operation"] == "route":

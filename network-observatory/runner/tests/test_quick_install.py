@@ -19,8 +19,6 @@ PLUGIN_FILES = {
     }).encode(),
     "runner/agent.py": b"agent",
     "runner/install.sh": b"installer",
-    "runner/probe.sh": b"probe",
-    "runner/speedtest.py": b"speedtest",
     "runner/native.py": b"native",
     "runner/http_receiver.py": b"receiver",
     "runner/aster-network-observatory-http.service": b"http-service",
@@ -44,7 +42,7 @@ class QuickInstallTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path, "w") as bundle:
                 for name, payload in (files or PLUGIN_FILES).items():
                     info = zipfile.ZipInfo(name)
-                    if symlink and name == "runner/probe.sh":
+                    if symlink and name == "runner/agent.py":
                         info.external_attr = (stat.S_IFLNK | 0o777) << 16
                     bundle.writestr(info, payload)
 

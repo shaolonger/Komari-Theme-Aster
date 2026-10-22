@@ -479,7 +479,7 @@ function RoundModule({
   module: ReportModule;
   onConfigure: () => void;
 }) {
-  const [selection, setSelection] = useState<string | null>(null),
+  const [selection, setSelection] = useState<string | null>(() => module === "routes" ? new URLSearchParams(window.location.search).get("round") : null),
     [error, setError] = useState(""),
     [inspected, setInspected] = useState<{
       slot: ReportSlot;
@@ -501,10 +501,11 @@ function RoundModule({
     rounds.find((r) => r.id === selection) ||
     rounds.find((r) => r.state === "complete" && r.detailAvailable) ||
     rounds[0];
+  const pickedId = selection || picked?.id;
   const detail = useQuery({
-    queryKey: ["report-round", uuid, picked?.id],
-    queryFn: () => getReportRound(uuid, picked!.id),
-    enabled: !!picked,
+    queryKey: ["report-round", uuid, pickedId],
+    queryFn: () => getReportRound(uuid, pickedId!),
+    enabled: !!pickedId,
     refetchInterval: picked?.state === "running" ? 5000 : false,
   });
   const catalog = useQuery({
@@ -531,7 +532,7 @@ function RoundModule({
   async function run() {
     setError("");
     try {
-      for (const policy of policies) await runReportSuite(policy.id, module);
+      for (const policy of policies) await runReportSuite(policy.id, module, [uuid]);
       const next = await history.refetch();
       setSelection(next.data?.pages[0].rounds[0]?.id || null);
     } catch (e) {
@@ -842,7 +843,7 @@ export function NetworkReportWorkspace({
   availableModules: ReportModule[];
 }) {
   const [tab, setTab] = useState<"routes" | "speed" | "international">(
-    "international",
+    new URLSearchParams(window.location.search).get("tab") === "routes" ? "routes" : "international",
   );
   const tabs = {
     routes: ["routes", "bgp"],
@@ -887,7 +888,7 @@ export function NetworkReportWorkspace({
         ))}
       {!tabs[tab].some((m) => availableModules.includes(m)) && (
         <div className="report-empty">
-          此插件尚未提供本标签的新版轮次能力；下方可读取旧版报告。
+          此插件未提供本标签的报告能力，请升级网络观测插件。
         </div>
       )}
     </div>

@@ -6,7 +6,6 @@ import {
   saveReportResource,
   type ReportEndpoint,
 } from "@/services/reportObservatory";
-import { HomeRoutesPublishPanel } from "./HomeRoutesPublishPanel";
 const blank = {
   name: "",
   address: "",
@@ -27,7 +26,7 @@ const blank = {
   authorized: false,
   https: true,
 };
-export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
+export function ReportResourcesPanel() {
   const catalog = useQuery({
       queryKey: ["report-catalog"],
       queryFn: reportCatalog,
@@ -36,7 +35,7 @@ export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
   const [draft, setDraft] = useState<Record<string, unknown>>(blank),
     [token, setToken] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   function edit(endpoint: ReportEndpoint) {
     setDraft({ ...endpoint });
     setToken("");
@@ -51,6 +50,7 @@ export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
         token: token || undefined,
         revision: catalog.data.revision,
       });
+      setMessage("目标端点已保存到网络插件");
       setDraft(blank);
       setToken("");
       await cache.invalidateQueries({ queryKey: ["report-catalog"] });
@@ -62,12 +62,10 @@ export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
   }
   return (
     <div className="network-form">
-      <h3>集中测量资源</h3>
-      {catalog.data && <HomeRoutesPublishPanel catalog={catalog.data} />}
+      <h3>目标端点</h3>
       <p className="report-caption">
         内置公开节点可直接选择；自定义端点仅需登记一次。大陆九格以地区与运营商匹配资源。授权密钥不会写入报告或分享内容。
       </p>
-      <button onClick={onLegacy}>登记大陆测量点 / 配置 VPS 公网地址</button>
       <div className="network-inline-fields">
         <label>
           名称
@@ -232,7 +230,8 @@ export function ReportResourcesPanel({ onLegacy }: { onLegacy: () => void }) {
         />
         我确认允许对此端点执行所选测速，并遵守其频率和流量条件
       </label>
-      {error && <p role="alert">{error}</p>}
+      {(error || catalog.error) && <p role="alert">{error || catalog.error?.message}</p>}
+      {message && <p role="status">{message}</p>}
       <button disabled={busy || !catalog.data} onClick={() => void save()}>
         保存资源
       </button>

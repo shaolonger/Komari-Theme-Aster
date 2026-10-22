@@ -1,20 +1,137 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { publishHomeRoutes, type ReportCatalog } from "@/services/reportObservatory";
-export function HomeRoutesPublishPanel({ catalog }: { catalog: ReportCatalog }) {
-  const [selection, setSelection] = useState<string[] | null>(null), [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  publishHomeRoutes,
+  rebuildHomeRoutes,
+  type ReportCatalog,
+} from "@/services/reportObservatory";
+import { getHomeRoutes } from "@/services/homeRoutes";
+
+export function HomeRoutesPublishPanel({
+  catalog,
+}: {
+  catalog: ReportCatalog;
+}) {
+  const [selection, setSelection] = useState<string[] | null>(null);
+  const [display, setDisplay] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false),
+    [message, setMessage] = useState("");
   const cache = useQueryClient();
-  const selected = selection ?? catalog.homeRouteNodes;
-  const nodes = catalog.inventory.filter(n => n.publicVisible);
-  async function save() {
-    setBusy(true); setMessage("");
+  const routes = useQuery({
+    queryKey: ["home-carrier-routes", true],
+    queryFn: ({ signal }) => getHomeRoutes({ signal }, true),
+    staleTime: 30000,
+    retry: false,
+  });
+  const nodes = catalog.inventory.filter((n) => n.publicVisible);
+  const selected = (selection ?? catalog.homeRouteNodes).filter((id) =>
+    nodes.some((n) => n.uuid === id),
+  );
+  async function action(rebuild = false) {
+    setBusy(true);
+    setMessage("");
     try {
-      await publishHomeRoutes(selected, catalog.revision);
-      await cache.invalidateQueries({ queryKey: ["report-catalog"] });
-      await cache.invalidateQueries({ queryKey: ["home-carrier-routes"] });
-      setSelection(null); setMessage("首页线路发布范围已保存");
-    } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+      if (rebuild) await rebuildHomeRoutes();
+      else
+        await publishHomeRoutes(
+          selected,
+          catalog.revision,
+          display ?? catalog.homeRouteDisplay,
+        );
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["report-catalog"] }),
+        cache.invalidateQueries({ queryKey: ["home-carrier-routes"] }),
+      ]);
+      if (!rebuild) {
+        setSelection(null);
+        setDisplay(null);
+      }
+      setMessage(
+        rebuild
+          ? "已从仍保留的大陆路由报告重建摘要"
+          : "显示与访客发布范围已保存到网络插件",
+      );
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
-  return <details className="home-routes-publish"><summary>首页三网线路 · 已选择 {selected.length} 台</summary><p>完成「大陆路由」观测后，选择向首页发布摘要的可见节点。仅公开线路标签、ASN、方向和采样时间。隐藏节点不发布；去程与回程需分别探测。</p><div className="home-routes-publish-nodes">{nodes.map(n => <label key={n.uuid}><input type="checkbox" checked={selected.includes(n.uuid)} onChange={e => setSelection(e.target.checked ? [...selected, n.uuid] : selected.filter(id => id !== n.uuid))}/>{n.name}</label>)}</div>{!nodes.length && <p>请刷新网络观测清单；旧版插件需升级到 1.8.0。</p>}<div className="network-inline-fields"><button type="button" onClick={() => setSelection(nodes.map(n => n.uuid))}>选择全部可见节点</button><button type="button" onClick={() => setSelection([])}>取消全部发布</button><button type="button" disabled={busy} onClick={() => void save()}>{busy ? "保存中…" : "保存发布范围"}</button></div>{message && <p role="status">{message}</p>}</details>;
+  return (
+    <div className="network-form home-routes-publish">
+      <p>
+        管理员可直接预览已测线路。访客仅能查看下方明确发布的可见节点摘要。去程、回程和
+        IPv4/IPv6 分别使用实测结果；线路名称来自路径 ASN。
+      </p>
+      <label className="report-checkbox">
+        <input
+          type="checkbox"
+          checked={display ?? catalog.homeRouteDisplay}
+          onChange={(e) => setDisplay(e.target.checked)}
+        />
+        在首页卡片显示三网线路
+      </label>
+      <div className="home-routes-publish-nodes">
+        {nodes.map((n) => {
+          const values = Object.values(routes.data?.nodes[n.uuid] || {})
+            .flat()
+            .flatMap((row) => [row.forward, row.return]);
+          return (
+            <label key={n.uuid}>
+              <input
+                type="checkbox"
+                checked={selected.includes(n.uuid)}
+                onChange={(e) =>
+                  setSelection(
+                    e.target.checked
+                      ? [...selected, n.uuid]
+                      : selected.filter((id) => id !== n.uuid),
+                  )
+                }
+              />
+              <span>
+                {n.name}
+                <small>
+                  {values.some((value) => value && value.state !== "missing")
+                    ? "已有线路观测"
+                    : values.some(Boolean)
+                      ? "测量缺少覆盖，查看报告原因"
+                      : "尚无线路观测"}{" "}
+                  ·{" "}
+                  {catalog.homeRouteNodes.includes(n.uuid)
+                    ? "访客可见"
+                    : "仅管理员预览"}
+                </small>
+                <a href={`/instance/${n.uuid}?focus=network&tab=routes`}>
+                  查看报告
+                </a>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {routes.error && (
+        <p role="alert">线路状态读取失败：{routes.error.message}</p>
+      )}
+      {!nodes.length && <p>当前没有可向访客发布的可见节点。</p>}
+      <div className="network-actions">
+        <button
+          disabled={busy}
+          onClick={() => setSelection(nodes.map((n) => n.uuid))}
+        >
+          选择全部可见节点
+        </button>
+        <button disabled={busy} onClick={() => setSelection([])}>
+          取消全部发布
+        </button>
+        <button disabled={busy} onClick={() => void action()}>
+          {busy ? "提交中…" : "保存显示与发布范围"}
+        </button>
+        <button disabled={busy} onClick={() => void action(true)}>
+          从报告重建摘要
+        </button>
+      </div>
+      {message && <p role="status">{message}</p>}
+    </div>
+  );
 }

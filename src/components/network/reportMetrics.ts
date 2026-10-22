@@ -1,3 +1,4 @@
+import routeNetworks from "../../../network-observatory/plugin/src/route-networks.json";
 import type { ReportHop, ReportSample } from "@/services/reportObservatory";
 
 export const reportLabels: Record<string, string> = {
@@ -49,21 +50,12 @@ export function foldHops(hops: ReportHop[], fold: boolean): ReportHop[][] {
 export function routeEvidence(hops: ReportHop[]) {
   const asns = (value: string): string[] => value.match(/\d+/g) || [];
   const evidence = hops.flatMap((h) => asns(h.asn));
-  const rules: [string, string][] = [
-    ["4809", "观察到 CN2"],
-    ["4134", "观察到电信 163"],
-    ["9929", "观察到联通 9929"],
-    ["4837", "观察到联通 169"],
-    ["58807", "观察到 CMIN2"],
-    ["9808", "观察到 CMNET"],
-  ];
-  return rules
-    .filter(([asn]) => evidence.includes(asn))
-    .map(([asn, label]) => ({
-      asn,
-      label,
-      ttls: hops.filter((h) => asns(h.asn).includes(asn)).map((h) => h.ttl),
-      ruleVersion: "2026-09-30.1",
+  return routeNetworks.networks
+    .filter(rule => evidence.includes(rule.asn))
+    .map(rule => ({
+      asn: rule.asn, label: rule.description,
+      ttls: hops.filter(h => asns(h.asn).includes(rule.asn)).map(h => h.ttl),
+      ruleVersion: routeNetworks.version,
     }));
 }
 export function numberText(value: number | null | undefined, digits = 1) {

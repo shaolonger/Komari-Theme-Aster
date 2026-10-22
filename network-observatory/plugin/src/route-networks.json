@@ -1,0 +1,53 @@
+{
+  "version": "2026-10-22.1",
+  "networks": [
+    {
+      "carrier": "电信",
+      "asn": "4809",
+      "label": "CN2",
+      "description": "观察到 CN2"
+    },
+    {
+      "carrier": "电信",
+      "asn": "4134",
+      "label": "163",
+      "description": "观察到电信 163"
+    },
+    {
+      "carrier": "联通",
+      "asn": "9929",
+      "label": "9929",
+      "description": "观察到联通 9929"
+    },
+    {
+      "carrier": "联通",
+      "asn": "10099",
+      "label": "10099",
+      "description": "观察到联通 10099"
+    },
+    {
+      "carrier": "联通",
+      "asn": "4837",
+      "label": "4837",
+      "description": "观察到联通 169"
+    },
+    {
+      "carrier": "移动",
+      "asn": "58807",
+      "label": "CMIN2",
+      "description": "观察到 CMIN2"
+    },
+    {
+      "carrier": "移动",
+      "asn": "58453",
+      "label": "CMI",
+      "description": "观察到 CMI"
+    },
+    {
+      "carrier": "移动",
+      "asn": "9808",
+      "label": "9808",
+      "description": "观察到 CMNET"
+    }
+  ]
+}

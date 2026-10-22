@@ -293,6 +293,7 @@ const catalogSchema = capabilitiesSchema.extend({
   ),
   suites: z.array(suiteSchema),
   homeRouteNodes: z.array(z.string()).default([]),
+  homeRouteDisplay: z.boolean().default(true),
   revision: z.number(),
   inventory: z.array(
     z.object({
@@ -304,19 +305,6 @@ const catalogSchema = capabilitiesSchema.extend({
     }),
   ),
   timezones: z.array(z.string()),
-  legacyPolicies: z
-    .array(
-      z
-        .object({
-          id: z.string(),
-          name: z.string(),
-          kind: z.string(),
-          enabled: z.boolean(),
-          migratedSuiteId: z.string().optional(),
-        })
-        .passthrough(),
-    )
-    .default([]),
   probes: z.array(
     z.object({
       id: z.string(),
@@ -430,8 +418,8 @@ export const getReportRound = async (uuid: string, id: string) =>
       `/nodes/${encodeURIComponent(uuid)}/rounds/${encodeURIComponent(id)}`,
     ),
   );
-export const runReportSuite = (id: string, module?: ReportModule) =>
-  request(`/suites/${encodeURIComponent(id)}/run`, "POST", { module });
+export const runReportSuite = (id: string, module?: ReportModule, nodeUuids?: string[]) =>
+  request(`/suites/${encodeURIComponent(id)}/run`, "POST", { module, nodeUuids });
 export const cancelReportRound = (uuid: string, id: string) =>
   request(
     `/nodes/${encodeURIComponent(uuid)}/rounds/${encodeURIComponent(id)}/cancel`,
@@ -449,29 +437,6 @@ export const saveReportResource = (input: Record<string, unknown>) =>
   request("/resources", "POST", input);
 export const deleteReportResource = (id: string) =>
   request(`/resources/${encodeURIComponent(id)}`, "DELETE");
-const migrationSchema = z.object({
-  suite: suiteSchema,
-  additional: z.array(endpointSchema),
-  differences: z.array(z.string()),
-  legacyId: z.string(),
-  disableOldTrigger: z.boolean(),
-  coverage: previewSchema,
-});
-export const previewReportMigration = async (id: string) =>
-  migrationSchema.parse(await request("/migration/preview", "POST", { id }));
-export const applyReportMigration = (id: string, revision: number) =>
-  request("/migration/apply", "POST", { id, revision });
-export const previewReportMigrations = async (ids: string[]) =>
-  z
-    .object({
-      revision: z.number(),
-      migrations: z.array(migrationSchema),
-      exceedsCapacity: z.boolean(),
-    })
-    .parse(await request("/migration/preview", "POST", { ids }));
-export const applyReportMigrations = (ids: string[], revision: number) =>
-  request("/migration/apply", "POST", { ids, revision });
-
 export const shareReportRound = async (uuid: string, id: string) =>
   z
     .object({ id: z.string(), url: z.string(), expiresAt: z.number() })
@@ -488,4 +453,6 @@ export const revokeReportShares = (uuid: string, id: string) =>
     "DELETE",
   );
 
-export const publishHomeRoutes = (nodeUuids: string[], revision: number) => request("/home-routes", "PUT", { nodeUuids, revision });
+export const publishHomeRoutes = (nodeUuids: string[], revision: number, display: boolean) => request("/home-routes", "PUT", { nodeUuids, revision, display });
+
+export const rebuildHomeRoutes = () => request("/home-routes/rebuild", "POST", {});
