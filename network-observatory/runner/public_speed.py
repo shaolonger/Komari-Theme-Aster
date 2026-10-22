@@ -60,7 +60,8 @@ def select_server(rows, city, carrier, family):
         actual_city = normalize_name(row.get("city"))
         name = normalize_name(row.get("hostname"))
         # A province-only match is insufficient for a city-labelled result.
-        city_ok = actual_city.removesuffix("市") == city or (not actual_city and city in name)
+        city_name = actual_city[:-1] if actual_city.endswith("市") else actual_city
+        city_ok = city_name == city or (not actual_city and city in name)
         operator = normalize_name(row.get("oper") or row.get("operator") or "")
         operator_evidence = operator or name
         if not city_ok or carrier not in operator_evidence:
