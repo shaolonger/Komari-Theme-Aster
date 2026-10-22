@@ -13,17 +13,19 @@ test('ASN evidence never guesses carrier, IP family or opposite direction; recog
   assert.equal(project(sample({data:{kind:'route',state:'ok',hops:[{asn:'AS48090'}]}})).evidence.label,'未识别');
 });
 test('projection preserves separate IPv4/6 and directions, ages evidence, survives restart and redacts private data', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(),'aster-home-routes-')); let now = Date.now();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(),'aster-home-routes-')); let now = Date.parse('2026-10-22T00:00:00.000Z');
   try {
     let store=homeRouteStore(root,e=>e.code==='ENOENT',()=>now);
-    store.observe(sample());store.observe(sample({options:{family:'6'},direction:'大陆→VPS'}));
+    const completedAt = new Date(now).toISOString();
+    store.observe(sample({completedAt}));store.observe(sample({completedAt,options:{family:'6'},direction:'大陆→VPS'}));
     let summary=store.summary([A]);
     assert.equal(summary[A]['4'][0].forward,null);
     assert.equal(summary[A]['4'][0].return.label,'CN2 / 163');
     assert.equal(summary[A]['6'][0].return,null);
     assert.ok(!JSON.stringify(summary).includes('SECRET'));
     store=homeRouteStore(root,e=>e.code==='ENOENT',()=>now);
-    now+=86400001; assert.equal(store.summary([A])[A]['4'][0].return.state,'stale');
+    now+=86400000; assert.equal(store.summary([A])[A]['4'][0].return.state,'ok');
+    now+=1; assert.equal(store.summary([A])[A]['4'][0].return.state,'stale');
     now+=7*86400000; assert.equal(store.summary([A])[A]['4'][0].return,null);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
