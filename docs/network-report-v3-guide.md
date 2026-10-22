@@ -1,10 +1,10 @@
 # 网络报告 v3：从升级到定时报告
 
-本指南对应主题 **1.12.0**、插件 **1.9.0**、runner **1.8.0**。支持 Komari **≥1.4.3**；使用独立 HTTPS worker，不要求修改 Komari 或 komari-agent，不依赖 Web SSH。目标是实例详情中的「路由 / 测速 / 国际」成组报告。
+本指南对应主题 **1.12.1**、插件 **1.9.1**、runner **1.8.0**。支持 Komari **≥1.4.3**；使用独立 HTTPS worker，不要求修改 Komari 或 komari-agent，不依赖 Web SSH。目标是实例详情中的「路由 / 测速 / 国际」成组报告。
 
 ## 一、升级三个部分
 
-1. 从 GitHub Release 下载 `Komari-Theme-Aster-v1.12.0.zip` 和 `Aster-Network-Observatory-v1.9.0.zip`，分别更新主题和插件。插件允许 API 路由与读取节点清单的系统 RPC。已有探测器密钥不会自动重置。
+1. 从 GitHub Release 下载 `Komari-Theme-Aster-v1.12.1.zip` 和 `Aster-Network-Observatory-v1.9.1.zip`，分别更新主题和插件。插件允许 API 路由与读取节点清单的系统 RPC。已有探测器密钥不会自动重置。
 2. 每台执行检测的 VPS 运行下面的一键命令。它自动识别受支持的 Linux 包管理器、安装缺失依赖、校验发布 ZIP/NextTrace 文件，安装 systemd 服务，然后进入凭证向导。
 
    ```sh

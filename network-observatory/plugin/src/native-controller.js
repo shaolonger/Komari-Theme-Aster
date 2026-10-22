@@ -213,12 +213,24 @@ function registerNativeController(ctx) {
     for (const j of s.jobs.slice()) if (j.executor === "node:" + uuid || j.nodeUuid === uuid) finish(s, j, { kind: require("./report-model.js").kindFor(j.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已撤销" });
     save(s); respond(res, 200, { ok: true });
   });
-  // The installed 1.7 worker sends this heartbeat before its v2 heartbeat.
-  // These two credential shims execute no tests and expose no legacy plans/history.
-  for (const action of ["verify", "heartbeat"]) server.route("POST", "/api/aster-network-observatory/v1/nodes/:id/" + action, (req, res) => {
+  // Komari retains Gin route slots after unload. Preserve the pre-1.9 wildcard
+  // name; a clean 1.9.0 installation instead needs its existing :id slots reused.
+  // These credential shims execute no legacy tests or schedules.
+  let credentialParameter = ":uuid";
+  const credentialHeartbeat = (req, res) => {
     const translated = { headers: req.headers, url: String(req.url).replace("/v1/nodes/", "/v2/workers/node/") };
     if (auth(translated, res, read())) respond(res, 200, { ok: true });
-  });
+  };
+  for (const action of ["verify", "heartbeat"]) {
+    const prefix = "/api/aster-network-observatory/v1/nodes/";
+    try {
+      server.route("POST", prefix + credentialParameter + "/" + action, credentialHeartbeat);
+    } catch (error) {
+      if (credentialParameter !== ":uuid" || !String(error?.message || error).includes("conflicts with existing wildcard ':id'")) throw error;
+      credentialParameter = ":id";
+      server.route("POST", prefix + credentialParameter + "/" + action, credentialHeartbeat);
+    }
+  }
   route("POST", "/endpoints", true, async (req, res, s) => {
     const input = readBody(req);
     if (!UUID.test(input.nodeUuid || "")) throw new Error("节点标识无效");

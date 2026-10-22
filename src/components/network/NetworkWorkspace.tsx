@@ -56,7 +56,7 @@ export function NetworkWorkspace({
       <div className="network-empty-state">
         <strong>无法读取网络报告能力</strong>
         <p role="alert">{capability.error?.message}</p>
-        <p>请启用网络观测插件 1.9.0 或更新版本，并检查授权与插件日志。</p>
+        <p>请启用网络观测插件 1.9.1 或更新版本，并检查授权与插件日志。</p>
         <button onClick={() => void capability.refetch()}>重新连接</button>
       </div>
     );

@@ -13,6 +13,14 @@ test('modern credential lifecycle, dual-stack endpoints, sanitized resources and
   const issued=await invoke('POST',`/nodes/${A}/token`);assert.equal(issued.status,201);const token=issued.body.token;
   assert.equal(identities.nodes[A].tokenHash,crypto.createHash('sha256').update(token).digest('hex'));
   assert.equal((await invoke('POST',`/workers/node/${A}/verify`,{},false,token)).status,200);
+  for (const action of ['verify','heartbeat']) {
+   const key='POST /api/aster-network-observatory/v1/nodes/:uuid/'+action;
+   assert.ok(routes.has(key));
+   const response={};await routes.get(key)({url:'/api/aster-network-observatory/v1/nodes/'+A+'/'+action,headers:{authorization:'Bearer '+token}},response);
+   assert.equal(response.status,200);
+   const rejected={};await routes.get(key)({url:'/api/aster-network-observatory/v1/nodes/'+A+'/'+action,headers:{authorization:'Bearer '+'b'.repeat(64)}},rejected);
+   assert.equal(rejected.status,401);
+  }
   const catalog=await invoke('GET','/catalog');assert.ok(catalog.body.registeredNodes.includes(A));assert.ok(!JSON.stringify(catalog.body).includes(token));assert.equal(catalog.body.policies,undefined);
   assert.equal((await invoke('POST','/endpoints',{nodeUuid:A,ipv4:'8.8.8.8',ipv6:'2606:4700:4700::1111',port:25201})).status,200);
   assert.equal((await invoke('POST','/endpoints',{nodeUuid:A,address:'8.8.8.8',ipv6:'8.8.8.8',port:25201})).status,400);

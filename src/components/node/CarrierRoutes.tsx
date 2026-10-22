@@ -113,7 +113,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
               ? "线路读取失败，请稍后刷新"
               : routes.data?.available
                 ? "此节点未公开线路摘要"
-                : "请升级网络观测插件至 1.9.0"}
+                : "请升级网络观测插件至 1.9.1"}
         </p>
       )}
       {node && !rows.some((row) => row.forward || row.return) && (

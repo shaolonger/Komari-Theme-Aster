@@ -19,6 +19,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	checkPluginLoad(base)
 	checkNetwork(base)
 	checkRounds(base)
 	checkController(base)
