@@ -2,6 +2,8 @@ import { fetchWithTimeout } from "@/utils/abort";
 import { z } from "zod";
 const evidence = z.object({
   label: z.string().max(512),
+  displayLabel: z.string().max(100).optional(),
+  pathKind: z.enum(["single", "combined", "varied", "unknown"]).optional(),
   asns: z.array(z.string()).max(64),
   at: z.string().datetime(),
   reportId: z.string().default(""),

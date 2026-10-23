@@ -7,6 +7,7 @@ PROFILE=auto
 SERVER_URL=''
 NODE_UUID=''
 PROBE_ID=''
+UPGRADE=0
 
 fail() {
   printf 'Aster 网络观测安装失败：%s\n' "$1" >&2
@@ -15,6 +16,7 @@ fail() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --upgrade) UPGRADE=1; shift ;;
     --profile|--server-url|--node-uuid|--probe-id)
       [ "$#" -ge 2 ] || fail "$1 缺少参数。"
       case "$1" in
@@ -25,14 +27,14 @@ while [ "$#" -gt 0 ]; do
       esac
       shift 2 ;;
     --help|-h)
-      printf '%s\n' '用法：sh install.sh [--profile auto|lite|full] [--server-url URL] [--node-uuid UUID | --probe-id UUID]' \
+      printf '%s\n' '用法：sh install.sh [--upgrade] [--profile auto|lite|full|preserve] [--server-url URL] [--node-uuid UUID | --probe-id UUID]' \
         'auto 在内存不超过 192 MiB 或根分区可用空间少于 192 MiB 时选 lite。' \
         'lite：Python、HTTPS 环境、MTR 和 traceroute；full 另含 NextTrace、iperf3、openssl 和 nping。'
       exit 0 ;;
     *) fail "未知安装参数：$1" ;;
   esac
 done
-case "$PROFILE" in auto|lite|full) ;; *) fail '安装模式必须是 auto、lite 或 full。' ;; esac
+case "$PROFILE" in auto|lite|full) ;; preserve) [ "$UPGRADE" -eq 1 ] || fail 'preserve 仅用于 --upgrade。' ;; *) fail '安装模式必须是 auto、lite、full 或 preserve。' ;; esac
 
 if [ "$(id -u)" -ne 0 ]; then
   fail '请用 sudo 运行，例如 curl -fsSL <安装器地址> | sudo sh。'
@@ -45,6 +47,22 @@ else
   fail '需要使用 systemd 或 OpenRC 的 Linux VPS；Alpine 请确认已安装并启用 OpenRC。'
 fi
 command -v curl >/dev/null 2>&1 || fail '缺少 curl；请先安装 curl 后重新运行一键命令。'
+if [ "$UPGRADE" -eq 1 ]; then
+  case "$PROFILE" in auto|preserve) ;; *) fail '--upgrade 会保留原模式；调整工具请使用不带 --upgrade 的安装命令。' ;; esac
+  command -v python3 >/dev/null 2>&1 || fail '未找到已有 Python 环境，请先执行普通安装命令。'
+fi
+upgrade_existing() {
+  updater=$1
+  set -- manual --profile preserve
+  [ -z "$SERVER_URL" ] || set -- "$@" --server-url "$SERVER_URL"
+  [ -z "$NODE_UUID" ] || set -- "$@" --node-uuid "$NODE_UUID"
+  [ -z "$PROBE_ID" ] || set -- "$@" --probe-id "$PROBE_ID"
+  python3 "$updater" "$@"
+}
+if [ "$UPGRADE" -eq 1 ] && [ -f /usr/local/libexec/aster-network-observatory/updater.py ]; then
+  upgrade_existing /usr/local/libexec/aster-network-observatory/updater.py
+  exit
+fi
 
 package_manager() {
   if command -v apk >/dev/null 2>&1; then printf apk;
@@ -66,6 +84,7 @@ install_packages() {
   esac
 }
 
+if [ "$PROFILE" = preserve ]; then PROFILE=auto; fi
 if [ "$PROFILE" = auto ]; then
   memory_kb=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo 2>/dev/null || true)
   for limit_file in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
@@ -86,7 +105,7 @@ if [ "$PROFILE" = lite ]; then
 fi
 bootstrap_packages=''
 command -v python3 >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages python3"
-if [ "$(package_manager)" = apk ]; then
+if [ "$UPGRADE" -eq 0 ] && [ "$(package_manager)" = apk ]; then
   apk info -e ca-certificates >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages ca-certificates"
   command -v mtr >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages mtr"
   # BusyBox traceroute does not provide the TCP fallback used by this worker.
@@ -128,6 +147,11 @@ if actual_digest != match.group(1):
 expected = {
     "komari-plugin.json",
     "runner/agent.py",
+    "runner/updater.py",
+    "runner/release.json",
+    "runner/aster-network-observatory-update.service",
+    "runner/aster-network-observatory-update.timer",
+    "runner/aster-network-observatory-update.openrc",
     "runner/install.sh",
     "runner/native.py",
     "runner/public_speed.py",
@@ -170,6 +194,11 @@ for name in expected:
 
 print(f"已下载并验证网络观测插件包 v{manifest['version']} 中的 runner。")
 PY
+
+if [ "$UPGRADE" -eq 1 ]; then
+  upgrade_existing "$TEMP_DIR/runner/updater.py"
+  exit
+fi
 
 install_probe_dependencies() {
   packages=''

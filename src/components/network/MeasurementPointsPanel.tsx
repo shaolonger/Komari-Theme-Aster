@@ -7,8 +7,10 @@ import {
   revokeProbe,
   issueNodeToken,
   revokeNodeToken,
+  setWorkerUpdatePolicy,
 } from "@/services/nativeObservatory";
-import { formatNetworkTime, installCommand, quoteShell } from "./shared";
+import { formatNetworkTime, installCommand } from "./shared";
+import { NetworkDrawer } from "./NetworkDrawer";
 
 export function MeasurementPointsPanel({
   initialNodes = [],
@@ -42,6 +44,9 @@ export function MeasurementPointsPanel({
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [base, setBase] = useState(window.location.origin);
+  const [profile, setProfile] = useState("preserve");
+  const [confirm, setConfirm] = useState<"reset" | "revoke" | null>(null);
+  const [probeToRevoke, setProbeToRevoke] = useState<string | null>(null);
   const data = query.data,
     selected = uuid || data?.inventory[0]?.uuid || "",
     endpoint = data?.endpoints[selected];
@@ -68,13 +73,23 @@ export function MeasurementPointsPanel({
         <button onClick={() => void query.refetch()}>重试</button>
       </p>
     );
-  const command =
-    credential?.role === "node"
-      ? installCommand(credential.id, base)
-      : `curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --server-url ${quoteShell(base)} --probe-id ${quoteShell(credential?.id || "")}`;
+  const command = credential ? installCommand(credential.id, base, { role: credential.role }) : "";
+  const registered = data.registeredNodes.includes(selected);
+  const node = data.inventory.find(n => n.uuid === selected);
+  const worker = data.workers["node:" + selected];
+  const online = worker && Date.now() - worker.seenAt < 90000;
+  const maintenanceCommand = installCommand(selected, base, { upgrade: registered, profile: registered ? "preserve" : profile === "preserve" ? "auto" : profile });
+  async function issue() {
+    await act(async () => {
+      const c = await issueNodeToken(selected);
+      setCredential({ id: c.uuid, token: c.token, role: "node" });
+      setConfirm(null);
+    }, registered ? "新凭证已生成，旧凭证已失效；请在对应 VPS 写入新密钥" : "接入凭证已生成，请在对应 VPS 执行安装命令并输入密钥");
+  }
+  const featureNames: Record<string, string> = { "report-v3": "成组报告", "latency-samples": "延迟采样", "full-mtr": "逐跳路由", "speed-intervals": "测速分段", "http-speed": "HTTP 测速", "tcp-quality": "TCP 质量", "public-speed": "公共测速" };
   return (
     <div className="network-form measurement-points-panel">
-      <p>
+      <p className="measurement-intro">
         在 VPS
         上运行探测器，采集回程、延迟和测速。大陆测量点用于去程及双向测速，可供多个方案复用。公共
         Globalping 覆盖由每轮实际发现确认。
@@ -97,6 +112,7 @@ export function MeasurementPointsPanel({
             setIpv6(null);
             setPort(null);
             setCredential(null);
+            setConfirm(null);
           }}
         >
           {data.inventory.map((n) => (
@@ -106,63 +122,46 @@ export function MeasurementPointsPanel({
           ))}
         </select>
       </label>
-      <div className="network-section">
+      <div className="measurement-layout">
+      <section className="network-section measurement-agent">
         <h3>VPS 探测器</h3>
-        {data.inventory
-          .filter((n) => n.uuid === selected)
-          .map((n) => {
-            const w = data.workers["node:" + n.uuid];
-            return (
-              <p key={n.uuid}>
-                {n.name} ·{" "}
-                {w
-                  ? Date.now() - w.seenAt < 90000
-                    ? "在线"
-                    : "离线"
-                  : data.registeredNodes.includes(n.uuid)
-                    ? "等待首次连接"
-                    : "未接入"}
-                {w && (
-                  <>
-                    <br />
-                    版本 {w.version} · 最近连接 {formatNetworkTime(w.seenAt)}
-                    <br />
-                    工具：{w.tools.join("、")}
-                    <br />
-                    能力：{w.features.join("、") || "请升级探测器"}
-                  </>
-                )}
-              </p>
-            );
-          })}
+        <div className="measurement-status"><strong>{node?.name || "请选择 VPS"}</strong><span data-online={!!online}>{online ? "在线" : worker ? "离线" : registered ? "等待连接" : "未接入"}</span></div>
+        <dl className="measurement-facts"><div><dt>当前版本</dt><dd>{worker?.version || "尚未上报"}</dd></div><div><dt>最后连接</dt><dd>{worker ? formatNetworkTime(worker.seenAt) : "尚无记录"}</dd></div><div><dt>建议版本</dt><dd>{data.runnerRelease?.version || "更新插件后可查看"}</dd></div></dl>
+        {worker && <details className="measurement-technical"><summary>查看工具与检测能力</summary><p>已安装工具：{worker.tools.join("、") || "未上报"}</p><div className="measurement-capabilities">{worker.features.map(f => <span key={f}>{featureNames[f] || f}</span>)}</div></details>}
+        <div className="measurement-install">
+          <strong>{registered ? "保留凭证升级" : "安装探测器"}</strong>
+          <p>{registered ? "更新程序与服务，保留现有地址、UUID 和密钥。无需重新生成凭证。" : "先生成一次接入凭证，再到 VPS 执行下方命令，在隐藏提示中输入密钥。"}</p>
+          {registered ? <small>升级保留当前轻量 / 完整模式及现有工具。</small> : <label>安装模式<select value={profile} onChange={e => setProfile(e.target.value)}><option value="preserve">自动选择</option><option value="lite">轻量模式</option><option value="full">完整模式</option></select></label>}
+          <pre><code>{maintenanceCommand}</code></pre>
+          <button disabled={!selected || busy} onClick={() => void act(() => navigator.clipboard.writeText(maintenanceCommand), registered ? "升级命令已复制，现有凭证保持不变" : "安装命令已复制")}>{registered ? "复制升级命令" : "复制安装命令"}</button>
+          <small>以 root 登录时省略 sudo。128 MiB VPS 建议轻量模式；轻量模式不自动安装 NextTrace 等可选工具。</small>
+        </div>
+        {data.runnerRelease && <div className="measurement-auto-update"><label className="network-check"><input type="checkbox" checked={data.updatePolicies["node:" + selected]?.enabled || false} disabled={busy || !registered} onChange={e => void act(() => setWorkerUpdatePolicy("node", selected, e.target.checked), "自动更新偏好已保存")} />允许此 VPS 自动更新探测器</label><p>默认关闭。首次需运行上方升级命令安装维护服务；之后约每小时检查兼容版本，空闲时更新，失败回滚。共用同一机器的接入身份均需允许。</p>{data.updates["node:" + selected] && <small role="status">{data.updates["node:" + selected].message} · {formatNetworkTime(data.updates["node:" + selected].at)}</small>}</div>}
+        {!registered && <button disabled={busy || !selected} onClick={() => void issue()}>生成 VPS 接入凭证</button>}
+        {registered && <details className="measurement-credentials"><summary>凭证管理</summary><p>仅在密钥遗失或需要轮换时重置。升级探测器不需要更换凭证。</p>
         <div className="network-actions">
           <button
             disabled={busy || !selected}
             onClick={() =>
-              void act(async () => {
-                const c = await issueNodeToken(selected);
-                setCredential({ id: c.uuid, token: c.token, role: "node" });
-              }, "已生成凭证，请运行安装命令")
+              setConfirm("reset")
             }
           >
-            生成 / 重置 VPS 凭证
+            重置 VPS 凭证
           </button>
           <button
             disabled={
               busy || !selected || !data.registeredNodes.includes(selected)
             }
             onClick={() =>
-              void act(async () => {
-                await revokeNodeToken(selected);
-                setCredential(null);
-              }, "VPS 凭证已撤销")
+              setConfirm("revoke")
             }
           >
             撤销 VPS 凭证
           </button>
         </div>
-      </div>
-      <section className="network-section">
+        </details>}
+      </section>
+      <section className="network-section measurement-endpoint">
         <h3>VPS 公网地址与测速端口</h3>
         <p>
           去程需要可达公网地址。IPv4 和 IPv6
@@ -220,7 +219,8 @@ export function MeasurementPointsPanel({
           保存公网地址
         </button>
       </section>
-      <section className="network-section">
+      </div>
+      <section className="network-section measurement-probes">
         <h3>大陆测量点</h3>
         <div className="native-field-grid">
           {(
@@ -282,11 +282,12 @@ export function MeasurementPointsPanel({
                 {p.city} · {p.carrier} · {p.accessType} ·{" "}
                 {p.online ? "在线" : "待连接"}
               </small>
+              <div className="network-actions"><button disabled={busy} onClick={() => void act(() => navigator.clipboard.writeText(installCommand(p.id, base, { role: "probe", upgrade: true, profile: "preserve" })), "测量点升级命令已复制")}>复制升级命令</button>{data.runnerRelease && <label className="network-check"><input type="checkbox" checked={data.updatePolicies["probe:" + p.id]?.enabled || false} disabled={busy} onChange={e => void act(() => setWorkerUpdatePolicy("probe", p.id, e.target.checked), "测量点自动更新偏好已保存")} />允许自动更新</label>}</div>
             </div>
             <button
               disabled={busy}
               onClick={() =>
-                void act(() => revokeProbe(p.id), "测量点凭证已撤销")
+                setProbeToRevoke(p.id)
               }
             >
               撤销凭证
@@ -324,6 +325,8 @@ export function MeasurementPointsPanel({
         </section>
       )}
       {message && <p role="status">{message}</p>}
+      {probeToRevoke && <NetworkDrawer title="确认撤销测量点凭证" onClose={() => !busy && setProbeToRevoke(null)}><div className="network-form"><p>撤销后该测量点的原密钥立即失效，关联测量任务会取消。更新程序请使用“复制升级命令”。</p><div className="network-actions"><button disabled={busy} onClick={() => setProbeToRevoke(null)}>取消</button><button disabled={busy} onClick={() => void act(async () => { await revokeProbe(probeToRevoke); if (credential?.id === probeToRevoke) setCredential(null); setProbeToRevoke(null); }, "测量点凭证已撤销")}>确认撤销</button></div></div></NetworkDrawer>}
+      {confirm && <NetworkDrawer title={confirm === "reset" ? "确认重置 VPS 凭证" : "确认撤销 VPS 凭证"} onClose={() => !busy && setConfirm(null)}><div className="network-form"><p>{node?.name}：此操作会立即使原密钥失效，原探测器将收到 401，关联测量任务会取消。{confirm === "reset" ? "随后需要把新密钥写入 VPS。" : "重新接入需要生成新凭证。"}</p><p>如果只是更新探测器，请取消并使用“复制升级命令”。</p><div className="network-actions"><button disabled={busy} onClick={() => setConfirm(null)}>取消</button><button disabled={busy} onClick={() => confirm === "reset" ? void issue() : void act(async () => { await revokeNodeToken(selected); setCredential(null); setConfirm(null); }, "VPS 凭证已撤销")}>确认{confirm === "reset" ? "重置" : "撤销"}</button></div></div></NetworkDrawer>}
     </div>
   );
 }

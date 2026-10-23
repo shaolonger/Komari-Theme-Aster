@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+# A dedicated BusyBox cron spool avoids a second resident Python worker.
+description="Aster opt-in hourly runner maintenance"
+supervisor="supervise-daemon"
+command="/usr/sbin/crond"
+command_args="-f -c /etc/aster-network-observatory/cron"
+respawn_delay=10
+respawn_max=0
+retry="TERM/10/KILL/5"
+umask=0077
+
+depend() {
+  need net
+}
+
+start_pre() {
+  checkpath --directory --mode 0700 --owner root:root /etc/aster-network-observatory/cron || return 1
+  printf '%s\n' '17 * * * * /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py auto' > /etc/aster-network-observatory/cron/root
+  chmod 0600 /etc/aster-network-observatory/cron/root
+  /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py recover
+}

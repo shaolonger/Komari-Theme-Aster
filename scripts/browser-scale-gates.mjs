@@ -80,7 +80,7 @@ const requestPayloads = new Map();
 let savedUiSettings = null;
 let rejectNextStudioSave = false;
 let studioSaveBarrier = null;
-const pointFixture = { probes: [] };
+const pointFixture = { probes: [], registeredNodes: [], updatePolicies: {} };
 let homeRouteNodes = [];
 let homeRouteDisplay = true;
 const reportRequire = createRequire(import.meta.url);
@@ -434,11 +434,12 @@ const server = createServer(async (request, response) => {
   }
   if (fixture.network && url.pathname.startsWith('/api/aster-network-observatory/v2/')) {
     const suffix = url.pathname.slice('/api/aster-network-observatory/v2/'.length);
-    if (suffix === 'catalog') return sendJson(response, { revision: 0, inventory: nodeList(fixture.nodes), workers: {}, endpoints: {}, probes: pointFixture.probes, registeredNodes: [] });
+    if (suffix === 'catalog') return sendJson(response, { revision: 0, runnerRelease: reportRequire('../network-observatory/plugin/src/runner-release.json'), updatePolicies: pointFixture.updatePolicies, inventory: nodeList(fixture.nodes), workers: Object.fromEntries(pointFixture.registeredNodes.map(id=>['node:'+id,{version:'1.9.0',seenAt:Date.now(),tools:['curl','nexttrace','traceroute','mtr','iperf3','openssl','nping'],authScheme:'oaep',features:['report-v3','latency-samples','full-mtr','speed-intervals','http-speed','tcp-quality','public-speed']}])), endpoints: {}, probes: pointFixture.probes, registeredNodes: pointFixture.registeredNodes });
     let raw=''; for await (const part of request) raw += part;
     const body = raw ? JSON.parse(raw) : {};
     if (suffix === 'probes' && request.method === 'POST') { pointFixture.probes.push({ ...body, id: 'probe-fixture', online: false }); return sendJson(response, { id: 'probe-fixture', token: 'b'.repeat(64) }); }
-    if (suffix.endsWith('/token')) return sendJson(response, { uuid: suffix.split('/')[1], token: 'a'.repeat(64) });
+    if (suffix.endsWith('/token')) {count('credential-mutation');const uuid=suffix.split('/')[1];if(request.method==='POST')pointFixture.registeredNodes=[...new Set([...pointFixture.registeredNodes,uuid])];else pointFixture.registeredNodes=pointFixture.registeredNodes.filter(id=>id!==uuid);return sendJson(response, { uuid, token: 'a'.repeat(64) });}
+    if(suffix.endsWith('/update-policy')&&request.method==='PUT'){const [,role,id]=suffix.split('/');pointFixture.updatePolicies[role+':'+id]={enabled:body.enabled};return sendJson(response,{ok:true});}
     return sendJson(response, { ok: true });
   }
   if (url.pathname.startsWith('/api/aster-network-observatory/v1/')) {
@@ -1385,6 +1386,44 @@ try {
   }
 
   // Rich route metadata remains readable on all appearances and narrow screens.
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'measurement-maintenance' };
+  pointFixture.registeredNodes=['node-0'];
+  for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
+    await cdp.value(`localStorage.setItem('appearance',JSON.stringify(${JSON.stringify(appearance)}))`);
+    await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/?view=theme-manage&section=network&panel=agents&nodes=node-0`});
+    await waitUntil(cdp,`document.querySelector('.measurement-install pre')?.textContent.includes('--upgrade')`,6000);
+    const mutations=requestCounts.get('measurement-maintenance')?.['credential-mutation']||0;
+    await cdp.value(`Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copiedUpgrade=text}}});Array.from(document.querySelectorAll('.measurement-install button')).find(b=>b.textContent==='复制升级命令').click()`);
+    await waitUntil(cdp,`window.__copiedUpgrade?.includes('--upgrade')`,2000);
+    failGate((requestCounts.get('measurement-maintenance')?.['credential-mutation']||0)===mutations,'copy upgrade rotated a credential');
+    failGate(await cdp.value(`!document.querySelector('.measurement-auto-update input').checked`),'automatic updates enabled without consent');
+    await waitUntil(cdp,`document.querySelector('.measurement-credentials button')?.disabled===false`,2000);
+    await cdp.value(`document.querySelector('.measurement-credentials summary').click();Array.from(document.querySelectorAll('.measurement-credentials button')).find(b=>b.textContent==='重置 VPS 凭证').click()`);
+    await waitUntil(cdp,`document.querySelector('dialog[open]')?.textContent.includes('401')`,2000);
+    await cdp.value(`Array.from(document.querySelectorAll('dialog[open] button')).find(b=>b.textContent==='取消').click()`);
+    failGate((requestCounts.get('measurement-maintenance')?.['credential-mutation']||0)===mutations,'cancel reset rotated a credential');
+    for(const width of [1440,390]) {
+      await cdp.call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width===390});
+      failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`),`measurement panel overflows ${appearance}/${width}`);
+      failGate(await cdp.value(`Array.from(document.querySelectorAll('.measurement-layout h3')).every(e=>getComputedStyle(e).fontSize==='15px')`),'measurement heading font sizes differ');
+      await cdp.value(`document.querySelector('#network-agents').scrollIntoView({block:'start'})`);
+      if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.measurement-${appearance}-${width}.png`);
+    }
+    await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  }
+  await cdp.value(`document.querySelector('.measurement-auto-update input').click()`);
+  await waitUntil(cdp,`document.querySelector('.measurement-auto-update input').checked`,2000);
+  failGate(pointFixture.updatePolicies['node:node-0']?.enabled===true,'automatic update preference did not persist');
+  await cdp.value(`document.querySelector('.measurement-auto-update input').click()`);
+  await waitUntil(cdp,`!document.querySelector('.measurement-auto-update input').checked`,2000);
+  await waitUntil(cdp,`document.querySelector('.measurement-credentials button')?.disabled===false`,2000);
+  const mutationsBeforeReset=requestCounts.get('measurement-maintenance')?.['credential-mutation']||0;
+  await cdp.value(`Array.from(document.querySelectorAll('.measurement-credentials button')).find(b=>b.textContent==='重置 VPS 凭证').click()`);
+  await waitUntil(cdp,`document.querySelector('dialog[open]')?.textContent.includes('401')`,2000);
+  await cdp.value(`Array.from(document.querySelectorAll('dialog[open] button')).find(b=>b.textContent==='确认重置').click()`);
+  await waitUntil(cdp,`document.querySelector('.network-credential-reveal code')?.textContent.length===64`,2000);
+  failGate((requestCounts.get('measurement-maintenance')?.['credential-mutation']||0)===mutationsBeforeReset+1,'confirmed reset did not issue exactly one credential');
+  results.push({measurementMaintenance:'visible upgrade command, credential mutation isolation, reset cancellation/confirmation, default-off opt-in policy and uniform typography; six appearances at 1440/390px'});
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'route-metadata' };
   for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
     await cdp.value(`localStorage.setItem('appearance', JSON.stringify(${JSON.stringify(appearance)}))`);

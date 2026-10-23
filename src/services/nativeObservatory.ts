@@ -7,6 +7,9 @@ const worker = z.object({
   features: z.array(z.string()).default([]),
 });
 const catalog = z.object({
+  runnerRelease: z.object({ version: z.string(), protocol: z.number(), releaseTag: z.string(), archive: z.string() }).optional(),
+  updatePolicies: z.record(z.object({ enabled: z.boolean() })).default({}),
+  updates: z.record(z.object({ state: z.string(), message: z.string(), at: z.string() })).default({}),
   revision: z.number(),
   workers: z.record(worker),
   inventory: z.array(
@@ -72,3 +75,5 @@ export const issueNodeToken = async (uuid: string) =>
     );
 export const revokeNodeToken = (uuid: string) =>
   request(`/nodes/${encodeURIComponent(uuid)}/token`, "DELETE");
+export const setWorkerUpdatePolicy = (role: "node" | "probe", id: string, enabled: boolean) =>
+  request(`/workers/${role}/${encodeURIComponent(id)}/update-policy`, "PUT", { enabled });

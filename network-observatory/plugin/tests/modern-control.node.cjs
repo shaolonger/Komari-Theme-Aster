@@ -22,6 +22,19 @@ test('modern credential lifecycle, dual-stack endpoints, sanitized resources and
    assert.equal(rejected.status,401);
   }
   const catalog=await invoke('GET','/catalog');assert.ok(catalog.body.registeredNodes.includes(A));assert.ok(!JSON.stringify(catalog.body).includes(token));assert.equal(catalog.body.policies,undefined);
+  const endpoint=`/workers/node/${A}`,release=catalog.body.runnerRelease;
+  assert.equal((await invoke('GET',endpoint+'/update-policy',{},false,token)).body.enabled,false);
+  assert.equal((await invoke('PUT',endpoint+'/update-policy',{enabled:true},false)).status,403);
+  assert.equal((await invoke('POST',endpoint+'/maintenance',{action:'claim',version:release.version,automatic:true},false,token)).status,409);
+  assert.equal((await invoke('PUT',endpoint+'/update-policy',{enabled:true})).status,200);
+  assert.equal((await invoke('GET',endpoint+'/update-policy',{},false,token)).body.enabled,true);
+  const claim=await invoke('POST',endpoint+'/maintenance',{action:'claim',version:release.version,automatic:true},false,token);assert.equal(claim.status,200);
+  assert.equal((await invoke('GET',endpoint+'/poll',{},false,token)).body.task,null);
+  assert.equal((await invoke('POST',endpoint+'/maintenance',{action:'claim',version:release.version,automatic:true},false,token)).status,409);
+  assert.equal((await invoke('POST',endpoint+'/maintenance',{action:'release',lease:'wrong',state:'ok'},false,token)).status,400);
+  assert.equal((await invoke('POST',endpoint+'/maintenance',{action:'release',lease:claim.body.lease,state:'ok',message:'升级成功'},false,token)).status,200);
+  assert.equal((await invoke('POST',endpoint+'/verify',{},false,token)).status,200);
+  assert.equal((await invoke('GET','/catalog')).body.updates['node:'+A].state,'ok');
   assert.equal((await invoke('POST','/endpoints',{nodeUuid:A,ipv4:'8.8.8.8',ipv6:'2606:4700:4700::1111',port:25201})).status,200);
   assert.equal((await invoke('POST','/endpoints',{nodeUuid:A,address:'8.8.8.8',ipv6:'8.8.8.8',port:25201})).status,400);
   await c.tick();assert.equal(c.read().endpoints[A].ipv6,'2606:4700:4700::1111');

@@ -13,7 +13,7 @@ export default function RouteEvidenceDetails({ value, direction, status, timeZon
   return <NetworkDrawer title={direction} onClose={onClose}>
     <div className="network-form carrier-route-details">
       <strong>{value?.label || "尚无观测"}</strong>
-      <p>{status}。线路名称表示观测网络；CN2 GIA、CTG GIA 等商业产品未由路径认证。</p>
+      <p>{status}。{value?.pathKind === "combined" ? "同一路径的观测网络组合包含多个网络。" : value?.pathKind === "varied" ? "本轮不同测量的网络组合存在差异，请按城市和来源查看。" : ""}标签使用固定展示顺序，不表示质量排名；颜色表示终点确认与时效状态。真实途经顺序见下方 ASN 序列。CN2 GIA、CTG GIA 等商业产品未由路径认证。</p>
       {value && <p>本轮 {value.samples} 组观测{(value.variants || 0) > 1 ? "，不同测量的网络证据存在差异" : ""}。ASN 集合（最多 64 项）：{value.asns.map(a => "AS" + a).join("、") || "未取得"}。</p>}
       {value && value.samples > observations.length && <p>此卡片展示 {observations.length}/{value.samples} 组摘要，完整路径保存在对应轮次报告中。</p>}
       {value?.diagnostic && <p>{value.diagnostic}</p>}

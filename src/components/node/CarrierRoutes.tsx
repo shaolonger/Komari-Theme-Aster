@@ -20,10 +20,11 @@ function Evidence({
     : value.confirmed !== undefined ? `终点 ${value.confirmed}/${value.samples} 确认`
     : state === "partial" ? "终点未确认" : "终点已确认";
   const title = `${direction} · ${value?.label || "未探测"} · ${status} · 点击查看证据`;
+  const kind = value?.pathKind === "combined" ? "同路径多网" : value?.pathKind === "varied" ? "测量有差异" : "";
   return <>
     <button type="button" className="carrier-route-evidence" data-state={state}
       title={title} aria-label={title} onClick={() => setOpen(true)}>
-      <span>{value?.label || "未探测"}</span><small>{status}</small>
+      <span>{value?.displayLabel || value?.label || "未探测"}</span><small>{state === "stale" ? status : kind && value?.confirmed !== undefined ? `${value.pathKind === "combined" ? "同路径" : "有差异"} · 终点 ${value.confirmed}/${value.samples}` : status}</small>
     </button>
     {open && <Suspense fallback={<span role="status">正在打开线路证据…</span>}>
       <RouteDetails value={value} direction={direction} status={status} timeZone={timeZone} onClose={() => setOpen(false)} />

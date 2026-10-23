@@ -93,6 +93,9 @@ jobs:
       - name: Verify Alpine 3.21 OpenRC runner with 128 MiB
         run: npm run test:alpine-runner
 
+      - name: Verify systemd runner upgrade and rollback
+        run: sudo env GITHUB_ACTIONS=true ASTER_TEST_SYSTEMD=1 ASTER_FIXTURE_ROOT="$GITHUB_WORKSPACE" sh scripts/test-systemd-runner.sh
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

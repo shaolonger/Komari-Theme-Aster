@@ -25,6 +25,23 @@ test('homepage keeps per-measurement sequences and never combines separate round
   assert.deepEqual(row.observations[0].asPath,['23764','?','23764']);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+test('same-path multi-network and different observed combinations get distinct stable headlines',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'aster-headlines-'));
+ try {
+  const store=homeRouteStore(root,e=>e.code==='ENOENT');
+  const at=Date.now();
+  const route=(city,hops,time)=>sample({roundId:A,completedAt:new Date(at+time).toISOString(),source:{carrier:'联通',city},data:{kind:'route',state:'ok',complete:true,hops:hops.map(asn=>({asn}))}});
+  store.observe(route('北京',['9929','4837'],0));
+  let row=store.summary([A])[A]['4'][1].return;
+  assert.equal(row.displayLabel,'4837 + 9929');assert.equal(row.pathKind,'combined');
+  store.observe(route('上海',['4837','9929'],1));
+  row=store.summary([A])[A]['4'][1].return;
+  assert.equal(row.pathKind,'combined');assert.equal(row.variants,1);assert.equal(row.samples,2);
+  store.observe(route('广州',['4837'],2));
+  row=store.summary([A])[A]['4'][1].return;
+  assert.equal(row.pathKind,'varied');assert.equal(row.displayLabel,'多路径 · 2类');assert.equal(row.observations.length,3);
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
 test('ASN evidence never guesses carrier, IP family or opposite direction; recognizes observed networks only', () => {
   assert.equal(project(sample()).evidence.label, 'CN2 / 163');
   for (const [carrier, asn, label] of [['联通','9929','9929'],['移动','58807','CMIN2']]) assert.equal(project(sample({source:{carrier},data:{kind:'route',state:'ok',complete:true,hops:[{asn}]}})).evidence.label,label);

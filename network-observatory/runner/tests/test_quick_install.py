@@ -13,6 +13,11 @@ RUNNER_DIR = Path(__file__).resolve().parents[1]
 INSTALLER = RUNNER_DIR / "quick-install.sh"
 ARCHIVE_NAME = "Aster-Network-Observatory-latest.zip"
 PLUGIN_FILES = {
+    "runner/updater.py": b"updater",
+    "runner/release.json": b"{}",
+    "runner/aster-network-observatory-update.service": b"update-service",
+    "runner/aster-network-observatory-update.timer": b"update-timer",
+    "runner/aster-network-observatory-update.openrc": b"update-openrc",
     "runner/aster-network-observatory.openrc": b"openrc",
     "runner/aster-network-observatory-http.openrc": b"openrc-http",
     "komari-plugin.json": json.dumps({

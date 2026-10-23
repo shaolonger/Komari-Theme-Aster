@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -28,7 +29,8 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.9.2"
+RUNNER_VERSION = "1.10.0"
+RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")
@@ -112,7 +114,7 @@ def heartbeat(config, stop):
     # A long route/throughput test must not make a healthy worker appear offline.
     while not stop.is_set():
         try:
-            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"], "activeJobIds": native.active_tasks()})
+            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"], "activeJobIds": native.active_tasks()})
             if "activeJobIds" in response:
                 native.reconcile_tasks(set(response["activeJobIds"]))
         except (urllib.error.URLError, OSError, ValueError):
@@ -368,10 +370,14 @@ def main():
     configure_parser.add_argument("--probe-id", default="")
     run_parser = subparsers.add_parser("run", help="运行节点任务轮询服务")
     run_parser.add_argument("--config", default=str(CONFIG_PATH))
+    check_parser = subparsers.add_parser("check", help="检查配置、运行环境和面板凭证，不启动服务")
+    check_parser.add_argument("--config", default=str(CONFIG_PATH))
     args = parser.parse_args()
     try:
         if args.command == "configure":
             configure(args.server_url, args.node_uuid, args.probe_id)
+        elif args.command == "check":
+            api_request(load_config(args.config), "verify", method="POST", body={})
         else:
             stop = threading.Event()
             previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())

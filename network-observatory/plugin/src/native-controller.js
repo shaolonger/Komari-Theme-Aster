@@ -6,6 +6,7 @@ const M = require("./native-model.js"),
   G = require("./globalping.js");
 const { createEnricher } = require("./route-enrichment.js");
 const BASE = "/api/aster-network-observatory/v2";
+const RUNNER_RELEASE = require("./runner-release.json");
 function registerNativeController(ctx) {
   const {
     server,
@@ -186,6 +187,8 @@ function registerNativeController(ctx) {
   route("GET", "/catalog", true, (_req, res, s) => {
     void tick(true);
     respond(res, 200, {
+      runnerRelease: RUNNER_RELEASE,
+      updatePolicies: s.updatePolicies || {}, updates: s.updates || {},
       revision: s.revision, inventory: s.inventory, inventoryError: s.inventoryError,
       workers: s.workers, endpoints: s.endpoints,
       registeredNodes: Object.keys(readState().nodes),
@@ -294,6 +297,41 @@ function registerNativeController(ctx) {
     respond(res, 200, { ok: true });
   });
   for (const role of ["node", "probe"]) {
+    route("PUT", `/workers/${role}/:id/update-policy`, true, (req, res, s) => {
+      const w = workerId(req), b = readBody(req);
+      if (!w || !(role === "node" ? readState().nodes[w.id] : s.probes[w.id]) || typeof b.enabled !== "boolean") throw new Error("测量端或自动更新偏好无效");
+      (s.updatePolicies ||= {})[w.key] = { enabled: b.enabled };
+      save(s); respond(res, 200, { ok: true });
+    });
+    route("GET", `/workers/${role}/:id/update-policy`, false, (req, res, s) => {
+      const w = auth(req, res, s);
+      if (w) respond(res, 200, { enabled: s.updatePolicies?.[w.key]?.enabled === true, release: RUNNER_RELEASE, version: s.workers[w.key]?.version || "", instanceId: s.workers[w.key]?.instanceId || "", busy: s.jobs.some(j => ["running", "ready", "listening"].includes(j.phase) && (j.executor === w.key || (j.operation === "benchmark" && w.key === "node:" + j.nodeUuid))) });
+    });
+    route("POST", `/workers/${role}/:id/maintenance`, false, (req, res, s) => {
+      const w = auth(req, res, s);
+      if (!w) return;
+      const b = readBody(req), leases = (s.maintenance ||= {}), lease = leases[w.key];
+      if (b.action === "report") {
+        if (!["ok", "waiting", "failed"].includes(b.state)) throw new Error("维护状态无效");
+        (s.updates ||= {})[w.key] = { state: b.state, message: M.text(b.message, 300), at: new Date().toISOString() };
+        save(s); respond(res, 200, { ok: true }); return;
+      }
+      if (b.action === "claim") {
+        if (b.automatic && s.updatePolicies?.[w.key]?.enabled !== true) { respond(res, 409, { error: "自动更新未启用" }); return; }
+        if (b.version !== RUNNER_RELEASE.version) throw new Error("目标探测器版本与面板不兼容");
+        if ((lease && lease.until > Date.now()) || s.jobs.some(j => ["running", "ready", "listening"].includes(j.phase) && (j.executor === w.key || (j.operation === "benchmark" && w.key === "node:" + j.nodeUuid)))) {
+          respond(res, 409, { error: "测量端忙，等待当前测量完成后重试" }); return;
+        }
+        const id = crypto.randomBytes(16).toString("hex");
+        leases[w.key] = { id, until: Date.now() + 600000 };
+        (s.updates ||= {})[w.key] = { state: "updating", message: "已进入维护，正在验证并更新探测器", at: new Date().toISOString() };
+        save(s); respond(res, 200, { lease: id }); return;
+      }
+      if (b.action !== "release" || !lease || b.lease !== lease.id) throw new Error("维护租约无效");
+      delete leases[w.key];
+      (s.updates ||= {})[w.key] = { state: ["ok", "failed", "waiting"].includes(b.state) ? b.state : "failed", message: M.text(b.message, 300), at: new Date().toISOString() };
+      save(s); respond(res, 200, { ok: true });
+    });
     route("POST", `/workers/${role}/:id/verify`, false, async (req, res, s) => {
       if (auth(req, res, s)) respond(res, 200, { ok: true });
     });
@@ -308,6 +346,7 @@ function registerNativeController(ctx) {
         s.workers[w.key] = {
           seenAt: Date.now(),
           version: M.text(b.version, 30),
+          instanceId: /^[0-9a-f]{32}$/.test(b.instanceId || "") ? b.instanceId : "",
           tools: Array.isArray(b.tools)
             ? b.tools.filter((x) =>
                 [
@@ -367,6 +406,9 @@ function registerNativeController(ctx) {
     route("GET", `/workers/${role}/:id/poll`, false, async (req, res, s) => {
       const w = auth(req, res, s);
       if (!w) return;
+      if (s.maintenance?.[w.key]?.until > Date.now()) {
+        respond(res, 200, { task: null, listeners: [] }); return;
+      }
       const occupied = s.jobs.filter((j) =>
         ["listening", "ready", "running", "submitting", "provider"].includes(
           j.phase,

@@ -1,0 +1,16 @@
+[Unit]
+Description=Aster credential-preserving runner maintenance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py auto
+TimeoutStartSec=300
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/libexec/aster-network-observatory /var/lib/aster-network-observatory /etc/systemd/system
+PrivateTmp=true
+UMask=0077

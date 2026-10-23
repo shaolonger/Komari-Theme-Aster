@@ -1,0 +1,12 @@
+[Unit]
+Description=Check opt-in Aster runner maintenance hourly
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=aster-network-observatory-update.service
+
+[Install]
+WantedBy=timers.target

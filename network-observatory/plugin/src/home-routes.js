@@ -4,6 +4,14 @@ const fs = require("fs"),
   crypto = require("crypto");
 const { UUID } = require("./model.js");
 const CARRIERS = ["电信", "联通", "移动"];
+// Stable presentation order, never a quality ranking or an AS path sequence.
+const LABEL_ORDER = ["163", "CN2", "CTGNet", "4837", "9929", "10099", "9808", "CMI", "CMIN2"];
+function orderedLabels(labels) {
+  return [...new Set(labels)].sort((a, b) => {
+    const ai = LABEL_ORDER.indexOf(a), bi = LABEL_ORDER.indexOf(b);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
+  });
+}
 const { routeFacts } = require("./route-evidence.js");
 function carrierName(value) {
   const text = String(value || "")
@@ -170,13 +178,19 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
             const combinedLabel = networkLabels.join(" / ");
             const confirmed = current.filter(e => e.state === "ok").length;
             const observed = current.filter(e => e.state !== "missing").length;
+            const variants = new Set(usable.map(e => JSON.stringify(orderedLabels(e.networkLabels?.length ? e.networkLabels : [e.label])))).size;
+            const sortedLabels = orderedLabels(networkLabels);
+            const pathKind = !usable.length ? "unknown" : variants > 1 ? "varied" : sortedLabels.length > 1 ? "combined" : "single";
+            const displayLabel = pathKind === "varied" ? `多路径 · ${variants}类` : sortedLabels.join(" + ");
             row[direction] = {
               label: combinedLabel.length > 160 ? `${networkLabels.length} 个网络（展开）` : combinedLabel,
+              displayLabel: displayLabel.length > 60 ? `${sortedLabels.length} 个网络` : displayLabel,
+              pathKind,
               asns: [...new Set(current.flatMap((e) => e.asns))].slice(0, 64),
               at: latest.at,
               samples: current.length,
               confirmed, observed,
-              variants: [...new Set(current.filter(e => e.state !== "missing").map(e => e.label))].length,
+              variants,
               observations: current.slice(0, 12).map(e => ({ label: e.label, at: e.at, city: e.city || "未声明地区",
                 provider: e.provider || "未声明来源", protocol: e.protocol || "未声明协议",
                 asPath: e.asPath || [], state: e.state, reportId: e.reportId || "" })),

@@ -48,16 +48,24 @@ install -o root -g root -m 0644 "$SCRIPT_DIR/native.py" "$SERVICE_DIR/native.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/public_speed.py" "$SERVICE_DIR/public_speed.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/tcp_quality.py" "$SERVICE_DIR/tcp_quality.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/agent.py" "$SERVICE_DIR/agent.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/updater.py" "$SERVICE_DIR/updater.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/release.json" "$SERVICE_DIR/release.json"
+for name in aster-network-observatory-update.service aster-network-observatory-update.timer aster-network-observatory-update.openrc; do
+  install -o root -g root -m 0644 "$SCRIPT_DIR/$name" "$SERVICE_DIR/$name"
+done
 install -o root -g root -m 0755 "$SCRIPT_DIR/aster-network-observatory.openrc" "$SERVICE_DIR/aster-network-observatory.openrc"
 if [ "$INIT_SYSTEM" = openrc ]; then
   install -o root -g root -m 0755 "$SCRIPT_DIR/aster-network-observatory.openrc" /etc/init.d/aster-network-observatory
   install -o root -g root -m 0755 "$SCRIPT_DIR/aster-network-observatory-http.openrc" /etc/init.d/aster-network-observatory-http
+  install -o root -g root -m 0755 "$SCRIPT_DIR/aster-network-observatory-update.openrc" /etc/init.d/aster-network-observatory-update
 else
   install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-agent.service" \
     /etc/systemd/system/aster-network-observatory-agent.service
   install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-probe@.service" \
     /etc/systemd/system/aster-network-observatory-probe@.service
   install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-http.service" /etc/systemd/system/aster-network-observatory-http.service
+  install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-update.service" /etc/systemd/system/aster-network-observatory-update.service
+  install -o root -g root -m 0644 "$SCRIPT_DIR/aster-network-observatory-update.timer" /etc/systemd/system/aster-network-observatory-update.timer
   systemctl daemon-reload
 fi
 printf '%s\n' "$INIT_SYSTEM" > "$CONFIG_DIR/service-manager"
@@ -66,6 +74,12 @@ if [ -z "$PROFILE" ] && [ -f "$CONFIG_DIR/install-profile" ]; then PROFILE=$(cat
 case "$PROFILE" in lite|full) ;; '') PROFILE=full ;; *) printf '%s\n' '无效的安装模式。' >&2; exit 1 ;; esac
 printf '%s\n' "$PROFILE" > "$CONFIG_DIR/install-profile"
 chmod 0644 "$CONFIG_DIR/service-manager" "$CONFIG_DIR/install-profile"
+if [ "$INIT_SYSTEM" = openrc ]; then
+  rc-update add aster-network-observatory-update default
+  if ! rc-service aster-network-observatory-update status >/dev/null 2>&1; then rc-service aster-network-observatory-update start; fi
+else
+  systemctl enable --now aster-network-observatory-update.timer
+fi
 
 printf '%s\n' \
   '节点服务和探测器已安装。下一步请运行：' \
