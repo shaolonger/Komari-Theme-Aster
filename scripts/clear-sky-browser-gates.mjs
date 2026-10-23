@@ -29,7 +29,7 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
   await navigate();
   await cdp.value(`localStorage.clear(); sessionStorage.clear(); localStorage.setItem('appearance', JSON.stringify('clearsky'))`);
   await cdp.call("Page.reload");
-  await waitUntil(cdp, "document.documentElement.dataset.themeStyle === 'clearsky' && document.querySelector('.clear-sky-view-switch') !== null", 8_000);
+  await waitUntil(cdp, "document.documentElement?.dataset.themeStyle === 'clearsky' && document.querySelector('.clear-sky-view-switch') !== null", 8_000);
   failGate(await cdp.value("document.documentElement.dataset.appearance === 'light' && document.documentElement.style.colorScheme === 'light' && document.querySelector('meta[name=theme-color]').content === '#e7f1fc'"), "Clear Sky failed to restore its light palette and browser chrome");
   await view("compact");
   failGate(await cdp.value("document.querySelectorAll('.compact-node-card .sky-traffic-quota').length === document.querySelectorAll('.compact-node-card').length && document.querySelector('.sky-traffic-quota-foot').textContent.includes('剩余') && document.querySelector('.sky-traffic-quota-foot').textContent.includes('已用')"), "Compact cards lost quota totals or percentage");
