@@ -90,6 +90,9 @@ jobs:
       - name: Build package
         run: npm run package
 
+      - name: Verify Alpine 3.21 OpenRC runner with 128 MiB
+        run: npm run test:alpine-runner
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

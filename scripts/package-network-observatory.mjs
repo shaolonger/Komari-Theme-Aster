@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const plugin = resolve(root, "network-observatory/plugin");
 const manifest = JSON.parse(readFileSync(resolve(plugin, "komari-plugin.json"), "utf8"));
 const files = [
+  ...["aster-network-observatory.openrc", "aster-network-observatory-http.openrc"].map((name) => [`runner/${name}`, resolve(root, `network-observatory/runner/${name}`)]),
   ["komari-plugin.json", resolve(plugin, "komari-plugin.json")],
   ["script.js", resolve(plugin, "script.js")],
   ["src/route-networks.json", resolve(plugin, "src/route-networks.json")],

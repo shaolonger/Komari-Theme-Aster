@@ -22,6 +22,36 @@ TASK = {
 
 
 class AgentValidationTests(unittest.TestCase):
+    def test_openrc_registers_separate_probe_service_and_restarts_existing_node(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            init = folder / "init.d"
+            init.mkdir()
+            (folder / "service-manager").write_text("openrc\n")
+            with patch.object(AGENT, "CONFIG_PATH", folder / "agent.json"), patch.object(AGENT, "INIT_DIR", init), patch.object(AGENT, "SERVICE_DIR", AGENT_PATH.parent), patch.object(AGENT.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as service:
+                name = AGENT.enable_service(TASK["taskId"])
+                self.assertEqual((init / name).read_bytes(), (AGENT_PATH.parent / "aster-network-observatory.openrc").read_bytes())
+                self.assertEqual((init / name).stat().st_mode & 0o777, 0o755)
+                self.assertEqual(service.call_args_list[0], call(["rc-update", "add", name, "default"], check=True))
+                self.assertEqual(service.call_args_list[-1], call(["rc-service", name, "restart"], check=True))
+                service.return_value.returncode = 3
+                self.assertEqual(AGENT.enable_service(), "aster-network-observatory")
+                self.assertEqual(service.call_args_list[-1], call(["rc-service", "aster-network-observatory", "start"], check=True))
+                with self.assertRaises(ValueError):
+                    AGENT.enable_service("../../invalid")
+
+    def test_lite_limits_latency_concurrency_and_pre_stopped_daemon_does_not_poll(self):
+        import threading
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "CONFIG_PATH", Path(temp) / "agent.json"):
+            self.assertEqual(AGENT.worker_capacity(), 4)
+            (Path(temp) / "install-profile").write_text("lite\n")
+            self.assertEqual(AGENT.worker_capacity(), 1)
+            stop = threading.Event()
+            stop.set()
+            with patch.object(AGENT, "load_config", return_value={"nodeUuid": TASK["taskId"]}), patch.object(AGENT, "heartbeat"), patch.object(AGENT, "api_request") as request:
+                AGENT.run_daemon("unused", stop)
+                request.assert_not_called()
+
     def test_syn_capture_service_allows_packet_sockets_without_network_admin(self):
         for filename in ['aster-network-observatory-agent.service', 'aster-network-observatory-probe@.service']:
             unit = (AGENT_PATH.parent / filename).read_text()

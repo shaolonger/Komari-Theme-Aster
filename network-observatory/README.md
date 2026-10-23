@@ -1,6 +1,6 @@
 # Aster 网络观测
 
-主题 **1.13.1** / 插件 **1.10.1** / 探测器 **1.9.1**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
+主题 **1.13.2** / 插件 **1.10.2** / 探测器 **1.9.2**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
 
 所有配置统一在 **Aster 工作室 → 网络观测**：
 
@@ -30,7 +30,15 @@
    curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh
    ```
 
-安装器支持带 systemd 的 Debian / Ubuntu、RHEL 系、openSUSE，校验 ZIP 和固定版本 NextTrace。安装 Python、MTR、traceroute、iperf3 等依赖，不再安装或调用 TcpQuality。大陆测量点使用独立 `--probe-id` 和 systemd 服务，可与本机 VPS 探测器共存。
+安装器支持 systemd（Debian / Ubuntu、RHEL 系、openSUSE）和 OpenRC（含 Alpine 3.21），使用 apk 的 Alpine 不再要求 systemctl。安装包先验证 SHA-256。大陆测量点使用独立 `--probe-id`、凭证文件和服务，可与本机 VPS 探测器共存。
+
+`--profile auto` 为默认值：物理内存 / 容器内存上限不超过 192 MiB，或根分区可用空间少于 192 MiB 时，使用 `lite`；其余使用 `full`。128 MiB / 256 MiB 的 Alpine VPS 建议显式使用 `--profile lite`。轻量模式仅安装 Python、CA 证书、MTR 和支持 TCP 的 traceroute，延迟采样并发降为 1，跳过 NextTrace、iperf3、openssl 命令和 nping 的自动安装。基础 TCP 延迟、连接质量、MTR 路由仍可用；缺少 NextTrace 时不会采集其位置、WHOIS 等补充信息，自建 iperf3 测速、认证双向测速及原始 SYN 比较需要对应工具。已有工具不会被卸载。完整模式可用 `--profile full` 补齐工具，并校验固定版本 NextTrace；不建议在此规格上运行多个重负载检测。
+
+```sh
+curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --profile lite --server-url 'https://你的面板地址' --node-uuid '你的节点UUID'
+```
+
+Alpine 以 root 登录时可省略 `sudo`。升级同面板、同节点时在密钥提示处回车保留原凭证，无需重新生成。OpenRC 节点服务名为 `aster-network-observatory`，大陆测量点为 `aster-network-observatory-probe-<UUID>`；用 `rc-service <服务名> status/restart/stop` 管理，凭证验证成功后加入 default 运行级。日志交给系统 syslog，停止时取消正在执行的测量子进程。可选 HTTP 测速接收器不会随安装自动开启。
 
 **本版直接移除了旧工具诊断、旧单次报告、旧计划、图片报告、旧调度器与迁移界面。没有兼容与迁移面板。** 新版轮次报告和现有探测器凭证仍可使用；本版不提供旧数据迁移或旧报告浏览。为已安装的 1.7 探测器保留了凭证验证 / 心跳的通信应答，不执行任何旧检测。建议统一升级探测器以停止旧轮询。
 
@@ -56,3 +64,5 @@
 ## 验证
 
 `npm run test:release-gates` 检查单元测试、插件 / 探测器、类型、lint、契约、性能预算与浏览器界面。`npm run test:plugin-runtime` 验证官方 Komari 1.4.3 / 1.5.1 JavaScript 运行环境。测试使用本地 API、工具输出和浏览器夹具，不冒充用户生产 VPS 的三地三网实测。
+
+`npm run test:alpine-runner` 使用 Docker 中的 Alpine 3.21、1 CPU / 128 MiB，验证实际 apk 安装、OpenRC 启停、升级与凭证复用、节点 / 测量点共存、开机运行级、崩溃拉起和 SIGTERM 子进程取消。容器不模拟真实 VPS 的重启、外网线路或 256 MiB 根盘硬配额，磁盘占用单独输出。

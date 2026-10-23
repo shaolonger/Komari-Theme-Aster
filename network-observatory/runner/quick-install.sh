@@ -3,29 +3,62 @@ set -eu
 
 RELEASE_BASE=https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download
 ARCHIVE_NAME=Aster-Network-Observatory-latest.zip
+PROFILE=auto
+SERVER_URL=''
+NODE_UUID=''
+PROBE_ID=''
 
 fail() {
   printf 'Aster 网络观测安装失败：%s\n' "$1" >&2
   exit 1
 }
 
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --profile|--server-url|--node-uuid|--probe-id)
+      [ "$#" -ge 2 ] || fail "$1 缺少参数。"
+      case "$1" in
+        --profile) PROFILE=$2 ;;
+        --server-url) SERVER_URL=$2 ;;
+        --node-uuid) NODE_UUID=$2 ;;
+        --probe-id) PROBE_ID=$2 ;;
+      esac
+      shift 2 ;;
+    --help|-h)
+      printf '%s\n' '用法：sh install.sh [--profile auto|lite|full] [--server-url URL] [--node-uuid UUID | --probe-id UUID]' \
+        'auto 在内存不超过 192 MiB 或根分区可用空间少于 192 MiB 时选 lite。' \
+        'lite：Python、HTTPS 环境、MTR 和 traceroute；full 另含 NextTrace、iperf3、openssl 和 nping。'
+      exit 0 ;;
+    *) fail "未知安装参数：$1" ;;
+  esac
+done
+case "$PROFILE" in auto|lite|full) ;; *) fail '安装模式必须是 auto、lite 或 full。' ;; esac
+
 if [ "$(id -u)" -ne 0 ]; then
   fail '请用 sudo 运行，例如 curl -fsSL <安装器地址> | sudo sh。'
 fi
-command -v systemctl >/dev/null 2>&1 || fail '需要 systemd/systemctl 的 Linux VPS。'
+if command -v rc-service >/dev/null 2>&1 && command -v rc-update >/dev/null 2>&1 && [ ! -d /run/systemd/system ]; then
+  INIT_SYSTEM=openrc
+elif command -v systemctl >/dev/null 2>&1; then
+  INIT_SYSTEM=systemd
+else
+  fail '需要使用 systemd 或 OpenRC 的 Linux VPS；Alpine 请确认已安装并启用 OpenRC。'
+fi
 command -v curl >/dev/null 2>&1 || fail '缺少 curl；请先安装 curl 后重新运行一键命令。'
 
 package_manager() {
-  if command -v apt-get >/dev/null 2>&1; then printf apt;
+  if command -v apk >/dev/null 2>&1; then printf apk;
+  elif command -v apt-get >/dev/null 2>&1; then printf apt;
   elif command -v dnf >/dev/null 2>&1; then printf dnf;
   elif command -v yum >/dev/null 2>&1; then printf yum;
   elif command -v zypper >/dev/null 2>&1; then printf zypper;
-  else fail '未找到受支持的系统包管理器（apt、dnf、yum、zypper）。'; fi
+  else fail '未找到受支持的系统包管理器（apk、apt、dnf、yum、zypper）。'; fi
 }
 
 install_packages() {
   [ "$#" -gt 0 ] || return 0
   case "$(package_manager)" in
+    apk) apk add --no-cache "$@" || fail 'apk 安装依赖失败；请检查可用磁盘空间、软件源与包管理器锁。' ;;
     apt) apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || fail 'apt 安装网络检测依赖失败；请检查软件源或包管理器锁。' ;;
     dnf) dnf install -y "$@" || fail 'dnf 安装网络检测依赖失败。' ;;
     yum) yum install -y "$@" || fail 'yum 安装网络检测依赖失败。' ;;
@@ -33,7 +66,34 @@ install_packages() {
   esac
 }
 
-if ! command -v python3 >/dev/null 2>&1; then install_packages python3; fi
+if [ "$PROFILE" = auto ]; then
+  memory_kb=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo 2>/dev/null || true)
+  for limit_file in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+    [ -r "$limit_file" ] || continue
+    limit_bytes=$(cat "$limit_file")
+    case "$limit_bytes" in ''|*[!0-9]*) continue ;; esac
+    limit_kb=$((limit_bytes / 1024))
+    if [ "$limit_kb" -gt 0 ] && { [ -z "$memory_kb" ] || [ "$limit_kb" -lt "$memory_kb" ]; }; then memory_kb=$limit_kb; fi
+  done
+  free_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+  PROFILE=full
+  if { [ -n "$memory_kb" ] && [ "$memory_kb" -le 196608 ]; } || { [ -n "$free_kb" ] && [ "$free_kb" -lt 196608 ]; }; then PROFILE=lite; fi
+fi
+printf '服务管理：%s；安装模式：%s。\n' "$INIT_SYSTEM" "$PROFILE"
+if [ "$PROFILE" = lite ]; then
+  printf '%s\n' '轻量模式保留基础延迟、TCP 建连、MTR 路由；不自动安装 NextTrace、iperf3、nping。' \
+    'NextTrace 位置补充、自建 iperf3 测速和原始 SYN 比较需要相应工具；可用 --profile full 补齐，已有工具不会卸载。'
+fi
+bootstrap_packages=''
+command -v python3 >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages python3"
+if [ "$(package_manager)" = apk ]; then
+  apk info -e ca-certificates >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages ca-certificates"
+  command -v mtr >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages mtr"
+  # BusyBox traceroute does not provide the TCP fallback used by this worker.
+  apk info -e traceroute >/dev/null 2>&1 || bootstrap_packages="$bootstrap_packages traceroute"
+fi
+# Fixed internal package names only; never shell-expand user arguments.
+[ -z "$bootstrap_packages" ] || install_packages $bootstrap_packages
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
@@ -76,6 +136,8 @@ expected = {
     "runner/aster-network-observatory-http.service",
     "runner/aster-network-observatory-agent.service",
     "runner/aster-network-observatory-probe@.service",
+    "runner/aster-network-observatory.openrc",
+    "runner/aster-network-observatory-http.openrc",
 }
 files = {}
 with zipfile.ZipFile(archive_path) as bundle:
@@ -111,26 +173,23 @@ PY
 
 install_probe_dependencies() {
   packages=''
-  command -v timeout >/dev/null 2>&1 || packages="$packages coreutils"
-  command -v bash >/dev/null 2>&1 || packages="$packages bash"
-  command -v iperf3 >/dev/null 2>&1 || packages="$packages iperf3"
-  command -v jq >/dev/null 2>&1 || packages="$packages jq"
-  command -v openssl >/dev/null 2>&1 || packages="$packages openssl"
   command -v mtr >/dev/null 2>&1 || packages="$packages mtr"
   command -v traceroute >/dev/null 2>&1 || packages="$packages traceroute"
-  command -v nmap >/dev/null 2>&1 || packages="$packages nmap"
-  command -v ping >/dev/null 2>&1 || packages="$packages iputils-ping"
-  command -v ip >/dev/null 2>&1 || packages="$packages iproute2"
-  case "$(package_manager)" in
-    dnf|yum) packages=$(printf '%s' "$packages" | sed 's/iputils-ping/iputils/g; s/iproute2/iproute/g') ;;
-    zypper) packages=$(printf '%s' "$packages" | sed 's/iputils-ping/iputils/g') ;;
-  esac
+  if [ "$PROFILE" = full ]; then
+    command -v iperf3 >/dev/null 2>&1 || packages="$packages iperf3"
+    command -v openssl >/dev/null 2>&1 || packages="$packages openssl"
+    if ! command -v nping >/dev/null 2>&1; then
+      if [ "$(package_manager)" = apk ]; then packages="$packages nmap-nping"; else packages="$packages nmap"; fi
+    fi
+  fi
   # Word splitting is intentional for this fixed, internal package-name list.
   [ -z "$packages" ] || install_packages $packages
-  command -v iperf3 >/dev/null 2>&1 || fail 'iperf3 安装后仍不可用。'
-  command -v timeout >/dev/null 2>&1 || fail 'timeout 安装后仍不可用。'
+  command -v mtr >/dev/null 2>&1 || fail 'mtr 安装后仍不可用。'
   command -v traceroute >/dev/null 2>&1 || fail 'traceroute 安装后仍不可用。'
-  command -v nping >/dev/null 2>&1 || fail 'nmap 安装后 nping 仍不可用；请检查系统软件源中的 nmap 包。'
+  if [ "$PROFILE" = full ]; then
+    command -v iperf3 >/dev/null 2>&1 || fail 'iperf3 安装后仍不可用。'
+    command -v nping >/dev/null 2>&1 || fail 'nping 安装后仍不可用；请检查系统软件源中的 nmap/nping 包。'
+  fi
 }
 
 install_nexttrace() {
@@ -155,10 +214,14 @@ install_nexttrace() {
 }
 
 install_probe_dependencies
-install_nexttrace
+[ "$PROFILE" != full ] || install_nexttrace
 
-sh "$TEMP_DIR/runner/install.sh"
-if [ -r /dev/tty ]; then
+ASTER_INSTALL_PROFILE="$PROFILE" sh "$TEMP_DIR/runner/install.sh"
+set --
+[ -z "$SERVER_URL" ] || set -- "$@" --server-url "$SERVER_URL"
+[ -z "$NODE_UUID" ] || set -- "$@" --node-uuid "$NODE_UUID"
+[ -z "$PROBE_ID" ] || set -- "$@" --probe-id "$PROBE_ID"
+if ( : </dev/tty ) 2>/dev/null; then
   printf '\n现在登记节点并启动服务；请准备好 Komari 地址、节点 UUID 和一次性凭证。\n'
   python3 /usr/local/libexec/aster-network-observatory/agent.py configure "$@" </dev/tty
 else

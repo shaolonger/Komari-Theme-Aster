@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+
+description="Aster optional authenticated HTTP measurement receiver"
+supervisor="supervise-daemon"
+command="/usr/bin/python3"
+command_args="-B /usr/local/libexec/aster-network-observatory/http_receiver.py --config /etc/aster-network-observatory/http-receiver.json"
+command_user="aster-netobs:aster-netobs"
+umask=0077
+no_new_privs=yes
+respawn_delay=10
+respawn_max=0
+retry="TERM/10/KILL/5"
+output_logger="logger -t ${RC_SVCNAME}"
+error_logger="$output_logger"
+
+depend() {
+  need net
+}
+
+start_pre() {
+  [ -f /etc/aster-network-observatory/http-receiver.json ] || { eerror "Missing http-receiver.json"; return 1; }
+}

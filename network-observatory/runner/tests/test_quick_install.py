@@ -13,6 +13,8 @@ RUNNER_DIR = Path(__file__).resolve().parents[1]
 INSTALLER = RUNNER_DIR / "quick-install.sh"
 ARCHIVE_NAME = "Aster-Network-Observatory-latest.zip"
 PLUGIN_FILES = {
+    "runner/aster-network-observatory.openrc": b"openrc",
+    "runner/aster-network-observatory-http.openrc": b"openrc-http",
     "komari-plugin.json": json.dumps({
         "short": "aster-network-observatory",
         "version": "1.2.0",
@@ -67,8 +69,18 @@ class QuickInstallTests(unittest.TestCase):
             return result, agent_bytes, escaped_exists
 
     def test_quick_installer_has_valid_posix_shell_syntax(self):
-        result = subprocess.run(["sh", "-n", str(INSTALLER)], capture_output=True, text=True, check=False)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in ["quick-install.sh", "install.sh", "aster-network-observatory.openrc", "aster-network-observatory-http.openrc"]:
+            result = subprocess.run(["sh", "-n", str(RUNNER_DIR / name)], capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_help_and_invalid_profile_stop_before_installing_anything(self):
+        help_result = subprocess.run(["sh", str(INSTALLER), "--help"], capture_output=True, text=True)
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("auto|lite|full", help_result.stdout)
+        for args in [["--profile", "unknown"], ["--profile"], ["--unexpected"]]:
+            result = subprocess.run(["sh", str(INSTALLER), *args], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("安装失败", result.stderr)
 
     def test_verifies_checksum_and_extracts_only_required_runner_files(self):
         result, agent_bytes, escaped_exists = self.run_verifier(files={

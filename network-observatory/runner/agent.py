@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import threading
 import stat
 import subprocess
@@ -25,7 +26,9 @@ import native
 
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.9.1"
+SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
+INIT_DIR = Path("/etc/init.d")
+RUNNER_VERSION = "1.9.2"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")
@@ -117,6 +120,36 @@ def heartbeat(config, stop):
         stop.wait(30)
 
 
+def enable_service(probe_id=""):
+    marker = CONFIG_PATH.parent / "service-manager"
+    manager = marker.read_text().strip() if marker.exists() else "systemd"
+    if manager == "systemd":
+        name = "aster-network-observatory-probe@" + probe_id + ".service" if probe_id else SERVICE_NAME
+        subprocess.run(["systemctl", "enable", name], check=True)
+        subprocess.run(["systemctl", "restart", name], check=True)
+    elif manager == "openrc":
+        if probe_id and not UUID_RE.fullmatch(probe_id):
+            raise ValueError("大陆探针 ID 无效")
+        name = "aster-network-observatory" + ("-probe-" + probe_id if probe_id else "")
+        # One trusted template per identity; no user-supplied shell fragments.
+        with tempfile.NamedTemporaryFile("wb", dir=INIT_DIR, delete=False) as temporary:
+            temporary.write((SERVICE_DIR / "aster-network-observatory.openrc").read_bytes())
+            path = Path(temporary.name)
+        os.chmod(path, 0o755)
+        os.replace(path, INIT_DIR / name)
+        subprocess.run(["rc-update", "add", name, "default"], check=True)
+        status = subprocess.run(["rc-service", name, "status"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["rc-service", name, "restart" if status.returncode == 0 else "start"], check=True)
+    else:
+        raise ValueError("服务管理器标记无效，请重新安装探测器")
+    return name
+
+
+def worker_capacity():
+    marker = CONFIG_PATH.parent / "install-profile"
+    return 1 if marker.exists() and marker.read_text().strip() == "lite" else 4
+
+
 def configure(server_url="", node_uuid="", probe_id=""):
 
     if os.geteuid() != 0:
@@ -126,7 +159,6 @@ def configure(server_url="", node_uuid="", probe_id=""):
     if probe_id and node_uuid:
         raise ValueError("--probe-id 与 --node-uuid 不能同时使用")
     config_target = CONFIG_PATH.with_name("probe-" + probe_id + ".json") if probe_id else CONFIG_PATH
-    service_name = "aster-network-observatory-probe@" + probe_id + ".service" if probe_id else SERVICE_NAME
     previous = load_config(config_target) if config_target.exists() else {}
     role = "probe" if probe_id else "node"
     if probe_id:
@@ -157,8 +189,7 @@ def configure(server_url="", node_uuid="", probe_id=""):
     os.chmod(temporary_path, 0o640)
     os.chown(temporary_path, 0, group.gr_gid)
     os.replace(temporary_path, config_target)
-    subprocess.run(["systemctl", "enable", service_name], check=True)
-    subprocess.run(["systemctl", "restart", service_name], check=True)
+    service_name = enable_service(probe_id)
     print(f"已登记节点 {node_uuid} 并启动 {service_name}。")
 
 
@@ -261,17 +292,25 @@ def _native_task(config, task, listeners):
         time.sleep(2)
 
 
-def run_daemon(config_path):
+def run_daemon(config_path, stop=None):
     config = load_config(config_path)
-    stop = threading.Event()
+    stop = stop if stop is not None else threading.Event()
     worker = threading.Thread(target=heartbeat, args=(config, stop), daemon=True)
     worker.start()
     listeners = {}
-    pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aster-latency")
+    capacity = worker_capacity()
+    pool = ThreadPoolExecutor(max_workers=capacity, thread_name_prefix="aster-latency")
+    finished = threading.Event()
+    def cancel_on_stop():
+        stop.wait()
+        while not finished.is_set():
+            native.reconcile_tasks(set())
+            finished.wait(0.25)
+    threading.Thread(target=cancel_on_stop, daemon=True).start()
     pending = {}
     print(f"网络观测探测器已启动，{config.get('role', 'node')} {config['nodeUuid']}。", flush=True)
     try:
-        while True:
+        while not stop.is_set():
             try:
                 for task_id, future in list(pending.items()):
                     if future.done():
@@ -280,6 +319,9 @@ def run_daemon(config_path):
                             future.result()
                         except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError) as error:
                             print(f"结果回传失败，未重复测量：{error}", file=sys.stderr, flush=True)
+                if len(pending) >= capacity:
+                    stop.wait(0.5)
+                    continue
                 flush_results(config)
                 native_response = None
                 try:
@@ -307,11 +349,12 @@ def run_daemon(config_path):
                 if time.monotonic() >= listener.expires:
                     listener.close()
                     del listeners[key]
-            time.sleep(0.5 if pending else 3 if listeners else POLL_SECONDS)
+            stop.wait(0.5 if pending else 3 if listeners else POLL_SECONDS)
     finally:
         stop.set()
         native.reconcile_tasks(set())
         pool.shutdown(wait=True)
+        finished.set()
         for listener in listeners.values():
             listener.close()
 
@@ -319,7 +362,7 @@ def run_daemon(config_path):
 def main():
     parser = argparse.ArgumentParser(description="Aster 网络观测节点探测器")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    configure_parser = subparsers.add_parser("configure", help="交互式登记节点凭证并启用 systemd 服务")
+    configure_parser = subparsers.add_parser("configure", help="交互式登记节点凭证并启用服务")
     configure_parser.add_argument("--server-url", default="")
     configure_parser.add_argument("--node-uuid", default="")
     configure_parser.add_argument("--probe-id", default="")
@@ -330,7 +373,12 @@ def main():
         if args.command == "configure":
             configure(args.server_url, args.node_uuid, args.probe_id)
         else:
-            run_daemon(args.config)
+            stop = threading.Event()
+            previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())
+            try:
+                run_daemon(args.config, stop)
+            finally:
+                signal.signal(signal.SIGTERM, previous)
     except KeyboardInterrupt:
         return 130
     except Exception as error:
