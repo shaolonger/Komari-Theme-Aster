@@ -33,10 +33,14 @@ function html(round, expiresAt, jsonUrl) {
           data.hops
             .map(
               (h) =>
-                `<tr><td>${escape(h.ttl)}</td><td>${escape(h.address)} / AS${escape(h.asn)}<small>${escape(h.network)}</small></td><td>${number(h.lossPercent)}</td><td>${number(h.lastMs)}</td><td>${number(h.avgMs)}</td><td>${number(h.bestMs)}</td><td>${number(h.worstMs)}</td></tr>`,
+                `<tr><td>${escape(h.ttl)}</td><td>${escape(h.address)} / ${h.asn ? "AS" + escape(h.asn) : "未取得 ASN"}${[h.whois, h.network, h.location ? "位置库标注：" + h.location : "", h.domain, h.hostname ? "PTR：" + h.hostname : "", h.asnSource ? "ASN 来源：" + h.asnSource : "", h.geoSource ? "元数据来源：" + h.geoSource : ""].filter(Boolean).map(v => `<small>${escape(v)}</small>`).join("")}</td><td>${number(h.lossPercent)}</td><td>${number(h.lastMs)}</td><td>${number(h.avgMs)}</td><td>${number(h.bestMs)}</td><td>${number(h.worstMs)}</td></tr>`,
             )
             .join("") +
           `</table></div><p>中间跳点未响应不等于业务丢包；终点确认到达：${data.complete ? "是" : "否"}</p>`;
+      if (data.metadataObservation) {
+        const m = data.metadataObservation;
+        content += `<details><summary>独立 NextTrace 补充观测 · ${escape(m.state || "旧版诊断")}</summary><p>${escape(m.conditions || "仅按相同 IP 补充元数据；不合并 RTT 或未响应率")}</p><p>匹配 IP：${m.matchedIps?.length || 0} · 退出码：${escape(m.exitCode)} · ${escape(m.diagnostic)}</p><pre>${escape(JSON.stringify(m, null, 2))}</pre></details>`;
+      }
       if (data.runs)
         content = data.runs
           .map(

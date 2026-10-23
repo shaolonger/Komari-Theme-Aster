@@ -41,6 +41,9 @@ export function foldHops(hops: ReportHop[], fold: boolean): ReportHop[][] {
       previous &&
       /^(?:AS)?\d+$/.test(hop.asn) &&
       hop.asn === previous[0].asn &&
+      ["network", "location", "whois", "domain", "hostname", "geoSource", "asnSource"].every(
+        key => hop[key] === previous[0][key],
+      ) &&
       hop.ttl === previous[previous.length - 1].ttl + 1
     )
       previous.push(hop);

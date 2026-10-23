@@ -26,7 +26,6 @@ import { NetworkDrawer } from "./NetworkDrawer";
 import { NetworkBadge, NetworkSectionHeading } from "./NetworkUi";
 import {
   foldHops,
-  hopIdentity,
   numberText,
   reportLabels,
   routeEvidence,
@@ -37,6 +36,7 @@ import { exportReportPng } from "./reportExport";
 import { SpeedReport } from "./SpeedReport";
 import { BgpReport } from "./BgpReport";
 import { ReportHistory } from "./ReportHistory";
+import { RouteHopIdentity, RoutePathSummary, RouteMetadataObservation } from "./RouteMetadata";
 import "@/styles/network-reports.css";
 
 const moduleTitles: Record<ReportModule, string> = {
@@ -353,6 +353,7 @@ function MtrReport({
         </div>
       )}
       {result && <p className="report-caption">终点{result.data.complete ? "已确认到达" : "未确认到达（末跳未响应不代表业务 100% 丢包）"} · 商业产品未核验</p>}
+      <RoutePathSummary hops={hops} />
       {!!hops.length && (
         <div className="report-table-scroll">
           <table className="report-mtr-table">
@@ -360,7 +361,7 @@ function MtrReport({
               <tr>
                 {[
                   "跳",
-                  "ASN / 网络",
+                  "ASN / 网络与位置",
                   "IP",
                   "未响应",
                   "发送 / 响应",
@@ -385,10 +386,7 @@ function MtrReport({
                         : hop.ttl}
                     </td>
                     <td>
-                      <strong>
-                        {hopIdentity(hop)}
-                      </strong>
-                      <small>{hop.network || hop.location || ""}</small>
+                      <RouteHopIdentity hop={hop} />
                       {multi && (
                         <button onClick={() => setFold(false)}>
                           展开 {group.length} 跳
@@ -458,6 +456,7 @@ function MtrReport({
           )}
         </details>
       )}
+      {result && <RouteMetadataObservation data={result.data} />}
       {paired && (
         <p className="report-caption">
           同一轮、同一测量点的反向报告已保存：{paired.direction} ·{" "}

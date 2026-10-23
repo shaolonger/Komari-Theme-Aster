@@ -112,6 +112,12 @@ function validateResult(data, kind) {
             "asnQueriedAt",
             "network",
             "location",
+            "domain",
+            "whois",
+            "hostname",
+            "geoSource",
+            "geoQueriedAt",
+            "geoStatus",
             "prefix",
             "registryCountry",
           ].some((k) => h[k] !== undefined && typeof h[k] !== "string") ||
@@ -120,6 +126,16 @@ function validateResult(data, kind) {
       ))
   )
     bad();
+  if (kind === "route" && data.metadataObservation !== undefined) {
+    const m = data.metadataObservation;
+    if (!m || typeof m !== "object" || Array.isArray(m) ||
+        ["method", "state", "target", "resolvedIp", "protocol", "parseError", "diagnostic", "conditions", "startedAt", "completedAt", "queriedAt", "stopReason", "stdout", "stderr"].some(k => m[k] !== undefined && typeof m[k] !== "string") ||
+        (m.exitCode !== undefined && !Number.isInteger(m.exitCode)) ||
+        (m.durationMs !== undefined && !number(m.durationMs)) ||
+        (m.matchedIps !== undefined && (!Array.isArray(m.matchedIps) || m.matchedIps.length > 64 || m.matchedIps.some(ip => typeof ip !== "string"))) ||
+        (m.hops !== undefined && (!Array.isArray(m.hops) || m.hops.length > 32))) bad();
+    if (m.hops) validateResult({ kind: "route", state: "ok", hops: m.hops }, "route");
+  }
   if (["website", "latency", "tcp-quality"].includes(kind) && data.tcpQuality != null) {
     const q = data.tcpQuality;
     if (

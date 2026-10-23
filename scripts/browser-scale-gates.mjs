@@ -100,6 +100,15 @@ const routeFixtureRoot = mkdtempSync(join(tmpdir(), 'aster-browser-routes-'));
 const routePipeline = await reportRequire('../network-observatory/plugin/tests/carrier-route-fixture.cjs').carrierFixture(routeFixtureRoot);
 const projectedRouteFamilies = (await routePipeline.invoke('GET', '/home-routes')).body.nodes[routePipeline.A];
 reportRoundData.routes = { ...routePipeline.round, nodeUuid: 'node-0' };
+// Exercise metadata loss regressions through the real report parser and UI.
+for (const measurement of reportRoundData.routes.measurements) {
+  if (measurement.direction !== 'VPS→大陆' || !measurement.data.hops?.length) continue;
+  const first = measurement.data.hops[0];
+  Object.assign(first, {network:'中国电信 · CN2',location:'中国 · 上海',whois:'CN2-BackBone',domain:'chinatelecom.com.cn',geoSource:'NextTrace / NextTrace-API'});
+  measurement.data.metadataObservation = {method:'nexttrace',state:'ok',matchedIps:[first.address],exitCode:0,protocol:'tcp',port:443,
+    resolvedIp:measurement.target,completedAt:new Date().toISOString(),durationMs:1200,complete:false,
+    hops:[{...first,rttMs:120}],stdout:'NextTrace fixture output',stderr:''};
+}
 rmSync(routeFixtureRoot, { recursive: true, force: true });
 // Report date inputs have minute precision; keep fixture evidence safely before the frozen end.
 const measuredAt = new Date(Date.now() - 5 * 60000).toISOString();
@@ -1315,6 +1324,9 @@ try {
     await cdp.value(`Array.from(document.querySelectorAll('.report-main-tabs button')).find(b=>b.textContent==='路由').click()`);
     await waitUntil(cdp,`document.querySelector('.report-mtr-table')!==null`,2000);
     failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('4809')`),'v3 MTR lost ASN evidence');
+    failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('中国 · 上海') && document.querySelector('.report-mtr-table').textContent.includes('CN2-BackBone') && document.querySelector('.report-mtr-table').textContent.includes('chinatelecom.com.cn')`),'route table dropped metadata alongside network');
+    await cdp.value(`document.querySelector('.report-metadata-observation > summary').click()`);
+    failGate(await cdp.value(`document.querySelector('.report-metadata-observation[open]').textContent.includes('不参与上方 MTR 统计')`),'independent NextTrace observation missing');
     await waitUntil(cdp,`document.querySelector('.report-bgp-graph svg')!==null`,2000);
     await cdp.value(`document.querySelector('.report-bgp-graph svg g[tabindex]')?.focus()`);
     await cdp.value(`document.querySelector(".report-main-tabs").scrollIntoView({block:"start"})`);
@@ -1371,6 +1383,26 @@ try {
   }
   results.push({reportV3:'ten original samples, 403 detail, routes/ASN and BGP evidence, nine speed rows, dark/light 390px, daily multiple times and coverage preview, keyboard Escape'});
   }
+
+  // Rich route metadata remains readable on all appearances and narrow screens.
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'route-metadata' };
+  for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
+    await cdp.value(`localStorage.setItem('appearance', JSON.stringify(${JSON.stringify(appearance)}))`);
+    await cdp.call('Page.navigate', { url: `http://127.0.0.1:${address.port}/instance/node-0?focus=network` });
+    await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length===4`, 6000);
+    await cdp.value(`Array.from(document.querySelectorAll('.report-main-tabs button')).find(b=>b.textContent==='路由').click()`);
+    await waitUntil(cdp, `document.querySelector('.report-metadata-observation')!==null`, 3000);
+    await cdp.value(`document.querySelector('.report-metadata-observation > summary').click()`);
+    for (const width of [1440,390]) {
+      await cdp.call('Emulation.setDeviceMetricsOverride', {width,height:1000,deviceScaleFactor:1,mobile:width===390});
+      failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`), `route metadata overflows ${appearance}/${width}`);
+      failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('中国 · 上海') && document.querySelector('.report-mtr-table').textContent.includes('中国电信')`), `route location lost in ${appearance}`);
+      await cdp.value(`document.querySelector('.report-metadata-observation').scrollIntoView({block:'start'})`);
+      if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.route-metadata-${appearance}-${width}.png`);
+    }
+  }
+  await cdp.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  results.push({routeMetadata:'network/location/WHOIS/domain and independent NextTrace diagnostics, six appearances at 1440/390px'});
 
   // All six appearances consume summaries produced by the actual built-in preset.
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'network-center' };

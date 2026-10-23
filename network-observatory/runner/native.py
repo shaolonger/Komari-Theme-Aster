@@ -269,21 +269,133 @@ def parse_traceroute(output):
     return hops
 
 
+def nexttrace_route(target, options):
+    """Keep the independent observation, including metadata with no origin ASN."""
+    started = datetime.now(timezone.utc).isoformat()
+    beginning = time.monotonic()
+    command = ["nexttrace", *family_args(options), "--json", "--no-rdns", "--map", "--max-hops", "32", "--queries", "1" if options.get("metadataOnly") else "3"]
+    if options.get("protocol", "tcp") == "tcp":
+        command += ["--tcp", "--port", str(options.get("port", 443))]
+    destination = options.get("pinnedIp") or target
+    code, output, error = execute([*command, destination], 25 if options.get("metadataOnly") else 85)
+    queried = datetime.now(timezone.utc).isoformat()
+    hops, parse_error, stop_reason = [], "", "unknown"
+    try:
+        # Some versions prepend progress messages. Accept only an actual trace
+        # object, never a JSON error object or unrelated log entry.
+        decoder = json.JSONDecoder()
+        payload = None
+        for match in re.finditer(r"\{", output):
+            try:
+                candidate, _ = decoder.raw_decode(output[match.start():])
+            except ValueError:
+                continue
+            if isinstance(candidate, dict) and isinstance(candidate.get("Hops"), list):
+                payload = candidate
+                break
+        if payload is None:
+            raise ValueError("NextTrace 未返回包含 Hops 的有效 JSON")
+        for index, probes in enumerate(payload["Hops"][:32]):
+            probes = probes if isinstance(probes, list) else [probes]
+            probes = [p for p in probes if isinstance(p, dict)]
+            value = next((p for p in probes if p.get("Success")), probes[0] if probes else {})
+            address = value.get("Address") or {}
+            address = address.get("IP", "") if isinstance(address, dict) else address
+            candidates = [p["Geo"] for p in probes if p.get("Address") == value.get("Address") and isinstance(p.get("Geo"), dict)]
+            geo = dict(max(candidates, key=lambda g: sum(bool(g.get(k)) for k in ("asnumber", "country", "prov", "city", "owner", "isp", "domain", "whois")), default={}))
+            # A TTL can contain ECMP peers. Reuse fields only for this same IP.
+            for peer in probes:
+                if peer.get("Address") == value.get("Address") and isinstance(peer.get("Geo"), dict):
+                    for key, entry in peer["Geo"].items():
+                        if not geo.get(key) and entry:
+                            geo[key] = entry
+            asn = re.sub(r"^AS", "", str(geo.get("asnumber") or "")).strip()
+            source = "NextTrace / " + str(geo.get("source") or "GeoIP")[:80]
+            location = " · ".join(dict.fromkeys(str(geo.get(k) or "") for k in ("country", "prov", "city", "district") if geo.get(k)))[:160]
+            network = " · ".join(dict.fromkeys(str(geo.get(k) or "") for k in ("owner", "isp") if geo.get(k)))[:160]
+            available = bool(asn or location or network or geo.get("domain") or geo.get("whois") or geo.get("prefix"))
+            status = "available" if available else "lookup-failed" if geo.get("source") in {"timeout", "pending"} else "not-provided"
+            hops.append({"ttl": value.get("TTL", index + 1), "address": str(address), "asn": asn,
+                         "rttMs": value.get("RTT", 0) / 1e6 if value.get("Success") else None,
+                         "network": network, "location": location, "domain": str(geo.get("domain") or "")[:160],
+                         "whois": str(geo.get("whois") or "")[:120], "hostname": str(value.get("Hostname") or "")[:160],
+                         "prefix": str(geo.get("prefix") or "")[:80], "geoSource": source,
+                         "geoQueriedAt": queried, "geoStatus": status,
+                         "asnSource": source if asn else "", "asnQueriedAt": queried if asn else "",
+                         "asnStatus": "available" if asn else "lookup-failed" if status == "lookup-failed" else "not-provided"})
+        stop_reason = (payload.get("StopReason") or {}).get("reason", "unknown")
+    except (ValueError, TypeError, KeyError, AttributeError) as failure:
+        parse_error = str(failure)[:500]
+    return {"method": "nexttrace", "hops": hops, "exitCode": code, "rawOutput": output,
+            "stderr": error, "parseError": parse_error, "stopReason": stop_reason,
+            "complete": stop_reason == "destination_reached", "target": str(destination),
+            "startedAt": started, "completedAt": queried, "durationMs": round((time.monotonic() - beginning) * 1000, 1)}
+
+
+def route_metadata(result, target, options):
+    observation = {"method": "nexttrace", "target": target, "resolvedIp": result.get("resolvedIp", ""),
+                   "protocol": options.get("protocol", "tcp"), "port": options.get("port", 443),
+                   "matchedIps": [], "hops": [], "conditions": "独立 NextTrace 观测仅按相同 IP 补充元数据；不合并路径、RTT 或未响应率"}
+    result["metadataObservation"] = observation
+    if not options.get("routeMetadata", True):
+        observation.update(state="disabled", diagnostic="此任务未启用 NextTrace 元数据补充")
+        return
+    if cancelled():
+        observation.update(state="cancelled", diagnostic="任务已取消，未继续补充元数据")
+        return
+    if not shutil.which("nexttrace"):
+        observation.update(state="missing", diagnostic="未安装 NextTrace；MTR 统计独立保留")
+        return
+    try:
+        metadata = nexttrace_route(target, {**options, "metadataOnly": True, "pinnedIp": result.get("resolvedIp") or target})
+    except (OSError, ValueError) as failure:
+        observation.update(state="failed", diagnostic="NextTrace 无法执行：" + str(failure)[:500], completedAt=datetime.now(timezone.utc).isoformat())
+        return
+    fields = ("asn", "asnSource", "asnQueriedAt", "asnStatus", "network", "location", "prefix", "domain", "whois", "hostname", "geoSource", "geoQueriedAt", "geoStatus")
+    matching = {h["address"]: h for h in metadata["hops"] if h.get("address") and (h.get("geoStatus") == "available" or h.get("hostname"))}
+    for hop in result["hops"]:
+        peer = matching.get(hop["address"])
+        if not peer:
+            continue
+        for key in fields:
+            if peer.get(key) and not (key.startswith("asn") and not peer.get("asn")):
+                hop[key] = peer[key]
+        observation["matchedIps"].append(hop["address"])
+    observation.update({k: metadata[k] for k in ("exitCode", "parseError", "stopReason", "complete", "startedAt", "completedAt", "durationMs")})
+    observation["queriedAt"] = metadata["completedAt"]
+    observation["state"] = "failed" if metadata["exitCode"] or metadata["parseError"] else "ok" if matching else "empty"
+    observation["diagnostic"] = metadata["parseError"] or ("NextTrace 执行失败" if metadata["exitCode"] else "未取得可关联的元数据" if not observation["matchedIps"] else "")
+    observation["hops"] = metadata["hops"]
+    observation["stdout"] = metadata["rawOutput"][:6000]
+    observation["stderr"] = metadata["stderr"][:2000]
+    observation["stdoutTruncated"] = len(metadata["rawOutput"]) > 6000
+    observation["stderrTruncated"] = len(metadata["stderr"]) > 2000
+    # Remain compatible with the existing 48k result contract on older panels.
+    # Drop raw excerpts before sacrificing structured per-hop evidence.
+    def result_size():
+        # JavaScript validates UTF-16 code units, including supplementary text.
+        return len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-16-le")) // 2
+    for owner, key in ((observation, "stdout"), (result, "rawOutput"), (observation, "stderr")):
+        excess = result_size() - 46000
+        if excess > 0 and owner.get(key):
+            owner[key] = owner[key][:max(0, len(owner[key]) - excess - 1000)]
+            owner[key + "Truncated"] = True
+    for limit in (80, 32, 16):
+        if result_size() <= 46000:
+            break
+        observation["metadataTruncated"] = True
+        for hop in [*result["hops"], *observation["hops"]]:
+            for key in ("network", "location", "domain", "whois", "hostname", "prefix"):
+                if hop.get(key):
+                    hop[key] = hop[key][:limit]
+
+
 def route(target, options):
     target = host(target)
     if options.get("fullMtr") and shutil.which("mtr"):
         result = mtr_route(target, options)
         if result["hops"]:
-            if options.get("routeMetadata", True) and shutil.which("nexttrace") and not cancelled():
-                metadata = route(target, {**options, "fullMtr": False, "quality": False, "metadataOnly": True})
-                matching = {h["address"]: h for h in metadata.get("hops", []) if h.get("address") and h.get("asn")}
-                for hop in result["hops"]:
-                    peer = matching.get(hop["address"])
-                    if peer:
-                        for key in ("asn", "asnSource", "network", "location", "prefix", "asnStatus"):
-                            if key in peer:
-                                hop[key] = peer[key]
-                result["metadataObservation"] = {"method": metadata.get("method"), "matchedIps": [h["address"] for h in result["hops"] if h.get("asn")], "conditions": "独立 NextTrace 观测仅按相同 IP 补充元数据；不合并路径或 RTT", "queriedAt": datetime.now(timezone.utc).isoformat()}
+            route_metadata(result, target, options)
             return result
     protocol = options.get("protocol", "tcp")
     if protocol not in {"tcp", "icmp"}:
@@ -292,27 +404,11 @@ def route(target, options):
     hops, output, diagnostic, code = [], "", "", 127
     stop_reason, method = "unknown", "nexttrace"
     if shutil.which("nexttrace"):
-        command = ["nexttrace", *family_args(options), "--json", "--no-rdns", "--max-hops", "32", "--queries", "1" if options.get("metadataOnly") else "3"]
-        if protocol == "tcp":
-            command += ["--tcp", "--port", str(port)]
-        code, output, diagnostic = execute([*command, options.get("pinnedIp") or target], 25 if options.get("metadataOnly") else 85)
-        try:
-            payload = json.loads(output[output.index("{"):output.rindex("}") + 1])
-            for index, probes in enumerate(payload.get("Hops", [])):
-                probes = probes if isinstance(probes, list) else [probes]
-                value = next((p for p in probes if p.get("Success")), probes[0] if probes else {})
-                address, geo = value.get("Address") or {}, value.get("Geo") or {}
-                if not isinstance(geo, dict):
-                    geo = {}
-                if not geo.get("asnumber"):
-                    # Queries at one TTL can hit different routers. Reuse metadata
-                    # only from another response for the same IP, never an ECMP peer.
-                    geo = next((p["Geo"] for p in probes if p.get("Address") == value.get("Address") and isinstance(p.get("Geo"), dict) and p["Geo"].get("asnumber")), geo)
-                asn = re.sub(r"^AS", "", str(geo.get("asnumber") or "")).strip()
-                hops.append({"ttl": value.get("TTL", index + 1), "address": address.get("IP", "") if isinstance(address, dict) else address, "asn": asn, "rttMs": value.get("RTT", 0) / 1e6 if value.get("Success") else None, "network": str(geo.get("owner") or geo.get("isp") or "")[:160], "location": " · ".join(str(geo.get(k) or "") for k in ("country", "prov", "city") if geo.get(k))[:160], "prefix": str(geo.get("prefix") or "")[:80], "asnSource": "NextTrace / " + str(geo.get("source") or "GeoIP") if asn else "", "asnStatus": "available" if asn else "lookup-failed" if geo.get("source") in {"timeout", "pending"} else "not-provided"})
-            stop_reason = (payload.get("StopReason") or {}).get("reason", "unknown")
-        except (ValueError, TypeError, KeyError):
-            pass
+        trace = nexttrace_route(target, options)
+        code, output, diagnostic = trace["exitCode"], trace["rawOutput"], trace["stderr"]
+        hops, stop_reason = trace["hops"], trace["stopReason"]
+        if trace["parseError"]:
+            diagnostic = (diagnostic + "\n" + trace["parseError"]).strip()
     if (code != 0 or not hops) and not options.get("metadataOnly"):
         first_error = diagnostic or output[:2000]
         method = "traceroute"

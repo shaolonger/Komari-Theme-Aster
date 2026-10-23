@@ -25,7 +25,7 @@ import native
 
 CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
-RUNNER_VERSION = "1.9.0"
+RUNNER_VERSION = "1.9.1"
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")

@@ -259,9 +259,71 @@
   white-space: nowrap;
 }
 .report-mtr-table td:nth-child(2) {
-  min-width: 140px;
-  max-width: 220px;
+  min-width: 230px;
+  max-width: 340px;
   white-space: normal;
+}
+.report-hop-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.report-hop-whois {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.report-hop-identity > small {
+  margin-top: 0.2rem;
+  line-height: 1.5;
+}
+.report-hop-domain {
+  font-family: var(--font-mono, monospace);
+}
+.report-hop-sources {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.report-hop-sources summary,
+.report-metadata-observation > summary,
+.report-metadata-raw > summary {
+  cursor: pointer;
+}
+.report-route-summary,
+.report-metadata-observation {
+  margin: 0.8rem 0;
+  padding: 0.8rem;
+  border: 1px solid var(--border-subtle, #e2e7ee);
+  border-radius: 0.7rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.report-route-summary p {
+  margin: 0 0 0.4rem;
+  line-height: 1.65;
+}
+.report-route-summary p > span {
+  color: var(--text-secondary);
+  margin-right: 0.65rem;
+}
+.report-route-summary > small {
+  color: var(--text-secondary);
+}
+.report-metadata-conditions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+}
+.report-metadata-conditions dt {
+  color: var(--text-secondary);
+}
+.report-metadata-conditions dd {
+  margin: 0;
+}
+.report-metadata-raw {
+  margin-top: 0.8rem;
 }
 .report-mtr-table td:nth-child(2) small {
   display: block;
