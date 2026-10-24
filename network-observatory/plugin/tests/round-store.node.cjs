@@ -82,6 +82,32 @@ test("first round on missing directories, 250 targets, replay, and ownership rem
     f.close();
   }
 });
+test("summary reads skip committed details and global receipt cleanup is independent of VPS count", () => {
+  const f = fixture(), originalRead = fs.readFileSync, originalWrite = fs.writeFileSync;
+  let measurements = 0, receipts = 0, indexes = 0;
+  try {
+    const r = f.store.create(input(2));
+    for (let i = 0; i < 2; i++) f.store.complete(job(r, i), { kind: "latency", state: "ok" });
+    fs.readFileSync = function(file, ...args) {
+      if (String(file).includes("/measurements/")) measurements++;
+      if (String(file).includes("/receipts/")) receipts++;
+      return originalRead(file, ...args);
+    };
+    fs.writeFileSync = function(file, ...args) {
+      if (String(file).includes("/indexes/")) indexes++;
+      return originalWrite(file, ...args);
+    };
+    assert.equal(f.store.get(A, r.id, false).counts.ok, 2);
+    assert.equal(measurements, 0);
+    assert.equal(f.store.get(A, r.id).measurements.length, 2);
+    assert.equal(measurements, 2);
+    for (let i = 0; i < 20; i++) f.store.cleanup(i ? crypto.randomUUID() : A);
+    assert.equal(receipts, 2);
+    assert.equal(indexes, 0);
+  } finally {
+    fs.readFileSync = originalRead; fs.writeFileSync = originalWrite; f.close();
+  }
+});
 test("cursor crosses UTC days and index can be recovered without daily report files", () => {
   const f = fixture();
   try {

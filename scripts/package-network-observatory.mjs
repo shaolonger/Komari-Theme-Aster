@@ -16,7 +16,7 @@ const files = [
   ["script.js", resolve(plugin, "script.js")],
   ["src/route-networks.json", resolve(plugin, "src/route-networks.json")],
   ["src/model.js", resolve(plugin, "src/model.js")],
-  ...["catalog", "native-model", "native-controller", "globalping", "route-enrichment", "route-evidence", "website-catalog", "round-store", "report-catalog", "report-model", "report-controller", "home-routes", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
+  ...["json-state", "catalog", "native-model", "native-controller", "globalping", "route-enrichment", "route-evidence", "website-catalog", "round-store", "report-catalog", "report-model", "report-controller", "home-routes", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["src/timezones.json", resolve(plugin, "src/timezones.json")],
   ["runner/aster-network-observatory-http.service", resolve(root, "network-observatory/runner/aster-network-observatory-http.service")],
   ["runner/http_receiver.py", resolve(root, "network-observatory/runner/http_receiver.py")],
@@ -33,6 +33,7 @@ const files = [
   ["docs/network-native-measurements.md", resolve(root, "docs/network-native-measurements.md")],
   ["docs/network-report-v3-guide.md", resolve(root, "docs/network-report-v3-guide.md")],
   ["docs/network-report-implementation-status.md", resolve(root, "docs/network-report-implementation-status.md")],
+  ["docs/network-observatory-cpu.md", resolve(root, "docs/network-observatory-cpu.md")],
 ];
 
 function crc32(buffer) {

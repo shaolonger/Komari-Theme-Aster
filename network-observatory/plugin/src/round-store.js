@@ -23,6 +23,7 @@ const TERMINAL = [
 const DAY = 86400000;
 function roundStore(root, isMissingFile, clock = () => Date.now()) {
   const base = path.join(root, "report-v3");
+  let lastReceiptSweep = null;
   function read(file, fallback) {
     // Goja resolves parent symlinks before stat and otherwise reports a missing
     // ancestor rather than this filename. Materialize parents before the check.
@@ -130,7 +131,9 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   }
   function active(node, id, keep) {
     const file = path.join(nodeDir(node), "active.json");
-    const ids = read(file, []).filter((value) => value !== id);
+    const current = read(file, []);
+    if (current.includes(id) === keep) return;
+    const ids = current.filter((value) => value !== id);
     if (keep) ids.push(id);
     write(file, ids);
   }
@@ -197,6 +200,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     let recovered = false;
     const measurements = [];
     for (const slot of round.slots) {
+      if (!details && TERMINAL.includes(slot.state)) continue;
       const result = read(slotFile(node, id, slot.id), null);
       if (!result) continue;
       if (!TERMINAL.includes(slot.state)) {
@@ -411,6 +415,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
         const file = path.join(directory, name),
           rows = read(file, []),
           kept = [];
+        let changed = false;
         for (const row of rows) {
           if (!row.completedAt) {
             kept.push(row);
@@ -418,6 +423,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
           }
           const age = clock() - Date.parse(row.completedAt);
           if (age > 7 * DAY && row.detailAvailable) {
+            changed = true;
             const folder = path.join(roundDir(node, row.id), "measurements");
             fs.rmSync(folder, { recursive: true, force: true });
             row.detailAvailable = false;
@@ -435,22 +441,28 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
           }
           if (age <= 90 * DAY) kept.push(row);
           else {
+            changed = true;
             fs.rmSync(roundDir(node, row.id), { recursive: true, force: true });
           }
         }
-        if (kept.length) write(file, kept);
+        if (kept.length) { if (changed) write(file, kept); }
         else fs.unlinkSync(file);
       }
     }
     // Receipts contain no credentials and are bounded by a seven-day retry window.
+    // This directory is global: scan once per maintenance pass, not once for
+    // every VPS (which multiplies all result-file reads by the node count).
+    const now = clock();
+    if (lastReceiptSweep !== null && now - lastReceiptSweep < 3600000) return;
     for (const name of directories(path.join(base, "receipts")).filter(
       (s) => UUID.test(s.slice(0, -5)) && s.endsWith(".json"),
     )) {
       const file = path.join(base, "receipts", name),
         value = read(file, null);
-      if (value?.nodeUuid === node && clock() - value.at > 7 * DAY)
+      if (value && now - value.at > 7 * DAY)
         fs.unlinkSync(file);
     }
+    lastReceiptSweep = now;
   }
   return {
     create,

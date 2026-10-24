@@ -211,7 +211,7 @@ function registerReportController(ctx, native) {
       throw new Error("待测队列超过 10000 个目标，请减少 VPS 范围或分批启动");
     const sharedJobs = new Map(
       s.jobs
-        .filter((j) => j.roundId && !j.sharedJobId)
+        .filter((j) => j.roundId && !j.sharedJobId && j.nodeUuid === nodeUuid)
         .map((j) => [measurementKey(j), j]),
     );
     for (const job of active)
@@ -306,7 +306,7 @@ function registerReportController(ctx, native) {
     ctx.respond(res, 200, capabilities),
   );
   route("GET", "/catalog", (_req, res, s) => {
-    void native.tick(true);
+    void native.catalogTick();
     ctx.respond(res, 200, {
       ...capabilities,
       catalogVersion: VERSION,

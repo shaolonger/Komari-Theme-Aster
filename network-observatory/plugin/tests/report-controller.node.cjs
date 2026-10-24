@@ -709,3 +709,34 @@ test("native TCP quality and public speed use the same plans, claims, history an
   assert.equal(history[0].counts.ok,1);
  }finally{f.close();}
 });
+
+test("heartbeats coalesce, claims and results remain durable, and failed transactions discard cached mutations", async () => {
+  const f = await fixture(), originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  const disk = () => JSON.parse(fs.readFileSync(path.join(f.root, "native-state.json"), "utf8"));
+  try {
+    const heartbeat = { version: "live-test", tools: ["curl"], features: ["report-v3", "latency-samples"] };
+    await f.invoke("POST", `${v2}/workers/node/${A}/heartbeat`, heartbeat, false, true);
+    assert.equal(f.c.read().workers["node:" + A].version, "live-test");
+    assert.equal(disk().workers["node:" + A], undefined);
+    now += 31000;
+    await f.invoke("POST", `${v2}/workers/node/${A}/heartbeat`, heartbeat, false, true);
+    assert.equal(disk().workers["node:" + A].seenAt, now);
+    const saved = await f.invoke("POST", v3 + "/suites", draft());
+    await f.invoke("POST", `${v3}/suites/${saved.body.suite.id}/run`);
+    const task = (await f.invoke("GET", `${v2}/workers/node/${A}/poll`, {}, false, true)).body.task;
+    assert.equal(disk().jobs.find(j => j.id === task.id).phase, "running");
+    await f.invoke("POST", `${v2}/workers/node/${A}/result`, { id: task.id, data: result() }, false, true);
+    assert.equal(disk().jobs.length, 0);
+    await assert.rejects(f.c.lock(() => {
+      f.c.read().revision = 999;
+      throw new Error("Aborted transaction");
+    }));
+    assert.equal(f.c.read().revision, disk().revision);
+    // Index invalidation must include another newly queued round after results.
+    await f.invoke("POST", `${v3}/suites/${saved.body.suite.id}/run`);
+    const next = (await f.invoke("GET", `${v2}/workers/node/${A}/poll`, {}, false, true)).body.task;
+    assert.ok(next && next.id !== task.id);
+  } finally { Date.now = originalNow; f.close(); }
+});

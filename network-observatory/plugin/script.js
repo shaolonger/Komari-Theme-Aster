@@ -9,7 +9,7 @@ function isMissingFile(error, file) {
   // Komari 1.4.3 exposes a Go PathError. Its Err serializes as 2 in logs,
   // but is an object in JavaScript, so strict numeric comparison does not work.
   const pathError = error?.value;
-  if (pathError?.Path !== file || !["lstat", "open"].includes(pathError?.Op))
+  if (pathError?.Path !== file || !["lstat", "stat", "open"].includes(pathError?.Op))
     return false;
   try {
     // Unlike readFileSync, Komari's accessSync gives missing files a Node-style code.
@@ -21,22 +21,17 @@ function isMissingFile(error, file) {
 }
 
 function readState() {
-  try {
-    const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  return credentialState.read();
+}
+const credentialState = require("./src/json-state.js").jsonState(
+  statePath, isMissingFile, () => ({ nodes: {} }), (s) => {
     if (!s || typeof s.nodes !== "object" || !s.nodes)
       throw new Error("探测器凭证状态格式无效");
     return { nodes: s.nodes };
-  } catch (e) {
-    if (isMissingFile(e, statePath)) return { nodes: {} };
-    throw e;
-  }
-}
+  },
+);
 function writeState(state) {
-  fs.mkdirSync(storageDir, { recursive: true });
-  fs.writeFileSync(statePath + ".tmp", JSON.stringify({ nodes: state.nodes }), {
-    mode: 0o600,
-  });
-  fs.renameSync(statePath + ".tmp", statePath);
+  credentialState.write({ nodes: state.nodes });
 }
 function respond(res, status, body) {
   res.statusCode = status;

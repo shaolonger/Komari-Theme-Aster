@@ -19,8 +19,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if os.Getenv("ASTER_POLLING_ONLY") == "1" {
+		checkPollingPerformance(base)
+		return
+	}
 	checkPluginLoad(base)
 	checkNetwork(base)
 	checkRounds(base)
 	checkController(base)
+	checkPollingPerformance(base)
 }

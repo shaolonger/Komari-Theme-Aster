@@ -1,5 +1,4 @@
-const fs = require("fs"),
-  path = require("path"),
+const path = require("path"),
   crypto = require("crypto");
 const { UUID } = require("./model.js");
 const M = require("./native-model.js"),
@@ -21,10 +20,15 @@ function registerNativeController(ctx) {
   const file = path.join(storageDir, "native-state.json"),
     enricher = createEnricher(ctx.enrichmentOptions);
   let queue = Promise.resolve(),
-    busy = false;
+    busy = false, lastCatalogTick = 0, lastSavedAt = 0;
+  let indexedJobs = null;
   let roundController = null;
   const lock = (fn) => {
-    const promise = queue.then(fn, fn);
+    const run = async () => {
+      try { return await fn(); }
+      catch (error) { stateFile.invalidate(); indexedJobs = null; throw error; }
+    };
+    const promise = queue.then(run, run);
     queue = promise.then(
       () => {},
       () => {},
@@ -47,27 +51,39 @@ function registerNativeController(ctx) {
       error: "",
     },
   });
-  function read() {
-    try {
-      const value = JSON.parse(fs.readFileSync(file, "utf8"));
-      if (
-        !value ||
-        !Array.isArray(value.jobs)
-      )
-        throw new Error("原生观测状态损坏；停止写入");
-      delete value.policies;
-      value.jobs = value.jobs.filter(job => job.roundId);
-      return value;
-    } catch (e) {
-      if (isMissingFile(e, file)) return blank();
-      throw e;
+  const stateFile = require("./json-state.js").jsonState(file, isMissingFile, blank, value => {
+    if (!value || !Array.isArray(value.jobs))
+      throw new Error("原生观测状态损坏；停止写入");
+    delete value.policies;
+    value.jobs = value.jobs.filter(job => job.roundId);
+    return value;
+  });
+  const read = stateFile.read;
+  function save(s, heartbeatOnly = false) {
+    if (!heartbeatOnly) indexedJobs = null;
+    // Heartbeats update live status immediately. Persist renewals together at
+    // most once per 30s; claims, results, maintenance and credentials always
+    // commit immediately. The minute scheduler also flushes the live state.
+    if (heartbeatOnly && Date.now() - lastSavedAt < 30000) return;
+    stateFile.write(s); lastSavedAt = Date.now();
+  }
+  function jobIndex(s) {
+    if (indexedJobs?.jobs === s.jobs && indexedJobs.length === s.jobs.length) return indexedJobs;
+    const byWorker = new Map(), occupied = [];
+    const add = (key, job) => {
+      if (!byWorker.has(key)) byWorker.set(key, []);
+      byWorker.get(key).push(job);
+    };
+    for (const job of s.jobs) {
+      add(job.executor, job);
+      if (job.operation === "benchmark" && job.executor !== "node:" + job.nodeUuid)
+        add("node:" + job.nodeUuid, job);
+      if (["listening", "ready", "running", "submitting", "provider"].includes(job.phase)) occupied.push(job);
     }
+    indexedJobs = { jobs: s.jobs, length: s.jobs.length, byWorker, occupied };
+    return indexedJobs;
   }
-  function save(s) {
-    fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(file + ".tmp", JSON.stringify(s), { mode: 0o600 });
-    fs.renameSync(file + ".tmp", file);
-  }
+  function workerJobs(s, w) { return jobIndex(s).byWorker.get(w.key) || []; }
   function route(method, suffix, admin, fn, prepare) {
     server.route(method, BASE + suffix, async (req, res) => {
       if (admin && !authorized(req, res)) return;
@@ -185,7 +201,7 @@ function registerNativeController(ctx) {
     s.jobs = s.jobs.filter((x) => !completed.has(x.id));
   }
   route("GET", "/catalog", true, (_req, res, s) => {
-    void tick(true);
+    void catalogTick();
     respond(res, 200, {
       runnerRelease: RUNNER_RELEASE,
       updatePolicies: s.updatePolicies || {}, updates: s.updates || {},
@@ -377,7 +393,7 @@ function registerNativeController(ctx) {
         const active = Array.isArray(b.activeJobIds)
           ? b.activeJobIds.filter((id) => UUID.test(id)).slice(0, 4)
           : [];
-        for (const j of s.jobs)
+        for (const j of workerJobs(s, w))
           if (
             j.roundId &&
             j.executor === w.key &&
@@ -388,10 +404,10 @@ function registerNativeController(ctx) {
               Date.now() + 90000,
               j.deadlineAt || j.expiresAt,
             );
-        save(s);
+        save(s, true);
         respond(res, 200, {
           ok: true,
-          activeJobIds: s.jobs
+          activeJobIds: workerJobs(s, w)
             .filter(
               (j) =>
                 (j.executor === w.key && j.phase === "running") ||
@@ -409,13 +425,9 @@ function registerNativeController(ctx) {
       if (s.maintenance?.[w.key]?.until > Date.now()) {
         respond(res, 200, { task: null, listeners: [] }); return;
       }
-      const occupied = s.jobs.filter((j) =>
-        ["listening", "ready", "running", "submitting", "provider"].includes(
-          j.phase,
-        ),
-      );
-      let task = null;
-      for (const j of s.jobs) {
+      const occupied = jobIndex(s).occupied;
+      let task = null, changed = false;
+      for (const j of workerJobs(s, w)) {
         if (
           j.roundId &&
           j.executor === w.key &&
@@ -457,6 +469,7 @@ function registerNativeController(ctx) {
           )
         ) {
           const problem = coverage(s, j);
+          changed = true;
           if (problem) {
             finish(s, j, {
               kind: ["benchmark", "http-speed", "iperf-speed", "public-speed"].includes(
@@ -498,6 +511,7 @@ function registerNativeController(ctx) {
           ) &&
           online(s, j.executor)
         ) {
+          changed = true;
           if (
             !s.workers[w.key] ||
             !s.workers[j.executor] ||
@@ -531,6 +545,7 @@ function registerNativeController(ctx) {
           j.phase === "ready" &&
           j.executor === w.key
         ) {
+          changed = true;
           j.phase = "running";
           if (j.roundId) {
             j.startedAt = new Date().toISOString();
@@ -549,10 +564,10 @@ function registerNativeController(ctx) {
           break;
         }
       }
-      save(s);
+      if (changed) save(s);
       respond(res, 200, {
         task,
-        listeners: s.jobs
+        listeners: workerJobs(s, w)
           .filter(
             (j) =>
               j.operation === "benchmark" &&
@@ -664,9 +679,15 @@ function registerNativeController(ctx) {
       },
     );
   }
+  function catalogTick() {
+    if (busy || Date.now() - lastCatalogTick < 60000) return;
+    lastCatalogTick = Date.now();
+    return tick(true);
+  }
   async function tick(refreshProvider = false) {
     if (busy) return;
     busy = true;
+    lastCatalogTick = Date.now();
     try {
       // Network I/O happens outside the persistent-state lock.
       let inventory = null,
@@ -839,7 +860,7 @@ function registerNativeController(ctx) {
   }
   roundController = require("./report-controller.js").registerReportController(
     ctx,
-    { read, lock, save, finish, coverage, online, tick },
+    { read, lock, save, finish, coverage, online, tick, catalogTick },
   );
   void tick();
   return { tick, read, lock, roundController };
