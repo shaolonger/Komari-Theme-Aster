@@ -11,7 +11,7 @@ export function HomeRoutesProvider({ children }: { children: ReactNode }) {
   const { data: me } = useAuth();
   const admin = me?.logged_in === true;
   const routes = useQuery({ queryKey: ["home-carrier-routes", admin], queryFn: ({ signal }) => getHomeRoutes({ signal }, admin), staleTime: 60_000, retry: false, refetchOnWindowFocus: false, refetchInterval: query => query.state.data?.available ? 60_000 : false });
-  const { data: speeds } = useQuery({ queryKey: ["home-carrier-speeds", admin], queryFn: async ({ signal }) => (await import("@/services/homeSpeeds")).getHomeSpeeds({ signal }, admin), staleTime: 60_000, retry: false, refetchOnWindowFocus: false, refetchInterval: query => query.state.data?.available ? 60_000 : false });
+  const { data: speeds } = useQuery({ queryKey: ["home-carrier-speeds", admin], queryFn: async ({ signal }) => (await import("@/services/homeSpeeds")).getHomeSpeeds({ signal }, admin), staleTime: 60_000, retry: false, refetchOnWindowFocus: false, refetchInterval: query => query.state.data?.backfillPending ? 5000 : query.state.data?.available ? 60_000 : false });
   const { appearance } = usePreferences();
   const { displayTimeZone } = useThemeSettings();
   const isSlate = appearance.startsWith("slate");

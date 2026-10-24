@@ -100,6 +100,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       id: round.id,
       nodeUuid: round.nodeUuid,
       module: round.module,
+      family: round.parameters?.family,
       suiteId: round.suiteId,
       batchId: round.batchId,
       plannedAt: round.plannedAt,

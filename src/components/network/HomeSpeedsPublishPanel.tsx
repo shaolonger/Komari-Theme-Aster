@@ -22,6 +22,7 @@ export function HomeSpeedsPublishPanel({
     queryFn: ({ signal }) => getHomeSpeeds({ signal }, true),
     staleTime: 30000,
     retry: false,
+    refetchInterval: query => query.state.data?.backfillPending ? 5000 : false,
   });
   const nodes = catalog.inventory.filter((n) => n.publicVisible);
   const selected = (selection ?? catalog.homeSpeedNodes).filter((id) =>
@@ -48,7 +49,7 @@ export function HomeSpeedsPublishPanel({
       }
       setMessage(
         rebuild
-          ? "已从仍保留的大陆测速报告重建摘要"
+          ? "已启动双栈测速摘要恢复，完成后自动刷新"
           : "显示与访客发布范围已保存到网络插件",
       );
     } catch (e) {
@@ -61,7 +62,7 @@ export function HomeSpeedsPublishPanel({
   return (
     <div className="network-form home-speeds-publish">
       <p>
-        管理员可直接预览已有测速结果。访客仅能查看下方明确发布的可见节点摘要。仅展示最近一轮已结束的大陆测速、P1 单连接及测试时间；城市、地址族与计量方式按实际结果标注。
+        管理员可直接预览已有测速结果。访客仅能查看下方明确发布的可见节点摘要。IPv4、IPv6 分别展示最近一轮已结束的大陆测速、P1 单连接及测试时间。
       </p>
       <label className="report-checkbox">
         <input
@@ -73,7 +74,7 @@ export function HomeSpeedsPublishPanel({
       </label>
       <div className="home-speeds-publish-nodes">
         {nodes.map((n) => {
-          const values = speeds.data?.nodes[n.uuid]?.cities.flatMap(city => city.rows.flatMap(row => [row.download, row.upload])) || [];
+          const values = Object.values(speeds.data?.nodes[n.uuid] || {}).flatMap(snapshot => snapshot?.cities.flatMap(city => city.rows.flatMap(row => [row.download, row.upload])) || []);
           return (
             <label key={n.uuid}>
               <input

@@ -14,17 +14,26 @@ export function speedStatus(value: SpeedValue) {
 export const CarrierSpeeds = memo(function CarrierSpeeds({ uuid, compact = false }: { uuid: string; compact?: boolean }) {
   const { data, displayTimeZone } = useHomeSpeeds();
   const [selectedCity, setCity] = useState<string | null>(null), [open, setOpen] = useState(false);
-  const node = data?.nodes[uuid];
-  if (!node || data.display === false) return null;
+  const [selectedFamily, setFamily] = useState<"4" | "6" | null>(null);
+  const snapshots = data?.nodes[uuid];
+  if (!snapshots || data.display === false) return null;
+  const family = selectedFamily || (snapshots["4"] ? "4" : "6");
+  const node = snapshots[family];
+  const heading = <header className="carrier-routes-head"><strong>三网测速</strong>
+    <div className="carrier-family-switch" role="group" aria-label="测速地址族">
+      {(["4", "6"] as const).map(f => <button key={f} type="button" aria-pressed={family === f} onClick={() => { setFamily(f); setOpen(false); }}>IPv{f}</button>)}
+    </div></header>;
+  if (!node) return <section className="carrier-routes carrier-speeds" data-compact={compact} aria-label="三网测速">{heading}
+    <p className="carrier-routes-empty">{data.backfillPending ? "正在恢复历史测速摘要…" : `IPv${family} 暂无测速结果`}</p></section>;
   const city = node.cities.find(c => c.city === selectedCity) || node.cities.find(c => c.rows.some(r => r.download.bitsPerSecond !== null || r.upload.bitsPerSecond !== null)) || node.cities[0];
   const stale = node.stale;
   const timestamp = formatDisplayDateTime(Date.parse(node.at), displayTimeZone, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   return <section className="carrier-routes carrier-speeds" data-compact={compact} aria-label="三网测速">
-    <header className="carrier-routes-head"><strong>三网测速</strong><div className="carrier-speeds-controls">
-      <small>IPv{node.family} · P1</small>
+    {heading}<div className="carrier-speeds-controls">
+      <small>P1 单连接</small>
       <select aria-label="测速地区" value={city?.city || "北京"} onChange={event => setCity(event.target.value)}>
         {node.cities.map(c => <option key={c.city} value={c.city}>{c.city}</option>)}
-      </select></div></header>
+      </select></div>
     <div className="carrier-speeds-columns" aria-hidden><span /><span>↓ 下行 Mbps</span><span>↑ 上行 Mbps</span></div>
     {city?.rows.map(row => <div className="carrier-speed-row" key={row.carrier}>
       <strong>{row.carrier}</strong>
@@ -39,8 +48,6 @@ export const CarrierSpeeds = memo(function CarrierSpeeds({ uuid, compact = false
       })}
     </div>)}
     <p className="carrier-speeds-time"><span>{stale ? "超过 24 小时 · " : "最近测试 · "}</span><time dateTime={node.at} title={timestamp}>{timestamp}</time></p>
-    {data.access === "admin" && <a className="carrier-routes-empty" href={`/?view=theme-manage&section=network&panel=speeds&nodes=${encodeURIComponent(uuid)}`}>
-      {data.published.includes(uuid) ? "已向访客发布 · 管理测速" : "管理员预览 · 尚未向访客发布"}</a>}
     {open && <Suspense fallback={<span role="status">正在打开测速说明…</span>}><Details node={node} city={city?.city || "北京"} timeZone={displayTimeZone} uuid={uuid} admin={data.access === "admin"} onClose={() => setOpen(false)} /></Suspense>}
   </section>;
 });

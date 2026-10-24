@@ -35,6 +35,8 @@ function registerReportController(ctx, native) {
   const homeRoutes = require("./home-routes.js").homeRouteStore(ctx.storageDir, ctx.isMissingFile);
   const homeSpeeds = require("./home-speeds.js").homeSpeedStore(ctx.storageDir, ctx.isMissingFile);
   const speedHistoryChecked = new Set();
+  const speedHistoryQueue = new Map();
+  let speedHistoryTimer = null;
   let recovered = false;
   let bgpBusy = false;
   const capabilities = {
@@ -311,40 +313,70 @@ function registerReportController(ctx, native) {
     } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
   });
   function rebuildHomeSpeeds(uuids, force = false) {
+    let enqueued = false;
     for (const uuid of uuids) {
-      if (!force && speedHistoryChecked.has(uuid)) continue;
-      // Summaries are newest planned round first. Read only the latest finished
-      // manifest; its metrics survive raw-detail expiration. No target files.
-      let cursor = "", best = null, finished = false;
-      const key = round => [round.plannedAt, round.completedAt, round.id].join("|");
-      do {
-        const page = store.list(uuid, "china-speed", { limit: 50, cursor });
-        for (const row of page.rounds) {
-          if (best && row.plannedAt < best.plannedAt) { finished = true; break; }
-          if (!row.completedAt) continue;
-          const round = store.get(uuid, row.id, false);
-          if (round?.completedAt && ["4", "6"].includes(round.parameters?.family) && (!best || key(round) > key(best))) best = round;
-        }
-        cursor = page.nextCursor;
-      } while (!finished && cursor);
-      if (best) homeSpeeds.observe(best, force);
-      speedHistoryChecked.add(uuid);
+      if (!force && (speedHistoryChecked.has(uuid) || speedHistoryQueue.has(uuid) || homeSpeeds.isHistoryRecovered(uuid))) continue;
+      speedHistoryQueue.set(uuid, { uuid, cursor: "", rows: [], nextCursor: "", best: {}, force });
+      enqueued = true;
     }
+    if (enqueued) drainSpeedHistory();
   }
-  function speedPayload(s, ids, admin) {
-    return { available: true, nodes: homeSpeeds.summary(ids),
+  function drainSpeedHistory() {
+    const started = Date.now();
+    let steps = 0;
+    // Old indexes lack family metadata. Recover in short batches so one large
+    // history cannot monopolize the worker-state lock or the Goja interpreter.
+    while (speedHistoryQueue.size && steps++ < 64 && Date.now() - started < 20) {
+      const work = speedHistoryQueue.values().next().value;
+      try {
+        if (!work.rows.length) {
+          const page = store.list(work.uuid, "china-speed", { limit: 50, cursor: work.cursor });
+          work.rows = page.rounds.slice(); work.nextCursor = page.nextCursor;
+        }
+        const row = work.rows.shift();
+        const bothOlder = row && work.best["4"] && work.best["6"] &&
+          row.plannedAt < work.best["4"].plannedAt && row.plannedAt < work.best["6"].plannedAt;
+        if (row && !bothOlder && row.completedAt &&
+            !(work.best[row.family] && row.plannedAt < work.best[row.family].plannedAt)) {
+          const round = store.get(work.uuid, row.id, false), family = round?.parameters?.family;
+          const key = value => [value.plannedAt, value.completedAt, value.id].join("|");
+          if (round?.completedAt && ["4", "6"].includes(family) &&
+              (!work.best[family] || key(round) > key(work.best[family]))) {
+            work.best[family] = round; homeSpeeds.observe(round, work.force);
+          }
+        }
+        if (bothOlder || !row || (!work.rows.length && !work.nextCursor)) {
+          homeSpeeds.markHistoryRecovered(work.uuid);
+          speedHistoryChecked.add(work.uuid); speedHistoryQueue.delete(work.uuid);
+        } else {
+          if (!work.rows.length) work.cursor = work.nextCursor;
+          speedHistoryQueue.delete(work.uuid); speedHistoryQueue.set(work.uuid, work);
+        }
+      } catch (error) {
+        speedHistoryQueue.delete(work.uuid);
+        console.error("Aster homepage speed recovery:", String(error.message || error));
+      }
+    }
+    if (speedHistoryQueue.size && speedHistoryTimer === null) speedHistoryTimer = setTimeout(() => {
+      speedHistoryTimer = null;
+      void native.lock(drainSpeedHistory).catch(error => console.error("Aster speed recovery:", String(error.message || error)));
+    }, 500);
+  }
+  function speedPayload(s, ids, admin, splitFamilies = false) {
+    return { available: true, nodes: homeSpeeds.summary(ids, splitFamilies),
+      backfillPending: admin && ids.some(id => speedHistoryQueue.has(id)),
       access: admin ? "admin" : "public", display: s.homeSpeedDisplay !== false,
       published: ids.filter(id => (s.homeSpeedNodes || []).includes(id)) };
   }
-  route("GET", "/home-speeds", (_req, res, s) => {
+  route("GET", "/home-speeds", (req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);
     rebuildHomeSpeeds(ids);
-    ctx.respond(res, 200, speedPayload(s, ids, true));
+    ctx.respond(res, 200, speedPayload(s, ids, true, query(req, "families") === "1"));
   });
-  route("POST", "/home-speeds/rebuild", (_req, res, s) => {
+  route("POST", "/home-speeds/rebuild", (req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);
     rebuildHomeSpeeds(ids, true);
-    ctx.respond(res, 200, speedPayload(s, ids, true));
+    ctx.respond(res, 200, speedPayload(s, ids, true, query(req, "families") === "1"));
   });
   route("PUT", "/home-speeds", (req, res, s) => {
     const body = ctx.readBody(req);
@@ -359,12 +391,12 @@ function registerReportController(ctx, native) {
     s.revision++; native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
   });
-  ctx.server.route("GET", BASE + "/public/speeds", async (_req, res) => {
+  ctx.server.route("GET", BASE + "/public/speeds", async (req, res) => {
     try {
       await native.lock(() => {
         const s = native.read(), visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
         const ids = (s.homeSpeedNodes || []).filter(id => visible.has(id));
-        ctx.respond(res, 200, speedPayload(s, ids, false));
+        ctx.respond(res, 200, speedPayload(s, ids, false, query(req, "families") === "1"));
       });
     } catch (_error) { ctx.respond(res, 503, { error: "测速摘要暂不可用" }); }
   });

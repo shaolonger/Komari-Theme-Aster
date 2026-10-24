@@ -38,6 +38,9 @@ async function runRoundScenario() {
   if (!(await speedFixture.invoke("PUT", "/home-speeds", { revision: 0, nodeUuids: [node], display: true })).body) throw new Error("Homepage speed publication failed");
   const publicSpeed = (await speedFixture.invoke("GET", "/public/speeds", undefined, false)).body;
   if (!publicSpeed.nodes[node] || JSON.stringify(publicSpeed).includes("SECRET")) throw new Error("Homepage speed disclosure mismatch");
+  const six = await require("./tests/carrier-speed-fixture.cjs").speedFixture(__storageDir__, true, isMissingFile, "6");
+  const families = (await six.invoke("GET", "/home-speeds?families=1")).body.nodes[node];
+  if (families["4"].cities[0].rows[0].download.bitsPerSecond !== 200e6 || families["6"].cities[0].rows[0].download.bitsPerSecond !== 1200e6) throw new Error("IPv4/IPv6 speed summaries were mixed");
   console.log("Official Komari runtime: public-speed preset → finished P1 homepage summary, publication and redaction passed");
   return true;
 }

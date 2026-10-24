@@ -101,7 +101,9 @@ const routeFixtureRoot = mkdtempSync(join(tmpdir(), 'aster-browser-routes-'));
 const routePipeline = await reportRequire('../network-observatory/plugin/tests/carrier-route-fixture.cjs').carrierFixture(routeFixtureRoot);
 const projectedRouteFamilies = (await routePipeline.invoke('GET', '/home-routes')).body.nodes[routePipeline.A];
 const speedPipeline = await reportRequire('../network-observatory/plugin/tests/carrier-speed-fixture.cjs').speedFixture(routeFixtureRoot);
-const projectedSpeed = (await speedPipeline.invoke('GET', '/home-speeds')).body.nodes[speedPipeline.A];
+const speedPipeline6 = await reportRequire('../network-observatory/plugin/tests/carrier-speed-fixture.cjs').speedFixture(routeFixtureRoot, true, undefined, '6');
+const projectedSpeeds = (await speedPipeline6.invoke('GET', '/home-speeds?families=1')).body.nodes[speedPipeline.A];
+const projectedSpeed = projectedSpeeds['4'];
 reportRoundData.routes = { ...routePipeline.round, nodeUuid: 'node-0' };
 // Exercise metadata loss regressions through the real report parser and UI.
 for (const measurement of reportRoundData.routes.measurements) {
@@ -413,7 +415,10 @@ const server = createServer(async (request, response) => {
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
-    return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => [n.uuid, projectedSpeed])), access: fixture.ui ? 'admin' : 'public', display: homeSpeedDisplay, published: homeSpeedNodes });
+    return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => {
+      const families = n.uuid==='node-2' ? {...projectedSpeeds,'6':null} : n.uuid==='node-1' ? {...projectedSpeeds,'4':null} : projectedSpeeds;
+      return [n.uuid, url.searchParams.get('families')==='1' ? families : families['6']||families['4']];
+    })), access: fixture.ui ? 'admin' : 'public', display: homeSpeedDisplay, published: homeSpeedNodes });
   }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
@@ -1460,7 +1465,8 @@ try {
     await cdp.value(`localStorage.setItem('appearance', JSON.stringify(${JSON.stringify(appearance)}))`);
     await cdp.call('Page.navigate', { url: `http://127.0.0.1:${address.port}/` });
     await waitUntil(cdp, `document.querySelector('.carrier-routes')?.textContent.includes('CMIN2')`, 6000);
-    failGate(await cdp.value(`document.querySelector('.carrier-routes').textContent.includes('管理员预览')`), 'unpublished measurements unavailable to admin in '+appearance);
+    failGate(await cdp.value(`document.querySelector('.carrier-routes-time time')?.dateTime===${JSON.stringify(projectedRouteFamilies['4'].flatMap(row=>[row.forward,row.return]).filter(Boolean).map(row=>row.at).sort().at(-1))}`), 'route measurement time missing in '+appearance);
+    failGate(await cdp.value(`!Array.from(document.querySelectorAll('.carrier-routes')).some(e=>/管理员预览|管理测速|管理线路|查看线路测量报告|已向访客发布/.test(e.textContent))`), 'management hints remain on cards in '+appearance);
     failGate(await cdp.value(`document.querySelectorAll('.carrier-routes')[0].querySelectorAll('.carrier-route-evidence').length===6`), 'carrier directions lost in '+appearance);
     failGate(await cdp.value(`new Set(Array.from(document.querySelectorAll('.carrier-route-evidence')).map(e=>e.getBoundingClientRect().height)).size===1`), 'carrier evidence cell heights differ');
     await cdp.value(`document.querySelector('.carrier-route-evidence').click()`);
@@ -1468,6 +1474,13 @@ try {
     await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await waitUntil(cdp, `document.querySelector('.carrier-speeds')?.textContent.includes('200')`, 6000);
     failGate(await cdp.value(`document.querySelector('.carrier-speeds').textContent.includes('最近测试') && document.querySelector('.carrier-speeds time')?.dateTime===${JSON.stringify(projectedSpeed.at)}`), 'speed measurement date missing in '+appearance);
+    await cdp.value(`Array.from(document.querySelectorAll('.carrier-speeds [aria-label="测速地址族"] button')).find(e=>e.textContent==='IPv6').click()`);
+    await waitUntil(cdp, `document.querySelector('.carrier-speeds .carrier-speed-value span')?.textContent==='1,200'`,2000);
+    failGate(await cdp.value(`document.querySelector('.carrier-speeds time')?.dateTime===${JSON.stringify(projectedSpeeds['6'].at)}`),'IPv6 speed time mixed with IPv4');
+    await cdp.value(`Array.from(document.querySelectorAll('.carrier-speeds [aria-label="测速地址族"] button')).find(e=>e.textContent==='IPv4').click()`);
+    await waitUntil(cdp, `document.querySelector('.carrier-speeds .carrier-speed-value span')?.textContent==='200'`,2000);
+    await cdp.value(`Array.from(document.querySelectorAll('.carrier-speeds'))[2].querySelector('[aria-label="测速地址族"] button:last-child').click()`);
+    failGate(await cdp.value(`Array.from(document.querySelectorAll('.carrier-speeds'))[2].textContent.includes('IPv6 暂无测速结果') && !Array.from(document.querySelectorAll('.carrier-speeds'))[2].querySelector('time')`),'missing IPv6 reused an IPv4 result or timestamp');
     for (const width of [1440,390,320]) {
       await cdp.call('Emulation.setDeviceMetricsOverride', {width,height:1200,deviceScaleFactor:1,mobile:width<500});
       failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('.carrier-speeds').scrollWidth <= document.querySelector('.carrier-speeds').clientWidth + 1`), 'speed card overflows '+appearance+'/'+width);

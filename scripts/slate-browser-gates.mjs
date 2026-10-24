@@ -36,7 +36,7 @@ export async function checkSlate({ cdp, origin, waitUntil, failGate, captureScre
   failGate(await cdp.value("document.querySelector('.slate-billing-panel').textContent.includes('到期') && document.querySelector('.slate-billing-panel').textContent.includes('在线')"), "Billing details were lost");
   await cdp.value("document.querySelector('.slate-billing-toggle').click()");
   failGate(await cdp.value("(()=>{const b=document.querySelector('.slate-billing-toggle').getBoundingClientRect();const s=document.querySelector('.slate-billing-toggle').closest('.home-node-card-slot').getBoundingClientRect();return b.bottom <= s.bottom + 1 && getComputedStyle(document.querySelector('.server-card')).contentVisibility === 'visible';})()"), "Overlapping billing button is clipped by its paint boundary");
-  failGate(await cdp.value("document.querySelector('.server-card .carrier-route-row:last-child .carrier-route-evidence > span').textContent === '未探测'"), "Return result was falsely copied into forward direction");
+  failGate(await cdp.value("document.querySelector('.server-card .carrier-routes').querySelectorAll('.carrier-route-row')[2].querySelector('.carrier-route-evidence > span').textContent === '未探测'"), "Return result was falsely copied into forward direction");
   await cdp.value("Array.from(document.querySelectorAll('.server-card .carrier-family-switch button')).find(b=>b.textContent==='IPv6').click()");
   failGate(await cdp.value("document.querySelector('.server-card .carrier-route-evidence').textContent.includes('163')"), "IPv6 did not select independent results");
   await cdp.value("Array.from(document.querySelectorAll('.server-card .carrier-family-switch button')).find(b=>b.textContent==='IPv4').click()");

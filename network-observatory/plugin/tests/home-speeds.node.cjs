@@ -3,6 +3,74 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { speedFixture, A } = require("./carrier-speed-fixture.cjs");
 const { projectRound, homeSpeedStore } = require("../src/home-speeds.js");
 const { registerReportController } = require("../src/report-controller.js");
+test("IPv4 and IPv6 retain independent rounds, rebuild legacy snapshots and keep the old response compatible", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-speed-families-"));
+  try {
+    const a = await speedFixture(root), b = await speedFixture(root, true, undefined, "6");
+    const snapshot = (await b.invoke("GET", "/home-speeds?families=1")).body.nodes[A];
+    assert.equal(snapshot["4"].reportId, a.roundId);
+    assert.equal(snapshot["6"].reportId, b.roundId);
+    assert.equal(snapshot["4"].cities[0].rows[0].download.bitsPerSecond, 200e6);
+    assert.equal(snapshot["6"].cities[0].rows[0].download.bitsPerSecond, 1200e6);
+    assert.equal((await b.invoke("GET", "/home-speeds")).body.nodes[A].family, "6");
+    fs.writeFileSync(path.join(root, "home-speeds", A + ".json"), JSON.stringify(snapshot["4"]));
+    registerReportController(b.ctx, b.native);
+    const recovered = (await b.invoke("GET", "/home-speeds?families=1")).body.nodes[A];
+    assert.equal(recovered["4"].reportId, a.roundId); assert.equal(recovered["6"].reportId, b.roundId);
+    registerReportController(b.ctx, b.native);
+    const originalRead = fs.readFileSync;
+    fs.readFileSync = function(file, ...args) {
+      if (String(file).includes("report-v3")) throw new Error("Recovered history was scanned after restart");
+      return originalRead(file, ...args);
+    };
+    try { assert.equal((await b.invoke("GET", "/home-speeds?families=1")).body.nodes[A]["4"].reportId, a.roundId); }
+    finally { fs.readFileSync = originalRead; }
+    const store = homeSpeedStore(root, e => e.code === "ENOENT");
+    const failed = b.controller.store.get(A, b.roundId, false);
+    failed.id = "failed-six";
+    failed.plannedAt = new Date(Date.parse(failed.plannedAt) + 1000).toISOString();
+    failed.slots = failed.slots.map(s => ({ ...s, state: "failed", metrics: { runs: [] } }));
+    assert.equal(store.observe(failed), true);
+    assert.equal(store.summary([A], true)[A]["6"].cities[0].rows[0].download.bitsPerSecond, null);
+    assert.equal(store.summary([A], true)[A]["4"].cities[0].rows[0].download.bitsPerSecond, 200e6);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+test("legacy history recovery yields between batches and public reads never advance the scan", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-speed-backfill-"));
+  try {
+    const f = await speedFixture(root), template = f.controller.store.get(A, f.roundId, false);
+    const directory = path.join(root, "report-v3", "nodes", A, "indexes", "china-speed");
+    fs.rmSync(directory, { recursive: true, force: true }); fs.mkdirSync(directory, { recursive: true });
+    const rows = [];
+    for (let i = 0; i < 130; i++) {
+      const id = require("node:crypto").randomUUID(), at = new Date(Date.parse(template.plannedAt) - i * 60000).toISOString();
+      const round = { ...template, id, plannedAt: at, completedAt: at, parameters: { ...template.parameters, family: i === 129 ? "6" : "4" } };
+      const folder = path.join(root, "report-v3", "nodes", A, "rounds", id);
+      fs.mkdirSync(folder, { recursive: true }); fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify(round));
+      rows.push({ id, plannedAt: at, completedAt: at });
+    }
+    fs.writeFileSync(path.join(directory, "2026-10-24.json"), JSON.stringify(rows));
+    fs.unlinkSync(path.join(root, "home-speeds", A + ".json"));
+    registerReportController(f.ctx, f.native);
+    let result = await f.invoke("GET", "/home-speeds?families=1");
+    assert.equal(result.body.backfillPending, true);
+    f.state.homeSpeedNodes = [A];
+    const originalRead = fs.readFileSync;
+    fs.readFileSync = function(file, ...args) {
+      if (String(file).includes("report-v3")) throw new Error("Public API scanned history");
+      return originalRead(file, ...args);
+    };
+    try { assert.ok((await f.invoke("GET", "/public/speeds?families=1", undefined, false)).body.nodes[A]["4"]); }
+    finally { fs.readFileSync = originalRead; }
+    for (let i = 0; i < 100 && result.body.backfillPending; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      result = await f.invoke("GET", "/home-speeds?families=1");
+    }
+    assert.equal(result.body.backfillPending, false);
+    assert.equal(result.body.nodes[A]["4"].reportId, rows[0].id);
+    assert.equal(result.body.nodes[A]["6"].reportId, rows[129].id);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 test("rebuilding simultaneous suites chooses the later completed round rather than UUID order", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-speed-tie-"));
   try {
@@ -19,6 +87,7 @@ test("rebuilding simultaneous suites chooses the later completed round rather th
     fs.rmSync(path.dirname(index), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(index), { recursive: true });
     fs.writeFileSync(index, JSON.stringify([earlier, later].map(id => ({ id, plannedAt, completedAt: id === earlier ? "2026-10-24T00:01:00.000Z" : "2026-10-24T00:02:00.000Z" }))));
+    fs.unlinkSync(path.join(root, "home-speeds", A + ".json"));
     const result = await f.invoke("POST", "/home-speeds/rebuild", {});
     assert.equal(result.body.nodes[A].reportId, later);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

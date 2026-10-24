@@ -1588,7 +1588,7 @@
 .node-list-routes { grid-column: 2 / -1; font-size: 11px; padding: 4px 12px; }
 .node-list-routes summary { cursor: pointer; color: var(--text-secondary); }
 .node-list-routes .carrier-routes { max-width: 560px; margin-bottom: 10px; }
-.carrier-speeds-controls { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.carrier-speeds-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; margin-top: 8px; }
 .carrier-speeds-controls > small { font-size: 9px; white-space: nowrap; color: var(--text-tertiary); }
 .carrier-speeds-controls select { color: var(--text-secondary); background: var(--surface-a); border: 1px solid var(--hairline); border-radius: 6px; padding: 3px 5px; font: inherit; font-size: 10px; max-width: 72px; }
 .carrier-speeds-columns, .carrier-speed-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr); gap: 7px; align-items: center; }

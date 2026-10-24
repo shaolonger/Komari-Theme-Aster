@@ -1,4 +1,4 @@
-// One completed mainland round per VPS. Store only public-safe P1 evidence;
+// One completed mainland round per VPS and IP family. Store public-safe P1 evidence;
 // never mix cities, providers, families or connection counts across rounds.
 const path = require("path"), fs = require("fs");
 const { UUID } = require("./model.js");
@@ -44,19 +44,35 @@ function homeSpeedStore(root, isMissingFile, clock = () => Date.now()) {
   function observe(round, force = false) {
     const value = projectRound(round);
     if (!value) return false;
-    const store = file(round.nodeUuid), previous = force ? null : store.read();
-    const key = row => [row.plannedAt || row.at, row.at, row.reportId].join("|");
-    if (previous && key(previous) >= key(value)) return false;
-    store.write(value); return true;
+    const store = file(round.nodeUuid);
+    let previous;
+    try { previous = store.read(); } catch (error) { if (!force) throw error; }
+    const families = unpack(previous), current = families[value.family];
+    if (current && (key(current) > key(value) || (!force && key(current) === key(value)))) return false;
+    families[value.family] = value;
+    store.write({ schema: 2, families, historyRecovered: previous?.historyRecovered === true }); return true;
   }
-  function summary(allowed) {
+  const key = row => [row.plannedAt || row.at, row.at, row.reportId].join("|");
+  function unpack(value) {
+    // Lazily import 1.12.0's single-family snapshot without discarding it.
+    return value?.schema === 2 ? { "4": value.families?.["4"] || null, "6": value.families?.["6"] || null }
+      : { "4": value?.family === "4" ? value : null, "6": value?.family === "6" ? value : null };
+  }
+  function summary(allowed, splitFamilies = false) {
     const nodes = {};
     for (const uuid of allowed) {
-      const value = file(uuid).read();
-      if (value) nodes[uuid] = { ...value, stale: clock() - Date.parse(value.at) > 86400000 };
+      const families = unpack(file(uuid).read());
+      const stamp = value => value ? { ...value, stale: clock() - Date.parse(value.at) > 86400000 } : null;
+      if (!families["4"] && !families["6"]) continue;
+      if (splitFamilies) nodes[uuid] = { "4": stamp(families["4"]), "6": stamp(families["6"]) };
+      else nodes[uuid] = stamp(Object.values(families).filter(Boolean).sort((a,b) => key(b).localeCompare(key(a)))[0]);
     }
     return nodes;
   }
-  return { observe, summary };
+  function markHistoryRecovered(uuid) {
+    const store = file(uuid), value = store.read();
+    store.write({ schema: 2, families: unpack(value), historyRecovered: true });
+  }
+  return { observe, summary, markHistoryRecovered, isHistoryRecovered: uuid => file(uuid).read()?.historyRecovered === true };
 }
 module.exports = { projectRound, homeSpeedStore };

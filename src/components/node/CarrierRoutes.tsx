@@ -1,6 +1,7 @@
 import { lazy, memo, Suspense, useState } from "react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { type RouteEvidence } from "@/services/homeRoutes";
+import { formatDisplayDateTime } from "@/utils/timeDisplay";
 
 const RouteDetails = lazy(() => import("./RouteEvidenceDetails"));
 
@@ -59,6 +60,11 @@ export const CarrierRoutes = memo(function CarrierRoutes({
       forward: null,
       return: null,
     }));
+  const measurements = rows.flatMap(row => [row.forward, row.return]).filter(value => value !== null);
+  const times = [...new Set(measurements.map(value => value.at))].sort();
+  const at = times[times.length - 1];
+  const formatTime = (value: string) => formatDisplayDateTime(Date.parse(value), displayTimeZone, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const timeRange = times.length ? `观测时间：${formatTime(times[0])} — ${formatTime(at)}` : "";
   return (
     <section
       className="carrier-routes"
@@ -115,7 +121,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
             : routes.isError
               ? "线路读取失败，请稍后刷新"
               : routes.data?.available
-                ? "此节点未公开线路摘要"
+                ? "暂无可展示的线路观测"
                 : "请升级网络观测插件至 1.9.1"}
         </p>
       )}
@@ -124,25 +130,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
           此地址族暂无测量，请运行大陆路由方案
         </p>
       )}
-      {routes.data?.access === "admin" && (
-        <a
-          className="carrier-routes-empty"
-          href={`/?view=theme-manage&section=network&panel=routes&nodes=${encodeURIComponent(uuid)}`}
-        >
-          {routes.data.published.includes(uuid)
-            ? "已向访客发布 · 管理线路"
-            : "管理员预览 · 尚未向访客发布"}
-        </a>
-      )}
-      {routes.data?.access === "admin" &&
-        rows.some((row) => row.forward?.reportId || row.return?.reportId) && (
-          <a
-            className="carrier-routes-empty"
-            href={`/instance/${uuid}?focus=network&tab=routes&round=${rows.flatMap((row) => [row.forward, row.return]).find((value) => value?.reportId)?.reportId}`}
-          >
-            查看线路测量报告
-          </a>
-        )}
+      {at && <p className="carrier-speeds-time carrier-routes-time" title={timeRange}><span>最近测试 · </span><time dateTime={at}>{formatTime(at)}</time></p>}
     </section>
   );
 });
