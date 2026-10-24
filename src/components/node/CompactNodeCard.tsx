@@ -26,6 +26,7 @@ import {
 } from "@/utils/homepagePingSources";
 import { speedRateColor } from "@/utils/metricTone";
 import { CarrierRoutes } from "./LazyCarrierRoutes";
+import { CarrierSpeeds } from "./LazyCarrierSpeeds";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
@@ -399,6 +400,7 @@ export const CompactNodeCard = memo(function CompactNodeCard({ uuid }: { uuid: s
         <div className="compact-node-ping-empty">{emptyText}</div>
       )}
       <CarrierRoutes uuid={uuid} compact />
+      <CarrierSpeeds uuid={uuid} compact />
     </article>
   );
 });

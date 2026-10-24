@@ -83,6 +83,7 @@ let studioSaveBarrier = null;
 const pointFixture = { probes: [], registeredNodes: [], updatePolicies: {} };
 let homeRouteNodes = [];
 let homeRouteDisplay = true;
+let homeSpeedNodes = [], homeSpeedDisplay = true;
 const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
 const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki'],modules:['routes','tcp-quality','china-speed','international','idc','international-speed','bgp'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
@@ -99,6 +100,8 @@ const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module
 const routeFixtureRoot = mkdtempSync(join(tmpdir(), 'aster-browser-routes-'));
 const routePipeline = await reportRequire('../network-observatory/plugin/tests/carrier-route-fixture.cjs').carrierFixture(routeFixtureRoot);
 const projectedRouteFamilies = (await routePipeline.invoke('GET', '/home-routes')).body.nodes[routePipeline.A];
+const speedPipeline = await reportRequire('../network-observatory/plugin/tests/carrier-speed-fixture.cjs').speedFixture(routeFixtureRoot);
+const projectedSpeed = (await speedPipeline.invoke('GET', '/home-speeds')).body.nodes[speedPipeline.A];
 reportRoundData.routes = { ...routePipeline.round, nodeUuid: 'node-0' };
 // Exercise metadata loss regressions through the real report parser and UI.
 for (const measurement of reportRoundData.routes.measurements) {
@@ -407,6 +410,11 @@ const server = createServer(async (request, response) => {
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
+    count('home-speeds');
+    if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
+    return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => [n.uuid, projectedSpeed])), access: fixture.ui ? 'admin' : 'public', display: homeSpeedDisplay, published: homeSpeedNodes });
+  }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid, projectedRouteFamilies])), published: homeRouteNodes, display: homeRouteDisplay, access: fixture.ui ? "admin" : "public" });
@@ -423,11 +431,12 @@ const server = createServer(async (request, response) => {
   if (fixture.reports && url.pathname.startsWith('/api/aster-network-observatory/v3/')) {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
-    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay});
+    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeSpeedNodes,homeSpeedDisplay});
     if(/^nodes\/[^/]+\/rounds$/.test(suffix)){const r=reportRoundData[url.searchParams.get('module')];return sendJson(response,{rounds:[r],nextCursor:null});}
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1);return sendJson(response,Object.values(reportRoundData).find(r=>r.id===id));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
     if(suffix==='home-routes' && request.method==='PUT'){homeRouteNodes=body.nodeUuids;homeRouteDisplay=body.display;return sendJson(response,{revision:0});}
+    if(suffix==='home-speeds' && request.method==='PUT'){homeSpeedNodes=body.nodeUuids;homeSpeedDisplay=body.display;return sendJson(response,{revision:0});}
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}
     if(suffix==='suites'){reportSavedSuite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite:reportSavedSuite,revision:0});}
     return sendJson(response,{ok:true});
@@ -1457,23 +1466,63 @@ try {
     await cdp.value(`document.querySelector('.carrier-route-evidence').click()`);
     await waitUntil(cdp,`document.querySelector('.network-drawer[open]')?.textContent.includes('商业产品')`,2000);
     await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await waitUntil(cdp, `document.querySelector('.carrier-speeds')?.textContent.includes('200')`, 6000);
+    failGate(await cdp.value(`document.querySelector('.carrier-speeds').textContent.includes('最近测试') && document.querySelector('.carrier-speeds time')?.dateTime===${JSON.stringify(projectedSpeed.at)}`), 'speed measurement date missing in '+appearance);
+    for (const width of [1440,390,320]) {
+      await cdp.call('Emulation.setDeviceMetricsOverride', {width,height:1200,deviceScaleFactor:1,mobile:width<500});
+      failGate(await cdp.value(`document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('.carrier-speeds').scrollWidth <= document.querySelector('.carrier-speeds').clientWidth + 1`), 'speed card overflows '+appearance+'/'+width);
+      await cdp.value(`document.querySelector('.carrier-speeds').scrollIntoView({block:'center'})`);
+      if(process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.carrier-speed-${appearance}-${width}.png`);
+    }
+    await cdp.value(`document.querySelector('.carrier-speeds select').value='上海';document.querySelector('.carrier-speeds select').dispatchEvent(new Event('change',{bubbles:true}))`);
+    await waitUntil(cdp, `document.querySelector('.carrier-speeds').textContent.includes('203')`, 2000);
+    await cdp.value(`document.querySelector('.carrier-speed-value').click()`);
+    await waitUntil(cdp, `document.querySelector('.network-drawer[open]')?.textContent.includes('TCP 已确认')`, 2000);
+    await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await cdp.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   }
+  for (const mode of ['standard','large','compact','list']) {
+    await cdp.value(`sessionStorage.setItem('komaritheme:node-view-mode-session:desktop',${JSON.stringify(mode)});sessionStorage.setItem('komaritheme:node-view-mode-session:mobile',${JSON.stringify(mode)})`);
+    const before = requestCounts.get('network-center')?.['home-speeds'] || 0;
+    await cdp.call('Page.reload');
+    await waitUntil(cdp, `document.querySelector('.carrier-speeds')?.textContent.includes('200')`,6000);
+    if (mode === 'list') await cdp.value(`Array.from(document.querySelectorAll('.node-list-routes summary')).find(e=>e.textContent==='三网测速').click()`);
+    for (const width of [1440,390]) {
+      await cdp.call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width===390});
+      failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`),'homepage speed view overflow '+mode+'/'+width);
+    }
+    failGate((requestCounts.get('network-center')?.['home-speeds'] || 0)-before<=2,'speed summaries requested once per node in '+mode);
+  }
+  await cdp.value(`sessionStorage.removeItem('komaritheme:node-view-mode-session:desktop');sessionStorage.removeItem('komaritheme:node-view-mode-session:mobile')`);
+  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await cdp.call('Page.reload');
+  await waitUntil(cdp, `document.querySelector('.home-command-action[href*="panel=plans"]')!==null`,6000);
   await cdp.value(`document.querySelector('.home-command-action[href*="panel=plans"]').click()`);
   await waitUntil(cdp, `document.querySelector('.home-routes-publish-nodes input')!==null`, 6000);
   await cdp.value(`document.querySelector('.home-routes-publish-nodes input').click();Array.from(document.querySelectorAll('.home-routes-publish button')).find(b=>b.textContent==='保存显示与发布范围').click()`);
   await waitUntil(cdp, `document.querySelector('.home-routes-publish [role="status"]')?.textContent.includes('已保存')`, 2000);
   failGate(homeRouteNodes.length===1 && homeRouteNodes[0]==='node-0','publication selection did not reach plugin');
+  await waitUntil(cdp, `document.querySelector('.home-speeds-publish-nodes input')!==null`, 6000);
+  await cdp.value(`document.querySelector('.home-speeds-publish-nodes input').click();Array.from(document.querySelectorAll('.home-speeds-publish button')).find(b=>b.textContent==='保存显示与发布范围').click()`);
+  await waitUntil(cdp, `document.querySelector('.home-speeds-publish [role="status"]')?.textContent.includes('已保存')`,2000);
+  failGate(homeSpeedNodes.length===1 && homeSpeedNodes[0]==='node-0','speed publication scope did not reach plugin');
   await cdp.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await cdp.value(`document.querySelector('#network-routes').scrollIntoView({block:'start'})`);
   if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.network-center.png`);
   activeFixture = {...activeFixture, ui:false};
   await cdp.call('Page.navigate', {url:`http://127.0.0.1:${address.port}/`});
-  await waitUntil(cdp, `document.querySelectorAll('.carrier-route-evidence[data-state="ok"]').length===6`,6000);
+  await waitUntil(cdp, `document.querySelectorAll('.carrier-routes:not(.carrier-speeds) .carrier-route-evidence[data-state="ok"]').length===6`,6000);
+  await waitUntil(cdp, `document.querySelectorAll('.carrier-speeds').length===1`,6000);
+  failGate(await cdp.value(`!document.querySelector('.carrier-speeds').textContent.includes('管理员预览')`), 'private speed preview leaked to visitors');
   failGate(await cdp.value(`!document.querySelector('.carrier-routes').textContent.includes('管理员预览')`),'private preview leaked to visitor');
   homeRouteDisplay=false;
   await cdp.call('Page.reload');
-  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length===3 && document.querySelector('.carrier-routes')===null`,6000);
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length===3 && document.querySelector('.carrier-routes:not(.carrier-speeds)')===null && document.querySelector('.carrier-speeds')!==null`,6000);
   homeRouteDisplay=true;
+  homeSpeedDisplay=false;
+  await cdp.call('Page.reload');
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length===3 && document.querySelector('.carrier-speeds')===null`,6000);
+  homeSpeedDisplay=true;
   failGate((requestCounts.get('network-center')?.['removed-network-api'] || 0)===0,'removed network APIs still requested');
   results.push({networkCenter:'real 12-measurement preset feeds six appearances, admin private preview, explicit visitor scope, display switch, shared navigation and no obsolete APIs'});
 

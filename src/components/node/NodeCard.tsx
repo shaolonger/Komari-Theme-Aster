@@ -31,6 +31,7 @@ import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { MetricBar } from "./MetricBar";
 import { CarrierRoutes } from "./LazyCarrierRoutes";
+import { CarrierSpeeds } from "./LazyCarrierSpeeds";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
@@ -409,6 +410,7 @@ const NodeHealthSection = memo(function NodeHealthSection({
         </div>
       )}
       <CarrierRoutes uuid={uuid} />
+      <CarrierSpeeds uuid={uuid} />
     </div>
   );
 });

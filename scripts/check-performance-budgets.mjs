@@ -44,7 +44,9 @@ const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
 // visual stylesheet stays lazy. Native evidence adds up to 1 KiB for shared
 // summary validation/status; the drawer, report UI and route renderer are lazy.
 // Keep the CSS/font/icon limits unchanged.
-const limits = { js: 165 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
+// The fleet-wide speed-summary query adds up to 1 KiB; its schema, card and
+// evidence drawer remain lazy. It does not add a request per card.
+const limits = { js: 166 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
 if (jsBytes > limits.js) failures.push(`Home JS Brotli ${jsBytes} > ${limits.js}`);
 if (cssBytes > limits.css) failures.push(`Home CSS Brotli ${cssBytes} > ${limits.css}`);

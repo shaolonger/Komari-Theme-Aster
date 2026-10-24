@@ -3,12 +3,13 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { reportCatalog } from "@/services/reportObservatory";
 import { HomeRoutesPublishPanel } from "./HomeRoutesPublishPanel";
+import { HomeSpeedsPublishPanel } from "./HomeSpeedsPublishPanel";
 import { MeasurementPointsPanel } from "./MeasurementPointsPanel";
 import { ReportResourcesPanel } from "./ReportResourcesPanel";
 import { ReportPlanPanel } from "./ReportPlanPanel";
 import "@/styles/network-observatory.css";
 import "@/styles/network-reports.css";
-type Props = { panel: "routes" | "plans" | "agents" | "targets" };
+type Props = { panel: "routes" | "speeds" | "plans" | "agents" | "targets" };
 export function NetworkSettingsPanel(props: Props) {
   const active = useStudioSectionActive("network");
   return active ? <ActivePanel {...props} /> : null;
@@ -51,5 +52,5 @@ function ActivePanel({ panel }: Props) {
         <button onClick={() => void catalog.refetch()}>重试</button>
       </p>
     );
-  return <HomeRoutesPublishPanel catalog={catalog.data} />;
+  return panel === "speeds" ? <HomeSpeedsPublishPanel catalog={catalog.data} /> : <HomeRoutesPublishPanel catalog={catalog.data} />;
 }

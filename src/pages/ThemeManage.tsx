@@ -1181,6 +1181,7 @@ export function ThemeManage() {
         </div>
       </StudioPanel>
       <StudioPanel title="主页三网线路" description="管理员预览、首页显示与访客发布；每次保存立即生效。"><div id="network-routes"><NetworkSettingsPanel panel="routes" /></div></StudioPanel>
+      <StudioPanel title="主页三网测速" description="最近一轮大陆测速、P1 上下行与测试时间；可单独设置首页显示和访客发布范围。"><div id="network-speeds"><NetworkSettingsPanel panel="speeds" /></div></StudioPanel>
       <StudioPanel title="检测方案" description="模块、定时、目标与 VPS / 分组范围；保存到网络插件后立即生效。"><div id="network-plans"><NetworkSettingsPanel panel="plans" /></div></StudioPanel>
       <StudioPanel title="探测器与测量点" description="集中管理 VPS 探测器、大陆测量点与公网地址；凭证与地址操作立即生效。"><div id="network-agents"><NetworkSettingsPanel panel="agents" /></div></StudioPanel>
       <StudioPanel title="目标端点" description="登记自定义目标、协议与使用条件；端点保存立即生效。"><div id="network-targets"><NetworkSettingsPanel panel="targets" /></div></StudioPanel>

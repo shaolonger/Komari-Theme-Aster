@@ -33,6 +33,8 @@ function registerReportController(ctx, native) {
   const store = roundStore(ctx.storageDir, ctx.isMissingFile);
   const bgp = B.createBgpCollector(ctx.bgpOptions);
   const homeRoutes = require("./home-routes.js").homeRouteStore(ctx.storageDir, ctx.isMissingFile);
+  const homeSpeeds = require("./home-speeds.js").homeSpeedStore(ctx.storageDir, ctx.isMissingFile);
+  const speedHistoryChecked = new Set();
   let recovered = false;
   let bgpBusy = false;
   const capabilities = {
@@ -55,6 +57,12 @@ function registerReportController(ctx, native) {
     if (result) {
       try { homeRoutes.observe(result); }
       catch (e) { console.error("Aster homepage route projection:", String(e.message || e)); }
+      if (data.kind === "speed") {
+        try {
+          const round = store.get(job.nodeUuid, job.roundId, false);
+          if (round?.module === "china-speed" && round.completedAt) homeSpeeds.observe(round);
+        } catch (e) { console.error("Aster homepage speed projection:", String(e.message || e)); }
+      }
     }
     return result;
   }
@@ -302,6 +310,62 @@ function registerReportController(ctx, native) {
       });
     } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
   });
+  function rebuildHomeSpeeds(uuids, force = false) {
+    for (const uuid of uuids) {
+      if (!force && speedHistoryChecked.has(uuid)) continue;
+      // Summaries are newest planned round first. Read only the latest finished
+      // manifest; its metrics survive raw-detail expiration. No target files.
+      let cursor = "", found = false;
+      do {
+        const page = store.list(uuid, "china-speed", { limit: 50, cursor });
+        for (const row of page.rounds) {
+          if (!row.completedAt) continue;
+          const round = store.get(uuid, row.id, false);
+          if (round && homeSpeeds.observe(round, force)) { found = true; break; }
+          if (round?.completedAt && round.parameters?.family) { found = true; break; }
+        }
+        cursor = page.nextCursor;
+      } while (!found && cursor);
+      speedHistoryChecked.add(uuid);
+    }
+  }
+  function speedPayload(s, ids, admin) {
+    return { available: true, nodes: homeSpeeds.summary(ids),
+      access: admin ? "admin" : "public", display: s.homeSpeedDisplay !== false,
+      published: ids.filter(id => (s.homeSpeedNodes || []).includes(id)) };
+  }
+  route("GET", "/home-speeds", (_req, res, s) => {
+    const ids = s.inventory.map(n => n.uuid);
+    rebuildHomeSpeeds(ids);
+    ctx.respond(res, 200, speedPayload(s, ids, true));
+  });
+  route("POST", "/home-speeds/rebuild", (_req, res, s) => {
+    const ids = s.inventory.map(n => n.uuid);
+    rebuildHomeSpeeds(ids, true);
+    ctx.respond(res, 200, speedPayload(s, ids, true));
+  });
+  route("PUT", "/home-speeds", (req, res, s) => {
+    const body = ctx.readBody(req);
+    if (body.revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
+    if (!Array.isArray(body.nodeUuids) || body.nodeUuids.length > 2000 || body.nodeUuids.some(id => !UUID.test(id))) throw new Error("节点范围无效");
+    const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
+    const selected = [...new Set(body.nodeUuids)];
+    if (selected.some(id => !visible.has(id))) throw new Error("只能发布当前可见节点的测速摘要，请刷新清单");
+    rebuildHomeSpeeds(selected);
+    s.homeSpeedNodes = selected;
+    if (typeof body.display === "boolean") s.homeSpeedDisplay = body.display;
+    s.revision++; native.save(s);
+    ctx.respond(res, 200, { revision: s.revision });
+  });
+  ctx.server.route("GET", BASE + "/public/speeds", async (_req, res) => {
+    try {
+      await native.lock(() => {
+        const s = native.read(), visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
+        const ids = (s.homeSpeedNodes || []).filter(id => visible.has(id));
+        ctx.respond(res, 200, speedPayload(s, ids, false));
+      });
+    } catch (_error) { ctx.respond(res, 503, { error: "测速摘要暂不可用" }); }
+  });
   route("GET", "/capabilities", (_req, res) =>
     ctx.respond(res, 200, capabilities),
   );
@@ -315,6 +379,8 @@ function registerReportController(ctx, native) {
       suites: s.reportSuites,
       homeRouteNodes: s.homeRouteNodes || [],
       homeRouteDisplay: s.homeRouteDisplay !== false,
+      homeSpeedNodes: s.homeSpeedNodes || [],
+      homeSpeedDisplay: s.homeSpeedDisplay !== false,
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,

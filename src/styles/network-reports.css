@@ -843,3 +843,12 @@
 .report-round-health strong { color: var(--text-primary); font-size: 17px; font-variant-numeric: tabular-nums; }
 .report-latency-grid[data-module="tcp-quality"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 600px) { .report-latency-grid[data-module="tcp-quality"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.home-speeds-publish { padding: 14px; border: 1px solid var(--border-strong); border-radius: 12px; }
+.home-speeds-publish summary { cursor: pointer; font-weight: 600; }
+.home-speeds-publish p { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.home-speeds-publish-nodes { max-height: 220px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 8px; margin: 12px 0; }
+.home-speeds-publish-nodes label { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.home-speeds-publish-nodes label > span { display: grid; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
+.home-speeds-publish-nodes small { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+.home-speeds-publish-nodes a { font-size: 12px; color: var(--accent-500); }

@@ -1,5 +1,5 @@
 // Executed with the official Komari 1.4.3 jsruntime, not a Node compatibility mock.
-function runRoundScenario() {
+async function runRoundScenario() {
   const crypto = require("crypto");
   let now = Date.now();
   const store = require("./src/round-store.js").roundStore(__storageDir__, isMissingFile, () => now);
@@ -32,5 +32,12 @@ function runRoundScenario() {
   store.cleanup(node);
   if (store.get(node, round.id) !== null || store.rebuild(node) !== 0) throw new Error("expired round revived");
   console.log("Official Komari runtime: first round, manifest, per-target files, index, replay, recovery and catalogue passed");
+  const speedFixture = await require("./tests/carrier-speed-fixture.cjs").speedFixture(__storageDir__, true, isMissingFile);
+  const speed = (await speedFixture.invoke("GET", "/home-speeds")).body.nodes[node];
+  if (speed.cities[0].rows[0].download.bitsPerSecond !== 200e6 || speed.cities[0].rows[0].upload.basis !== "tcp-acked") throw new Error("Homepage speed P1 projection mismatch");
+  if (!(await speedFixture.invoke("PUT", "/home-speeds", { revision: 0, nodeUuids: [node], display: true })).body) throw new Error("Homepage speed publication failed");
+  const publicSpeed = (await speedFixture.invoke("GET", "/public/speeds", undefined, false)).body;
+  if (!publicSpeed.nodes[node] || JSON.stringify(publicSpeed).includes("SECRET")) throw new Error("Homepage speed disclosure mismatch");
+  console.log("Official Komari runtime: public-speed preset → finished P1 homepage summary, publication and redaction passed");
   return true;
 }
