@@ -315,17 +315,19 @@ function registerReportController(ctx, native) {
       if (!force && speedHistoryChecked.has(uuid)) continue;
       // Summaries are newest planned round first. Read only the latest finished
       // manifest; its metrics survive raw-detail expiration. No target files.
-      let cursor = "", found = false;
+      let cursor = "", best = null, finished = false;
+      const key = round => [round.plannedAt, round.completedAt, round.id].join("|");
       do {
         const page = store.list(uuid, "china-speed", { limit: 50, cursor });
         for (const row of page.rounds) {
+          if (best && row.plannedAt < best.plannedAt) { finished = true; break; }
           if (!row.completedAt) continue;
           const round = store.get(uuid, row.id, false);
-          if (round && homeSpeeds.observe(round, force)) { found = true; break; }
-          if (round?.completedAt && round.parameters?.family) { found = true; break; }
+          if (round?.completedAt && ["4", "6"].includes(round.parameters?.family) && (!best || key(round) > key(best))) best = round;
         }
         cursor = page.nextCursor;
-      } while (!found && cursor);
+      } while (!finished && cursor);
+      if (best) homeSpeeds.observe(best, force);
       speedHistoryChecked.add(uuid);
     }
   }

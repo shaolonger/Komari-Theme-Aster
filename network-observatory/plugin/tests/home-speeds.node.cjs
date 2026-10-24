@@ -3,6 +3,26 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { speedFixture, A } = require("./carrier-speed-fixture.cjs");
 const { projectRound, homeSpeedStore } = require("../src/home-speeds.js");
 const { registerReportController } = require("../src/report-controller.js");
+test("rebuilding simultaneous suites chooses the later completed round rather than UUID order", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-speed-tie-"));
+  try {
+    const f = await speedFixture(root);
+    const round = f.controller.store.get(A, f.roundId, false);
+    const earlier = "ffffffff-ffff-4fff-8fff-ffffffffffff", later = "00000000-0000-4000-8000-000000000001";
+    const plannedAt = "2026-10-24T00:00:00.000Z";
+    for (const [id, completedAt] of [[earlier, "2026-10-24T00:01:00.000Z"], [later, "2026-10-24T00:02:00.000Z"]]) {
+      const target = path.join(root, "report-v3", "nodes", A, "rounds", id);
+      fs.mkdirSync(target, { recursive: true });
+      fs.writeFileSync(path.join(target, "manifest.json"), JSON.stringify({ ...round, id, plannedAt, completedAt }));
+    }
+    const index = path.join(root, "report-v3", "nodes", A, "indexes", "china-speed", "2026-10-24.json");
+    fs.rmSync(path.dirname(index), { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(index), { recursive: true });
+    fs.writeFileSync(index, JSON.stringify([earlier, later].map(id => ({ id, plannedAt, completedAt: id === earlier ? "2026-10-24T00:01:00.000Z" : "2026-10-24T00:02:00.000Z" }))));
+    const result = await f.invoke("POST", "/home-speeds/rebuild", {});
+    assert.equal(result.body.nodes[A].reportId, later);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 test("real public-speed preset projects the finished round only, P1 directions and dates without private fields", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "aster-speed-home-"));
   try {
