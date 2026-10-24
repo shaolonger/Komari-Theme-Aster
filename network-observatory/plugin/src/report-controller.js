@@ -272,6 +272,7 @@ function registerReportController(ctx, native) {
     // Tool diagnostics can contain private endpoint addresses; only admins receive them.
     if (!admin) for (const node of Object.values(nodes)) for (const rows of Object.values(node)) for (const row of rows) for (const key of ["forward", "return"]) if (row[key]) row[key].diagnostic = "";
     return { available: true, nodes, access: admin ? "admin" : "public",
+      labelMode: s.homeRouteLabelMode || "preferred", showDetails: s.homeRouteShowDetails === true,
       published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false };
   }
   route("GET", "/home-routes", (_req, res, s) => {
@@ -290,13 +291,19 @@ function registerReportController(ctx, native) {
   route("PUT", "/home-routes", (req, res, s) => {
     const body = ctx.readBody(req);
     if (body.revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
+    if (body.labelMode !== undefined && !["preferred", "full"].includes(body.labelMode)) throw new Error("线路展示方式无效");
+    if (body.showDetails !== undefined && typeof body.showDetails !== "boolean") throw new Error("线路说明开关无效");
     if (!Array.isArray(body.nodeUuids) || body.nodeUuids.length > 2000 || body.nodeUuids.some(id => !UUID.test(id))) throw new Error("节点范围无效");
     const allowed = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
     const selected = [...new Set(body.nodeUuids)];
     if (selected.some(id => !allowed.has(id))) throw new Error("只能发布当前可见节点的线路摘要，请刷新清单");
-    rebuildHomeRoutes(selected);
+    // Display preferences read the existing projection. Only newly published
+    // nodes need historical backfill; explicit rebuild remains available.
+    rebuildHomeRoutes(selected.filter(id => !(s.homeRouteNodes || []).includes(id)));
     s.homeRouteNodes = selected;
     if (typeof body.display === "boolean") s.homeRouteDisplay = body.display;
+    if (body.labelMode !== undefined) s.homeRouteLabelMode = body.labelMode;
+    if (body.showDetails !== undefined) s.homeRouteShowDetails = body.showDetails;
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -364,6 +371,7 @@ function registerReportController(ctx, native) {
   }
   function speedPayload(s, ids, admin, splitFamilies = false) {
     return { available: true, nodes: homeSpeeds.summary(ids, splitFamilies),
+      showDetails: s.homeSpeedShowDetails === true,
       backfillPending: admin && ids.some(id => speedHistoryQueue.has(id)),
       access: admin ? "admin" : "public", display: s.homeSpeedDisplay !== false,
       published: ids.filter(id => (s.homeSpeedNodes || []).includes(id)) };
@@ -381,6 +389,7 @@ function registerReportController(ctx, native) {
   route("PUT", "/home-speeds", (req, res, s) => {
     const body = ctx.readBody(req);
     if (body.revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
+    if (body.showDetails !== undefined && typeof body.showDetails !== "boolean") throw new Error("测速说明开关无效");
     if (!Array.isArray(body.nodeUuids) || body.nodeUuids.length > 2000 || body.nodeUuids.some(id => !UUID.test(id))) throw new Error("节点范围无效");
     const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
     const selected = [...new Set(body.nodeUuids)];
@@ -388,6 +397,7 @@ function registerReportController(ctx, native) {
     rebuildHomeSpeeds(selected);
     s.homeSpeedNodes = selected;
     if (typeof body.display === "boolean") s.homeSpeedDisplay = body.display;
+    if (body.showDetails !== undefined) s.homeSpeedShowDetails = body.showDetails;
     s.revision++; native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
   });
@@ -413,8 +423,11 @@ function registerReportController(ctx, native) {
       suites: s.reportSuites,
       homeRouteNodes: s.homeRouteNodes || [],
       homeRouteDisplay: s.homeRouteDisplay !== false,
+      homeRouteLabelMode: s.homeRouteLabelMode || "preferred",
+      homeRouteShowDetails: s.homeRouteShowDetails === true,
       homeSpeedNodes: s.homeSpeedNodes || [],
       homeSpeedDisplay: s.homeSpeedDisplay !== false,
+      homeSpeedShowDetails: s.homeSpeedShowDetails === true,
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,

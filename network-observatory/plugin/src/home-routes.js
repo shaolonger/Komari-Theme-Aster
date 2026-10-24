@@ -183,6 +183,7 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
             const pathKind = !usable.length ? "unknown" : variants > 1 ? "varied" : sortedLabels.length > 1 ? "combined" : "single";
             const displayLabel = pathKind === "varied" ? `多路径 · ${variants}类` : sortedLabels.join(" + ");
             row[direction] = {
+              networkLabels: networkLabels.slice(0, 64),
               label: combinedLabel.length > 160 ? `${networkLabels.length} 个网络（展开）` : combinedLabel,
               displayLabel: displayLabel.length > 60 ? `${sortedLabels.length} 个网络` : displayLabel,
               pathKind,

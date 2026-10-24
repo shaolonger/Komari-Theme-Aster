@@ -3,6 +3,7 @@ import { z } from "zod";
 const evidence = z.object({
   label: z.string().max(512),
   displayLabel: z.string().max(100).optional(),
+  networkLabels: z.array(z.string().max(100)).max(64).optional(),
   pathKind: z.enum(["single", "combined", "varied", "unknown"]).optional(),
   asns: z.array(z.string()).max(64),
   at: z.string().datetime(),
@@ -25,6 +26,8 @@ export const homeRoutesSchema = z.object({
   access: z.enum(["admin", "public"]).default("public"),
   published: z.array(z.string()).default([]),
   display: z.boolean().default(true),
+  labelMode: z.enum(["preferred", "full"]).default("preferred"),
+  showDetails: z.boolean().default(false),
   nodes: z.record(
     z.object({ "4": z.array(row).max(3), "6": z.array(row).max(3) }),
   ),
@@ -50,6 +53,7 @@ export async function getHomeRoutes(
       access: admin ? "admin" : "public",
       published: [],
       display: true,
+      labelMode: "preferred", showDetails: false,
     };
   if (!response.ok) throw new Error("线路摘要暂不可用");
   const body: unknown = await response.json().catch(() => null);
@@ -62,6 +66,7 @@ export async function getHomeRoutes(
         access: admin ? "admin" : "public",
         published: [],
         display: true,
+        labelMode: "preferred", showDetails: false,
       };
     throw new Error("线路摘要格式不兼容，请更新网络观测插件");
   }

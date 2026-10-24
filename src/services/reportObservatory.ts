@@ -339,8 +339,11 @@ const catalogSchema = capabilitiesSchema.extend({
   suites: z.array(suiteSchema),
   homeRouteNodes: z.array(z.string()).default([]),
   homeRouteDisplay: z.boolean().default(true),
+  homeRouteLabelMode: z.enum(["preferred", "full"]).default("preferred"),
+  homeRouteShowDetails: z.boolean().default(false),
   homeSpeedNodes: z.array(z.string()).default([]),
   homeSpeedDisplay: z.boolean().default(true),
+  homeSpeedShowDetails: z.boolean().default(false),
   revision: z.number(),
   inventory: z.array(
     z.object({
@@ -500,8 +503,8 @@ export const revokeReportShares = (uuid: string, id: string) =>
     "DELETE",
   );
 
-export const publishHomeRoutes = (nodeUuids: string[], revision: number, display: boolean) => request("/home-routes", "PUT", { nodeUuids, revision, display });
+export const publishHomeRoutes = (nodeUuids: string[], revision: number, display: boolean, labelMode?: "preferred" | "full", showDetails?: boolean) => request("/home-routes", "PUT", { nodeUuids, revision, display, labelMode, showDetails });
 
 export const rebuildHomeRoutes = () => request("/home-routes/rebuild", "POST", {});
-export const publishHomeSpeeds = (nodeUuids: string[], revision: number, display: boolean) => request("/home-speeds", "PUT", { nodeUuids, revision, display });
+export const publishHomeSpeeds = (nodeUuids: string[], revision: number, display: boolean, showDetails?: boolean) => request("/home-speeds", "PUT", { nodeUuids, revision, display, showDetails });
 export const rebuildHomeSpeeds = () => request("/home-speeds/rebuild", "POST", {});

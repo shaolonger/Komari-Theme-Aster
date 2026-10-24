@@ -91,6 +91,22 @@ const draft = () => ({
   revision: 0,
   modules: [{ module: "international", endpoints: ["aws:ap-east-1"] }],
 });
+test("card presentation preferences survive native controller restart and remain independent", async () => {
+  const first = await fixture();
+  try {
+    assert.equal((await first.invoke("PUT", v3 + "/home-routes", {revision:0,nodeUuids:[],labelMode:"full",showDetails:true})).status,200);
+    assert.equal((await first.invoke("PUT", v3 + "/home-speeds", {revision:1,nodeUuids:[],showDetails:true})).status,200);
+    const restarted = await fixture(first.root);
+    const catalog = (await restarted.invoke("GET", v3 + "/catalog")).body;
+    assert.equal(catalog.homeRouteLabelMode,"full");
+    assert.equal(catalog.homeRouteShowDetails,true);
+    assert.equal(catalog.homeSpeedShowDetails,true);
+    assert.equal((await restarted.invoke("PUT", v3 + "/home-speeds", {revision:2,nodeUuids:[],showDetails:false})).status,200);
+    const routes = (await restarted.invoke("GET", v3 + "/public/routes",{},false)).body;
+    const speeds = (await restarted.invoke("GET", v3 + "/public/speeds",{},false)).body;
+    assert.equal(routes.labelMode,"full"); assert.equal(routes.showDetails,true); assert.equal(speeds.showDetails,false);
+  } finally { first.close(); }
+});
 const result = () => ({
   kind: "latency",
   state: "ok",

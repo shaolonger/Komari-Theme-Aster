@@ -14,6 +14,8 @@ export function HomeRoutesPublishPanel({
 }) {
   const [selection, setSelection] = useState<string[] | null>(null);
   const [display, setDisplay] = useState<boolean | null>(null);
+  const [labelMode, setLabelMode] = useState<"preferred" | "full" | null>(null);
+  const [showDetails, setShowDetails] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const cache = useQueryClient();
@@ -37,6 +39,8 @@ export function HomeRoutesPublishPanel({
           selected,
           catalog.revision,
           display ?? catalog.homeRouteDisplay,
+          labelMode ?? catalog.homeRouteLabelMode,
+          showDetails ?? catalog.homeRouteShowDetails,
         );
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["report-catalog"] }),
@@ -45,6 +49,7 @@ export function HomeRoutesPublishPanel({
       if (!rebuild) {
         setSelection(null);
         setDisplay(null);
+        setLabelMode(null); setShowDetails(null);
       }
       setMessage(
         rebuild
@@ -71,6 +76,15 @@ export function HomeRoutesPublishPanel({
         />
         在首页卡片显示三网线路
       </label>
+      <label>
+        线路展示方式
+        <select aria-label="线路展示方式" value={labelMode ?? catalog.homeRouteLabelMode} onChange={event => setLabelMode(event.target.value as "preferred" | "full")}>
+          <option value="preferred">优选线路 · 每格一个结果</option>
+          <option value="full">完整线路 · 全部观测网络</option>
+        </select>
+      </label>
+      <p>展示优先级：CN2 ＞ CTGNet ＞ 163；9929 ＞ 10099 ＞ 4837；CMIN2 ＞ CMI ＞ 9808。跨运营商同级按观测顺序选择，仅作卡片摘要，不认证 GIA 或保证实测速率；点击数值可查看完整证据。</p>
+      <label className="report-checkbox"><input type="checkbox" aria-label="显示线路确认说明" checked={showDetails ?? catalog.homeRouteShowDetails} onChange={event => setShowDetails(event.target.checked)} />显示同路径、差异与终点确认说明</label>
       <div className="home-routes-publish-nodes">
         {nodes.map((n) => {
           const values = Object.values(routes.data?.nodes[n.uuid] || {})

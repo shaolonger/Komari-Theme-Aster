@@ -15,12 +15,12 @@ const familiesSchema = z.union([
   homeSpeedNodeSchema,
 ]).transform(value => "family" in value ? { "4": value.family === "4" ? value : null, "6": value.family === "6" ? value : null } : value);
 export const homeSpeedsSchema = z.object({ available: z.boolean(), access: z.enum(["admin", "public"]),
-  published: z.array(z.string()), display: z.boolean(), backfillPending: z.boolean().default(false), nodes: z.record(familiesSchema) });
+  published: z.array(z.string()), display: z.boolean(), showDetails: z.boolean().default(false), backfillPending: z.boolean().default(false), nodes: z.record(familiesSchema) });
 export type HomeSpeeds = z.infer<typeof homeSpeedsSchema>;
 export type HomeSpeedNode = z.infer<typeof homeSpeedNodeSchema>;
 export type SpeedValue = z.infer<typeof speedValueSchema>;
 export async function getHomeSpeeds({ signal }: { signal: AbortSignal }, admin = false): Promise<HomeSpeeds> {
-  const fallback: HomeSpeeds = { available: false, nodes: {}, access: admin ? "admin" : "public", published: [], display: true, backfillPending: false };
+  const fallback: HomeSpeeds = { available: false, nodes: {}, access: admin ? "admin" : "public", published: [], display: true, showDetails: false, backfillPending: false };
   const response = await fetchWithTimeout("/api/aster-network-observatory/v3/" + (admin ? "home-speeds" : "public/speeds") + "?families=1", { credentials: "same-origin" }, 10_000, signal);
   if ([401, 403, 404].includes(response.status)) return fallback;
   if (!response.ok) throw new Error("测速摘要暂不可用");

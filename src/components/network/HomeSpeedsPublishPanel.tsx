@@ -14,6 +14,7 @@ export function HomeSpeedsPublishPanel({
 }) {
   const [selection, setSelection] = useState<string[] | null>(null);
   const [display, setDisplay] = useState<boolean | null>(null);
+  const [showDetails, setShowDetails] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const cache = useQueryClient();
@@ -38,6 +39,7 @@ export function HomeSpeedsPublishPanel({
           selected,
           catalog.revision,
           display ?? catalog.homeSpeedDisplay,
+          showDetails ?? catalog.homeSpeedShowDetails,
         );
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["report-catalog"] }),
@@ -46,6 +48,7 @@ export function HomeSpeedsPublishPanel({
       if (!rebuild) {
         setSelection(null);
         setDisplay(null);
+        setShowDetails(null);
       }
       setMessage(
         rebuild
@@ -72,6 +75,8 @@ export function HomeSpeedsPublishPanel({
         />
         在首页卡片显示三网测速
       </label>
+      <label className="report-checkbox"><input type="checkbox" aria-label="显示测速计量说明" checked={showDetails ?? catalog.homeSpeedShowDetails} onChange={event => setShowDetails(event.target.checked)} />显示接收端计量、TCP 已确认等说明</label>
+      <p>默认仅显示速率值，点击数值仍可查看计量侧、部分样本与测量时间。</p>
       <div className="home-speeds-publish-nodes">
         {nodes.map((n) => {
           const values = Object.values(speeds.data?.nodes[n.uuid] || {}).flatMap(snapshot => snapshot?.cities.flatMap(city => city.rows.flatMap(row => [row.download, row.upload])) || []);

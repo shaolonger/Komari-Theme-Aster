@@ -19,6 +19,7 @@ export const CarrierSpeeds = memo(function CarrierSpeeds({ uuid, compact = false
   if (!snapshots || data.display === false) return null;
   const family = selectedFamily || (snapshots["4"] ? "4" : "6");
   const node = snapshots[family];
+  const showDetails = data.showDetails;
   const heading = <header className="carrier-routes-head"><strong>三网测速</strong>
     <div className="carrier-family-switch" role="group" aria-label="测速地址族">
       {(["4", "6"] as const).map(f => <button key={f} type="button" aria-pressed={family === f} onClick={() => { setFamily(f); setOpen(false); }}>IPv{f}</button>)}
@@ -39,11 +40,11 @@ export const CarrierSpeeds = memo(function CarrierSpeeds({ uuid, compact = false
       <strong>{row.carrier}</strong>
       {(["download", "upload"] as const).map(direction => {
         const value = row[direction], label = direction === "download" ? "下行 · 流入 VPS" : "上行 · 流出 VPS";
-        const description = `${row.carrier} ${label}：${speedText(value)}${value.bitsPerSecond === null ? "" : " Mbps"} · ${speedStatus(value)}`;
-        return <button key={direction} type="button" className="carrier-route-evidence carrier-speed-value"
+        const description = `${row.carrier} ${label}：${speedText(value)}${value.bitsPerSecond === null ? "" : " Mbps"}${showDetails ? " · " + speedStatus(value) : ""} · 点击查看测量说明`;
+        return <button key={direction} type="button" className="carrier-route-evidence carrier-speed-value" data-details={showDetails}
           data-state={stale && value.bitsPerSecond !== null ? "stale" : value.state === "ok" && ["estimated", "unspecified"].includes(value.basis) ? "partial" : value.state}
           onClick={() => setOpen(true)} title={description} aria-label={description}>
-          <span>{speedText(value)}</span><small>{speedStatus(value)}</small>
+          <span>{speedText(value)}</span>{showDetails && <small>{speedStatus(value)}</small>}
         </button>;
       })}
     </div>)}
