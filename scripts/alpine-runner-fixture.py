@@ -1,5 +1,6 @@
 """Real service checks inside disposable Alpine or a guarded GitHub systemd runner."""
 import importlib.util
+import fcntl
 import json
 import os
 import pty
@@ -186,16 +187,35 @@ args = SimpleNamespace(command="auto", server_url="", node_uuid=NODE, probe_id="
 def local_download(url, destination, _limit):
     shutil.copyfile(Path(str(archive) + ".sha256") if url.endswith(".sha256") else archive, destination)
 
+
+def run_upgrade(arguments):
+    # Match updater.main(): an OpenRC start_pre recovery child must observe
+    # the active transaction lock instead of rolling back this healthy upgrade.
+    with open(updater.STATE / "upgrade.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        updater.perform(arguments)
+
+
 with patch.object(updater, "download", side_effect=AssertionError("Disabled auto-updater attempted download")):
-    updater.perform(args)
+    run_upgrade(args)
+# The transaction tests below control each invocation and download explicitly.
+# A randomized OpenRC minute must not launch another process outside those mocks.
+maintenance = "aster-network-observatory-update" if OPENRC else "aster-network-observatory-update.timer"
+if OPENRC:
+    minute = int(Path("/var/lib/aster-network-observatory/update-minute").read_text().strip())
+    assert 0 <= minute < 60
+    assert (CONFIG / "cron/root").read_text().startswith(f"{minute} * * * * ")
+subprocess.run(service_command(maintenance, "stop"), check=True)
 policies[NODE] = policies[PROBE] = True
 source = (ROOT / "agent.py").read_text()
-(ROOT / "agent.py").write_text(source.replace('RUNNER_VERSION = "1.10.0"', 'RUNNER_VERSION = "1.9.2"'))
+current_declaration = f'RUNNER_VERSION = "{release["version"]}"'
+assert source.count(current_declaration) == 1, "Installed runner and release metadata versions differ"
+(ROOT / "agent.py").write_text(source.replace(current_declaration, 'RUNNER_VERSION = "1.9.2"', 1))
 for name in SERVICES:
     subprocess.run(service_command(name, "restart"), check=True)
 wait_for(lambda: all(worker_status.get(id, {}).get("version") == "1.9.2" for id in [NODE, PROBE]))
 with patch.object(updater, "download", side_effect=local_download):
-    updater.perform(args)
+    run_upgrade(args)
 assert (ROOT / "agent.py").read_text() == source
 assert not leases
 for path, content in creds_before.items():
@@ -216,7 +236,7 @@ with tempfile.TemporaryDirectory() as temporary:
     args.command = "manual"
     with patch.object(updater, "download", side_effect=broken_download), patch.object(updater, "HEALTH_SECONDS", 0):
         try:
-            updater.perform(args)
+            run_upgrade(args)
             raise AssertionError("Broken worker passed upgrade health checks")
         except RuntimeError as error:
             assert "心跳" in str(error)
