@@ -5,6 +5,7 @@ const { test } = require("node:test"),
   path = require("node:path"),
   crypto = require("node:crypto");
 const { registerNativeController } = require("../src/native-controller.js");
+const { writeNativeState } = require("../src/native-queue-state.js");
 const { ENDPOINTS } = require("../src/report-catalog.js");
 const { normalizeSuite } = require("../src/report-model.js");
 test("50 VPS × 150 latency targets fit one round, survive queue recovery, allow four local tasks and isolate histories", async () => {
@@ -52,7 +53,7 @@ test("50 VPS × 150 latency targets fit one round, survive queue recovery, allow
           tools: [],
           features: ["report-v3", "latency-samples"],
         };
-      fs.writeFileSync(path.join(root, "native-state.json"), JSON.stringify(s));
+      writeNativeState(path.join(root, "native-state.json"), s);
     });
     const endpoints = ENDPOINTS.filter(
       (e) => e.uses.includes("latency") && e.family !== "6",
@@ -102,7 +103,7 @@ test("50 VPS × 150 latency targets fit one round, survive queue recovery, allow
         Date.now(),
       );
     assert.equal(s.jobs.length, 7500);
-    fs.writeFileSync(path.join(root, "native-state.json"), JSON.stringify(s));
+    writeNativeState(path.join(root, "native-state.json"), s);
     for (const n of inventory) {
       const page = c.roundController.store.list(n.uuid, "international");
       assert.equal(page.rounds.length, 1);

@@ -19,6 +19,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if os.Getenv("ASTER_NATIVE_MAINTENANCE_ONLY") == "1" {
+		checkNativeMaintenancePerformance(base)
+		return
+	}
+	if os.Getenv("ASTER_STORE_PERFORMANCE_ONLY") == "1" {
+		checkStorePerformance(base)
+		return
+	}
+	if os.Getenv("ASTER_DISPATCH_PERFORMANCE_ONLY") == "1" {
+		checkDispatchPerformance(base)
+		return
+	}
+	if os.Getenv("ASTER_QUEUE_STATE_PERFORMANCE_ONLY") == "1" {
+		checkQueueStatePerformance(base)
+		return
+	}
 	if os.Getenv("ASTER_POLLING_ONLY") == "1" {
 		checkPollingPerformance(base)
 		return
@@ -28,4 +44,8 @@ func main() {
 	checkRounds(base)
 	checkController(base)
 	checkPollingPerformance(base)
+	checkNativeMaintenancePerformance(base)
+	checkStorePerformance(base)
+	checkDispatchPerformance(base)
+	checkQueueStatePerformance(base)
 }

@@ -15,7 +15,28 @@ depend() {
 
 start_pre() {
   checkpath --directory --mode 0700 --owner root:root /etc/aster-network-observatory/cron || return 1
-  printf '%s\n' '17 * * * * /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py auto' > /etc/aster-network-observatory/cron/root
+  checkpath --directory --mode 0700 --owner root:root /var/lib/aster-network-observatory || return 1
+  # One persisted minute per host, including before first credential setup.
+  # Keep every local identity on the same scheduler and avoid a fleet-wide :17
+  # burst. BusyBox already provides od; unavailable randomness falls back to :17.
+  minute_file=/var/lib/aster-network-observatory/update-minute
+  minute=
+  if [ -r "$minute_file" ]; then IFS= read -r minute < "$minute_file" || minute=; fi
+  case "$minute" in
+    [0-9]|[1-5][0-9]) ;;
+    *)
+      minute=17
+      if command -v od >/dev/null 2>&1; then
+        seed=$(od -An -N2 -tu2 /dev/urandom 2>/dev/null) || seed=
+        set -- $seed
+        case "${1:-}" in ''|*[!0-9]*) ;; *) minute=$(($1 % 60)) ;; esac
+      fi
+      printf '%s\n' "$minute" > "${minute_file}.tmp" || return 1
+      chmod 0600 "${minute_file}.tmp" || return 1
+      mv -f "${minute_file}.tmp" "$minute_file" || return 1
+      ;;
+  esac
+  printf '%s\n' "$minute * * * * /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py auto" > /etc/aster-network-observatory/cron/root
   chmod 0600 /etc/aster-network-observatory/cron/root
   /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py recover
 }

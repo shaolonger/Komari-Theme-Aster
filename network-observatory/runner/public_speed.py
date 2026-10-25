@@ -19,6 +19,7 @@ import uuid
 
 DIRECTORY = "https://dlcv2.cnspeedtest.cn:8443"
 VERSION = "aster-public-speed/1"
+TRANSFER_BLOCK_SIZE = 128 * 1024
 DOWNLOAD_AGENT = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.60 Safari/537.36"
 UPLOAD_AGENT = "Dalvik/1.6.0 (Linux; U; Android 4.2.2; Aster)"
 CITIES = {"北京": "北京", "上海": "上海", "广州": "广东"}
@@ -130,9 +131,36 @@ class Budget:
 def transfer_phase(server, session, direction, streams, seconds, warmup, budget, native):
     stop = threading.Event()
     counters = [{"bytes": 0, "measured": 0, "socket": None, "ready": False, "error": "",
-                 "invalidResponse": False, "transferEndedAt": 0, "endedAt": 0, "tcpRttMs": None, "retransmits": None, "basis": "receiver-read" if direction == "download" else "sender-write"} for _ in range(streams)]
+                 "invalidResponse": False, "transferEndedAt": 0, "endedAt": 0, "tcpRttMs": None, "retransmits": None,
+                 "telemetryLock": threading.Lock(), "basis": "receiver-read" if direction == "download" else "sender-write"} for _ in range(streams)]
     beginning = time.monotonic()
     deadline = beginning + warmup + seconds
+    # Reuse one bounded immutable upload block across streams. The byte budget
+    # still limits each reservation, including a smaller final block.
+    payload = os.urandom(TRANSFER_BLOCK_SIZE) if direction == "upload" else None
+
+    def sample_tcp(counter, connection, finish=False):
+        # Socket telemetry is independent of payload chunks. At gigabit rates,
+        # per-32KiB TCP_INFO calls add thousands of syscalls / dict parses per
+        # second without adding useful temporal resolution to 1s intervals.
+        with counter["telemetryLock"]:
+            if counter["transferEndedAt"]:
+                return  # A monitor sample must never replace the final snapshot.
+            metrics = native.tcp_info(connection)
+            for key in ("tcpRttMs", "retransmits"):
+                if metrics.get(key) is not None:
+                    counter[key] = metrics[key]
+            if direction == "upload" and metrics.get("bytesAcked") is not None:
+                counter["basis"] = "sender-tcp-acked"
+                counter["measured"] = min(counter["bytes"], max(0, metrics["bytesAcked"] - counter.get("headerBytes", 0)))
+            if finish:
+                counter["transferEndedAt"] = time.monotonic()
+
+    def measured_bytes(counter):
+        # A small monitor-only lock gives a coherent basis + ACK snapshot.
+        # Payload workers update byte counts without a lock in their hot loop.
+        with counter["telemetryLock"]:
+            return counter["measured"] if counter["basis"] == "sender-tcp-acked" else counter["bytes"]
 
     def worker(counter):
         connection = None
@@ -157,11 +185,11 @@ def transfer_phase(server, session, direction, streams, seconds, warmup, budget,
                 headers = (f"POST /speed/doAnalsLoad.do HTTP/1.1\r\nUser-Agent: {UPLOAD_AGENT}\r\nCache-Control: no-cache\r\nCharset: UTF-8\r\nHost: {host}\r\nKey: {session}\r\nConnection: close\r\nContent-Type: multipart/form-data; boundary={boundary}\r\nContent-Length: 900000000\r\n\r\n").encode()
                 connection.sendall(headers + body)
                 header_size = len(headers) + len(body)
+                counter["headerBytes"] = header_size
             counter["ready"] = True
-            payload = os.urandom(32768)
             response_seen = False
             while not stop.is_set() and time.monotonic() < deadline:
-                reserved = budget.reserve(min(32768, 899000000 - counter["bytes"]))
+                reserved = budget.reserve(min(TRANSFER_BLOCK_SIZE, 899000000 - counter["bytes"]))
                 if not reserved:
                     break
                 try:
@@ -185,15 +213,9 @@ def transfer_phase(server, session, direction, streams, seconds, warmup, budget,
                     raise
                 budget.account(reserved, actual)
                 counter["bytes"] += actual
-                metrics = native.tcp_info(connection)
-                counter.update(metrics)
-                counter["measured"] = counter["bytes"]
-                if direction == "upload" and metrics.get("bytesAcked") is not None:
-                    counter["basis"] = "sender-tcp-acked"
-                    counter["measured"] = min(counter["bytes"], max(0, metrics["bytesAcked"] - header_size))
                 if not actual:
                     break
-            counter["transferEndedAt"] = time.monotonic()
+            sample_tcp(counter, connection, finish=True)
             # A small payload can fill the socket buffer before an HTTP reject
             # arrives. Inspect a bounded late response without counting this wait
             # as transfer time or inventing a successful upload receipt.
@@ -210,7 +232,10 @@ def transfer_phase(server, session, direction, streams, seconds, warmup, budget,
                 counter["error"] = str(error)[:200]
         finally:
             if not counter["transferEndedAt"]:
-                counter["transferEndedAt"] = time.monotonic()
+                if connection:
+                    sample_tcp(counter, connection, finish=True)
+                else:
+                    counter["transferEndedAt"] = time.monotonic()
             if connection:
                 connection.close()
             counter["socket"] = None
@@ -220,18 +245,29 @@ def transfer_phase(server, session, direction, streams, seconds, warmup, budget,
     for thread in threads:
         thread.start()
     intervals, baseline, omitted, previous, last = [], None, 0, 0, beginning + warmup
+    next_tcp_sample = beginning
     try:
         while time.monotonic() < deadline and not native.cancelled():
             time.sleep(0.05)
             now = time.monotonic()
+            # Refresh the warmup boundary even if the regular 250ms sample is
+            # not due, so pre-warmup ACKs cannot leak into measured intervals.
+            if now >= next_tcp_sample or (baseline is None and now >= beginning + warmup):
+                for counter in counters:
+                    connection = counter["socket"]
+                    if connection and not counter["transferEndedAt"]:
+                        sample_tcp(counter, connection)
+                next_tcp_sample = now + 0.25
             if all(c["transferEndedAt"] for c in counters):
                 now = min(now, max(c["transferEndedAt"] for c in counters))
-            total = sum(c["measured"] for c in counters)
+            total = sum(measured_bytes(c) for c in counters)
             if now < beginning + warmup:
                 omitted = sum(c["bytes"] for c in counters)
                 continue
             if baseline is None:
                 baseline, previous = (total if warmup else 0), (total if warmup else 0)
+                if warmup:
+                    omitted = sum(c["bytes"] for c in counters)
             finished = not any(t.is_alive() for t in threads)
             if now - last >= 1 or finished or now >= deadline:
                 duration = now - last

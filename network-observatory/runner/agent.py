@@ -20,6 +20,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -29,12 +30,14 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.10.0"
+RUNNER_VERSION = "1.11.0"
 RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
+_outbox_scans = OrderedDict()
+_outbox_scan_lock = threading.Lock()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -232,10 +235,50 @@ def remove_result(file):
         pass
 
 
+def close_outbox_scans():
+    with _outbox_scan_lock:
+        for scan in _outbox_scans.values():
+            scan.close()
+        _outbox_scans.clear()
+
+
+def outbox_batch(folder):
+    """Advance a bounded directory cursor, including after a failed upload.
+
+    Each worker process normally owns one identity. Retain a small LRU of
+    cursors for callers using more than one; the durable JSON files remain the
+    source of truth across restart. A failing record is retried next pass, so it
+    cannot pin the queue ahead of every other record.
+    """
+    key, selected = str(folder), 0
+    for _ in range(64):
+        with _outbox_scan_lock:
+            scan = _outbox_scans.get(key)
+            if scan is None:
+                scan = os.scandir(folder)
+                _outbox_scans[key] = scan
+                if len(_outbox_scans) > 8:
+                    _, old = _outbox_scans.popitem(last=False)
+                    old.close()
+            _outbox_scans.move_to_end(key)
+            entry = next(scan, None)
+            if entry is None:
+                scan.close()
+                del _outbox_scans[key]
+                return
+        name = entry.name
+        if not name.endswith(".json") or not UUID_RE.fullmatch(name[:-5]) or not entry.is_file(follow_symlinks=False):
+            continue
+        yield folder / name
+        selected += 1
+        if selected == 16:
+            return
+
+
 def flush_results(config):
     # Results survive a service restart. Retrying delivery never invokes measure().
     folder = outbox_dir(config)
-    for file in sorted(folder.glob("*.json"))[:16]:
+    for file in outbox_batch(folder):
         if not UUID_RE.fullmatch(file.stem) or file.is_symlink():
             continue
         try:
@@ -357,6 +400,7 @@ def run_daemon(config_path, stop=None):
         native.reconcile_tasks(set())
         pool.shutdown(wait=True)
         finished.set()
+        close_outbox_scans()
         for listener in listeners.values():
             listener.close()
 

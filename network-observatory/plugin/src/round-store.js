@@ -23,7 +23,49 @@ const TERMINAL = [
 const DAY = 86400000;
 function roundStore(root, isMissingFile, clock = () => Date.now()) {
   const base = path.join(root, "report-v3");
-  let lastReceiptSweep = null;
+  let lastReceiptSweep = null, batchDepth = 0, flushing = false, cachedSlots = 0;
+  const roundCache = new Map(), recoveredRounds = new Set(), dirtyRounds = new Map();
+  const batchIndexes = new Map(), batchActive = new Map();
+  function dropCached(key) {
+    const entry = roundCache.get(key);
+    if (entry) { cachedSlots -= entry.slots; roundCache.delete(key); }
+  }
+  function invalidate() { roundCache.clear(); recoveredRounds.clear(); cachedSlots = 0; }
+  function stamp(file) {
+    fs.accessSync(file);
+    const stat = fs.statSync(file);
+    return [stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino].join(":");
+  }
+  function remember(round, dirty = false) {
+    const key = uuid(round.nodeUuid) + "/" + uuid(round.id), file = path.join(roundDir(round.nodeUuid, round.id), "manifest.json");
+    const entry = { round, dirty, stamp: dirty ? null : stamp(file), slots: round.slots.length };
+    dropCached(key); roundCache.set(key, entry); cachedSlots += entry.slots;
+    // Keep an interleaved 52-node workload hot without allowing 128 maximum-
+    // sized rounds to expand the old ~16 × 250-slot memory budget.
+    while (roundCache.size && (roundCache.size > 128 || cachedSlots > 4096)) dropCached(roundCache.keys().next().value);
+    recoveredRounds.add(key);
+    if (recoveredRounds.size > 2048) recoveredRounds.delete(recoveredRounds.values().next().value);
+  }
+  function batch(fn) {
+    batchDepth++;
+    let result, failure;
+    try {
+      result = fn();
+      if (result && typeof result.then === "function") throw new Error("报告批次仅支持同步操作");
+    } catch (error) { failure = error; }
+    batchDepth--;
+    if (!batchDepth) {
+      flushing = true;
+      try {
+        for (const round of dirtyRounds.values()) persist(round);
+        for (const [file, rows] of batchIndexes) { if (maintenance) maintenance.beforeIndex(file, rows); write(file, rows); if (maintenance) maintenance.noteIndex(file, rows); }
+        for (const [file, ids] of batchActive) write(file, ids);
+      } catch (error) { failure = failure || error; }
+      finally { dirtyRounds.clear(); batchIndexes.clear(); batchActive.clear(); flushing = false; }
+    }
+    if (failure) { invalidate(); throw failure; }
+    return result;
+  }
   function read(file, fallback) {
     // Goja resolves parent symlinks before stat and otherwise reports a missing
     // ancestor rather than this filename. Materialize parents before the check.
@@ -38,9 +80,11 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     }
   }
   function write(file, value) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file + ".tmp", JSON.stringify(value), { mode: 0o600 });
-    fs.renameSync(file + ".tmp", file);
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file + ".tmp", JSON.stringify(value), { mode: 0o600 });
+      fs.renameSync(file + ".tmp", file);
+    } catch (error) { invalidate(); throw error; }
   }
   function uuid(value) {
     if (!UUID.test(value || "")) throw new Error("报告 UUID 无效");
@@ -52,7 +96,6 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   }
   const nodeDir = (node) => path.join(base, "nodes", uuid(node));
   const roundDir = (node, id) => path.join(nodeDir(node), "rounds", uuid(id));
-  const receiptFile = (id) => path.join(base, "receipts", uuid(id) + ".json");
   const slotFile = (node, id, slot) =>
     path.join(
       roundDir(node, id),
@@ -112,7 +155,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       detailAvailable: round.detailAvailable !== false,
     };
   }
-  function index(round) {
+  function index(round, force = false) {
     const date = round.plannedAt.slice(0, 10);
     const file = path.join(
       nodeDir(round.nodeUuid),
@@ -120,25 +163,29 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       moduleName(round.module),
       date + ".json",
     );
-    const rows = read(file, []).filter((row) => row.id !== round.id);
-    rows.push(summarize(round));
-    write(
-      file,
-      rows.sort(
-        (a, b) =>
-          b.plannedAt.localeCompare(a.plannedAt) || b.id.localeCompare(a.id),
-      ),
-    );
+    const current = batchIndexes.get(file) || read(file, []), summary = summarize(round);
+    // Running/queued lease progress changes the manifest, not this summary.
+    // Compare the actual day snapshot (or this batch's pending replacement),
+    // so a missing/interrupted index commit is never hidden by a stale cache.
+    const previous = current.find(row => row.id === round.id);
+    if (!force && previous && JSON.stringify(previous) === JSON.stringify(summary)) return;
+    const rows = current.filter(row => row.id !== round.id);
+    rows.push(summary);
+    rows.sort((a, b) => b.plannedAt.localeCompare(a.plannedAt) || b.id.localeCompare(a.id));
+    if (batchDepth || flushing) batchIndexes.set(file, rows);
+    else { if (maintenance) maintenance.beforeIndex(file, rows); write(file, rows); if (maintenance) maintenance.noteIndex(file, rows); }
   }
   function active(node, id, keep) {
     const file = path.join(nodeDir(node), "active.json");
-    const current = read(file, []);
+    const current = batchActive.get(file) || read(file, []);
     if (current.includes(id) === keep) return;
     const ids = current.filter((value) => value !== id);
     if (keep) ids.push(id);
-    write(file, ids);
+    if (batchDepth || flushing) batchActive.set(file, ids);
+    // A new round must be discoverable even if its batch is interrupted.
+    if (keep || !(batchDepth || flushing)) write(file, ids);
   }
-  function save(round) {
+  function save(round, immediate = false) {
     const summary = summarize(round);
     round.state = summary.state;
     round.counts = summary.counts;
@@ -149,16 +196,27 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       round.completedAt = new Date(clock()).toISOString();
     if (summary.counts.completed === summary.counts.expected)
       delete round._jobs;
-    write(
-      path.join(roundDir(round.nodeUuid, round.id), "manifest.json"),
-      round,
-    );
+    else if (Array.isArray(round._jobs)) {
+      // Only unfinished slots need recovery jobs. Keep their FIFO order and
+      // original lease fields; committed measurements retain terminal history.
+      const unfinished = new Set(round.slots.filter(slot => !TERMINAL.includes(slot.state)).map(slot => slot.jobId));
+      round._jobs = round._jobs.filter(job => unfinished.has(job.id));
+    }
+    if (batchDepth && !immediate) {
+      dirtyRounds.set(uuid(round.nodeUuid) + "/" + uuid(round.id), round); remember(round, true);
+      return round;
+    }
+    return persist(round);
+  }
+  function persist(round) {
+    write(path.join(roundDir(round.nodeUuid, round.id), "manifest.json"), round);
     index(round);
     active(
       round.nodeUuid,
       round.id,
-      summary.counts.completed !== summary.counts.expected,
+      round.counts.completed !== round.counts.expected,
     );
+    remember(round);
     return round;
   }
   function create(input) {
@@ -192,16 +250,28 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     if (existing) return existing;
     // Write-ahead active pointer lets restart recover without scanning all history.
     active(round.nodeUuid, round.id, true);
-    return save(round);
+    return save(round, true);
   }
   function get(node, id, details = true) {
-    const round = read(path.join(roundDir(node, id), "manifest.json"), null);
-    if (!round) return null;
+    const file = path.join(roundDir(node, id), "manifest.json"), key = uuid(node) + "/" + uuid(id);
+    const entry = roundCache.get(key), dirty = dirtyRounds.get(key);
+    let round;
+    try {
+      // Dirty state is the write-ahead batch's authoritative manifest. Its
+      // lifetime must not depend on the small read-cache LRU: interleaved
+      // batches can legitimately exceed the configured read-cache budget.
+      round = dirty || (entry && (entry.dirty || entry.stamp === stamp(file)) ? entry.round : read(file, null));
+    } catch (error) {
+      dropCached(key); recoveredRounds.delete(key);
+      if (isMissingFile(error, file)) return null;
+      throw error;
+    }
+    if (!round) { dropCached(key); recoveredRounds.delete(key); return null; }
     // Measurement is written before manifest. Recover this commit after a crash.
     let recovered = false;
     const measurements = [];
     for (const slot of round.slots) {
-      if (!details && TERMINAL.includes(slot.state)) continue;
+      if (round.detailAvailable === false || (!details && (recoveredRounds.has(key) || TERMINAL.includes(slot.state)))) continue;
       const result = read(slotFile(node, id, slot.id), null);
       if (!result) continue;
       if (!TERMINAL.includes(slot.state)) {
@@ -214,6 +284,8 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       if (details) measurements.push(result);
     }
     if (recovered) save(round);
+    else if (!entry || round !== entry.round) remember(round, !!dirty);
+    else { roundCache.delete(key); roundCache.set(key, entry); }
     const result = {
       ...round,
       detailAvailable: round.detailAvailable !== false,
@@ -221,6 +293,11 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     };
     if (details) delete result._jobs;
     return result;
+  }
+  function measurement(node, id, slotId) {
+    const round = get(node, id, false);
+    if (!round || round.detailAvailable === false || !round.slots.some(slot => slot.id === slotId)) return null;
+    return read(slotFile(node, id, slotId), null);
   }
   function metrics(data) {
     const value = {
@@ -304,7 +381,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     };
     if (!existing) write(output, result);
     // Only the authenticated owner may replay a result receipt.
-    write(receiptFile(job.id), {
+    maintenance.writeReceipt(uuid(job.id), {
       executor: job.executor,
       nodeUuid: job.nodeUuid,
       roundId: round.id,
@@ -319,7 +396,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   }
   function receipt(jobId, executor) {
     if (!UUID.test(jobId || "")) return false;
-    const value = read(receiptFile(jobId), null);
+    const value = maintenance.receipt(jobId);
     return (
       !!value && value.executor === executor && clock() - value.at < 7 * DAY
     );
@@ -383,7 +460,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     )) {
       const round = get(node, id, false);
       if (round) {
-        index(round);
+        index(round, true);
         rebuilt++;
       }
     }
@@ -455,17 +532,27 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     // every VPS (which multiplies all result-file reads by the node count).
     const now = clock();
     if (lastReceiptSweep !== null && now - lastReceiptSweep < 3600000) return;
-    for (const name of directories(path.join(base, "receipts")).filter(
-      (s) => UUID.test(s.slice(0, -5)) && s.endsWith(".json"),
-    )) {
-      const file = path.join(base, "receipts", name),
-        value = read(file, null);
-      if (value && now - value.at > 7 * DAY)
-        fs.unlinkSync(file);
+    const receiptRoot = path.join(base, "receipts");
+    for (const name of directories(receiptRoot)) {
+      const names = /^\d{4}-\d\d-\d\d$/.test(name)
+        ? directories(path.join(receiptRoot, name)).map(child => path.join(name, child)) : [name];
+      for (const relative of names) {
+        const basename = path.basename(relative);
+        if (!UUID.test(basename.slice(0, -5)) || !basename.endsWith(".json")) continue;
+        const file = path.join(receiptRoot, relative), value = read(file, null);
+        if (value && now - value.at > 7 * DAY) fs.unlinkSync(file);
+      }
     }
     lastReceiptSweep = now;
   }
+  const maintenance = require("./retention-store.js").retentionStore({ base, modules: MODULES, nodeDir, roundDir,
+    read, write, missing: isMissingFile, clock,
+    invalidateRound: (node, id) => { const key = uuid(node) + "/" + uuid(id); dropCached(key); recoveredRounds.delete(key); },
+  });
   return {
+    batch,
+    measurement,
+    maintenanceStep: maintenance.maintenanceStep,
     create,
     get,
     complete,

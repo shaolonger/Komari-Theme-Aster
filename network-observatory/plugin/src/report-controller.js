@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const { UUID } = require("./model.js");
 const M = require("./native-model.js");
 const R = require("./report-model.js");
@@ -37,8 +38,28 @@ function registerReportController(ctx, native) {
   const speedHistoryChecked = new Set();
   const speedHistoryQueue = new Map();
   let speedHistoryTimer = null;
+  const routeHistoryQueue = new Map();
+  let routeHistoryTimer = null, routeHistoryRetryAt = 0;
   let recovered = false;
   let bgpBusy = false;
+  let dispatchTimer = null, maintenanceTimer = null;
+  let projectionDepth = 0;
+  const pendingSpeedProjections = new Map();
+  const performance = {
+    since: new Date().toISOString(),
+    dispatch: { slices: 0, lastMs: 0, maxMs: 0, slowSlices: 0 },
+    maintenance: { slices: 0, steps: 0, lastMs: 0, maxMs: 0, slowSlices: 0, pending: false, nextAt: 0 },
+  };
+  let lastSlowLogAt = 0;
+  function recordSlice(name, started) {
+    const elapsed = Date.now() - started, stats = performance[name];
+    stats.slices++; stats.lastMs = elapsed; stats.maxMs = Math.max(stats.maxMs, elapsed);
+    if (elapsed > 50) stats.slowSlices++;
+    if (elapsed > 250 && Date.now() - lastSlowLogAt > 60000) {
+      lastSlowLogAt = Date.now();
+      console.warn("Aster background slice:", name, elapsed + "ms");
+    }
+  }
   const capabilities = {
     schema: 3,
     features: [
@@ -57,9 +78,13 @@ function registerReportController(ctx, native) {
     if (data.kind === "route") data = { ...data, routeEvidence: require("./route-evidence.js").routeFacts(data.hops || []) };
     const result = store.complete(job, data, source);
     if (result) {
-      try { homeRoutes.observe(result); }
+      try { homeRoutes.observe(result, projectionDepth === 0); }
       catch (e) { console.error("Aster homepage route projection:", String(e.message || e)); }
       if (data.kind === "speed") {
+        if (projectionDepth) {
+          pendingSpeedProjections.set(job.roundId, { node: job.nodeUuid, id: job.roundId });
+          return result;
+        }
         try {
           const round = store.get(job.nodeUuid, job.roundId, false);
           if (round?.module === "china-speed" && round.completedAt) homeSpeeds.observe(round);
@@ -68,14 +93,35 @@ function registerReportController(ctx, native) {
     }
     return result;
   }
+  // Measurements and receipts remain write-ahead commits. Within a synchronous
+  // operation, flush each round/index and public projection once at the end.
+  function batch(fn) {
+    projectionDepth++;
+    try { return store.batch(fn); }
+    finally {
+      projectionDepth--;
+      if (!projectionDepth) {
+        try { homeRoutes.save(); }
+        catch (error) { console.error("Aster route projection flush:", String(error.message || error)); }
+        for (const value of pendingSpeedProjections.values()) {
+          try {
+            const round = store.get(value.node, value.id, false);
+            if (round?.completedAt) homeSpeeds.observe(round);
+          } catch (error) { console.error("Aster speed projection flush:", String(error.message || error)); }
+        }
+        pendingSpeedProjections.clear();
+      }
+    }
+  }
   function state(s) {
     s.reportSuites ||= [];
     s.reportResources ||= [];
+    s.reportDispatch ||= [];
     return s;
   }
   function members(suite, s) {
-    const ids = new Set(M.members(suite, s.inventory));
-    return s.inventory.filter((node) => ids.has(node.uuid));
+    const clients = new Set(suite.clients), groups = new Set(suite.groups);
+    return s.inventory.filter(node => clients.has(node.uuid) || groups.has(node.group));
   }
   function route(method, suffix, fn) {
     ctx.server.route(method, BASE + suffix, async (req, res) => {
@@ -202,23 +248,39 @@ function registerReportController(ctx, native) {
       ),
     };
   }
-  function enqueue(s, suite, mod, nodeUuid, batchId, plannedAt, scheduled = false) {
+  function enqueue(s, suite, mod, nodeUuid, batchId, plannedAt, scheduled = false, stableId) {
     // One unfinished module round per suite/node. Repeated clicks do not duplicate traffic.
-    if (
-      s.jobs.some(
+    const pending = native.pendingJobsFor ? native.pendingJobsFor(s, nodeUuid, suite.id, mod.module) : s.jobs.filter(
         (j) =>
           j.roundId &&
           j.nodeUuid === nodeUuid &&
           j.policyId === suite.id &&
           j.reportModule === mod.module,
-      )
-    )
-      return null;
-    const roundId = crypto.randomUUID(),
-      plan = R.planSlots(s, suite, mod, nodeUuid, roundId);
+      );
+    if (pending.length) return scheduled && pending.some(j => j.expiresAt <= Date.now()) ? false : null;
+    const roundId = stableId || crypto.randomUUID();
+    const existing = stableId && store.get(nodeUuid, roundId, false);
+    if (existing) {
+      // Cursor persistence can lag a write-ahead manifest if the process exits.
+      // Resume its original job IDs instead of issuing a duplicate measurement.
+      const known = new Set(s.jobs.map(j => j.id));
+      const recoverable = new Set([...known, ...(existing._jobs || []).map(job => job.id)]);
+      const shared = new Map(s.jobs.filter(job => !job.sharedJobId).map(job => [measurementKey(job), job]));
+      batch(() => {
+        for (const job of existing._jobs || []) {
+          if (known.has(job.id) || !existing.slots.some(slot => slot.jobId === job.id && !["ok", "partial", "application", "failed", "missing", "cancelled"].includes(slot.state))) continue;
+          recoverJob(s, job, known, recoverable, shared);
+          if (known.has(job.id)) store.progress(job);
+        }
+      });
+      return existing.id;
+    }
+    const plan = R.planSlots(s, suite, mod, nodeUuid, roundId);
     const active = plan.jobs.filter((j) => !readiness(s, j));
-    if (s.jobs.length + active.length > MAX_QUEUE)
+    if (s.jobs.length + active.length > MAX_QUEUE) {
+      if (scheduled) return false;
       throw new Error("待测队列超过 10000 个目标，请减少 VPS 范围或分批启动");
+    }
     const sharedJobs = new Map(
       s.jobs
         .filter((j) => j.roundId && !j.sharedJobId && j.nodeUuid === nodeUuid)
@@ -226,6 +288,9 @@ function registerReportController(ctx, native) {
     );
     for (const job of active)
       shareJob(job, sharedJobs.get(measurementKey(job)), plannedAt);
+    for (const job of plan.jobs) {
+      if (scheduled && job.operation === "public-speed") job.availableAt = plannedAt + parseInt(crypto.createHash("sha256").update(nodeUuid).digest("hex").slice(0, 6), 16) % 120000;
+    }
     // Persist sharing before queue state, so a restart cannot repeat the transfer.
     const round = store.create({
       id: roundId,
@@ -239,8 +304,7 @@ function registerReportController(ctx, native) {
       slots: plan.slots,
       _jobs: plan.jobs,
     });
-    for (const job of plan.jobs) {
-      if (scheduled && job.operation === "public-speed") job.availableAt = plannedAt + parseInt(crypto.createHash("sha256").update(nodeUuid).digest("hex").slice(0, 6), 16) % 120000;
+    batch(() => { for (const job of plan.jobs) {
       job.reportModule = mod.module;
       const reason = readiness(s, job);
       if (reason)
@@ -250,28 +314,210 @@ function registerReportController(ctx, native) {
           diagnostic: reason,
         });
       else s.jobs.push(job);
-    }
+    } });
     return round.id;
   }
-  function rebuildHomeRoutes(uuids) {
+  function dispatchRoundId(work, node) {
+    const hash = crypto.createHash("sha256").update([work.batchId, work.suiteId, work.module, node].join("|")).digest("hex");
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+  }
+  function dispatchStep(s, options = {}) {
+    const started = Date.now(), maxSteps = options.maxSteps || 2, maxMs = options.maxMs || 8;
+    let steps = 0, changed = false;
+    while (s.reportDispatch.length && steps++ < maxSteps && Date.now() - started < maxMs) {
+      const work = s.reportDispatch[0], suite = s.reportSuites.find(p => p.id === work.suiteId && p.enabled);
+      const mod = suite?.modules.find(m => m.module === work.module && m.enabled);
+      if (!mod || work.cursor >= work.nodes.length) { s.reportDispatch.shift(); changed = true; continue; }
+      const uuid = work.nodes[work.cursor], node = s.inventory.find(n => n.uuid === uuid);
+      if (!node || (!suite.clients.includes(uuid) && !suite.groups.includes(node.group))) { work.cursor++; changed = true; continue; }
+      const id = enqueue(s, suite, mod, uuid, work.batchId, work.plannedAt, true, dispatchRoundId(work, uuid));
+      if (id === false) {
+        // A full queue or an expired prior lease is temporary. Retain the exact
+        // scheduled round and let the lease reaper / workers make progress.
+        s.reportDispatch.push(s.reportDispatch.shift());
+        break;
+      }
+      work.cursor++; changed = true;
+      if (work.cursor >= work.nodes.length) s.reportDispatch.shift();
+      else s.reportDispatch.push(s.reportDispatch.shift());
+    }
+    return changed;
+  }
+  function later(fn, delay) {
+    const timer = setTimeout(fn, delay);
+    if (typeof timer?.unref === "function") timer.unref();
+    return timer;
+  }
+  function storageAlive() {
+    try { fs.accessSync(ctx.storageDir); return true; }
+    catch (error) {
+      if (!ctx.isMissingFile(error, ctx.storageDir)) console.error("Aster storage unavailable:", String(error.message || error));
+      return false;
+    }
+  }
+  function scheduleDispatch() {
+    if (dispatchTimer !== null) return;
+    dispatchTimer = later(() => {
+      dispatchTimer = null;
+      if (!storageAlive()) return;
+      void native.lock(() => {
+        const started = Date.now();
+        const s = state(native.read());
+        if (dispatchStep(s)) native.save(s);
+        recordSlice("dispatch", started);
+        return s.reportDispatch.length > 0;
+      }).then(pending => { if (pending) scheduleDispatch(); })
+        // Leave the durable cursor for the next minute tick. A disk / malformed
+        // report failure must not become a 500ms retry loop.
+        .catch(error => console.error("Aster scheduled dispatch:", String(error.message || error)));
+    }, 500);
+  }
+  function scheduleMaintenance() {
+    if (maintenanceTimer !== null) return;
+    maintenanceTimer = later(() => {
+      maintenanceTimer = null;
+      if (!storageAlive()) return;
+      void native.lock(() => {
+        const started = Date.now();
+        const s = native.read();
+        const result = store.maintenanceStep(s.inventory.map(node => node.uuid), { maxSteps: 32, maxMs: 8,
+          isRoundActive: (node, id) => native.isRoundActive ? native.isRoundActive(s, node, id) : s.jobs.some(job => job.nodeUuid === node && job.roundId === id),
+        });
+        recordSlice("maintenance", started);
+        performance.maintenance.steps += result.steps;
+        performance.maintenance.pending = result.pending;
+        performance.maintenance.nextAt = result.nextAt;
+        return result;
+      }).then(result => { if (result.pending) scheduleMaintenance(); })
+        .catch(error => console.error("Aster report maintenance:", String(error.message || error)));
+    }, 500);
+  }
+  function storedJobResult(node, id, jobId) {
+    const round = store.get(node, id, false), slot = round?.slots.find(value => value.jobId === jobId);
+    return slot ? store.measurement(node, id, slot.id) : null;
+  }
+  function recoverJob(s, job, knownIds, recoverableIds, sharedJobs) {
+    if (knownIds.has(job.id)) return;
+    // A shared leader can finish after the follower manifest was written but
+    // before its queue/cursor checkpoint. Reuse that durable result first.
+    if (job.sharedJobId && job.sharedRoundId) {
+      const result = storedJobResult(job.nodeUuid, job.sharedRoundId, job.sharedJobId);
+      if (result && result.data.state !== "cancelled") {
+        completeAndProject(job, { ...result.data, sharedMeasurementId: result.id }, result.source);
+        return;
+      }
+    }
+    const reason = readiness(s, job);
+    if (reason || job.expiresAt <= Date.now()) {
+      completeAndProject(job, {kind:R.kindFor(job.operation),state:"missing",diagnostic:reason || "恢复时任务已超过排队期限"});
+      return;
+    }
+    if (!job.sharedJobId || !recoverableIds.has(job.sharedJobId)) {
+      delete job.sharedJobId; delete job.sharedRoundId; delete job.waitReason;
+      // Keep an already acknowledged lease. Queued/orphan shared work may be
+      // reattached, but must never wait for an owner that no longer exists.
+      if (!["running", "provider", "bgp-running"].includes(job.phase)) job.phase = "queued";
+      if (job.phase === "queued") shareJob(job, sharedJobs.get(measurementKey(job)), job.plannedAt || job.queuedAt);
+    }
+    s.jobs.push(job); knownIds.add(job.id);
+    if (!job.sharedJobId) sharedJobs.set(measurementKey(job), job);
+  }
+  function previousRouteMeasurement(job, source, id) {
+    const result = store.measurement(job.nodeUuid, id, job.slotId), origin = source || job.source;
+    if (!result || result.target !== job.target || result.options.family !== job.options.family || result.options.protocol !== job.options.protocol) return null;
+    return JSON.stringify([result.source.provider, result.source.id || result.source.probeId || "", result.source.city, result.source.asn]) ===
+      JSON.stringify([origin.provider, origin.id || origin.probeId || "", origin.city, origin.asn]) ? result : null;
+  }
+  function rebuildHomeRoutes(uuids, force = false) {
+    let enqueued = false;
     for (const uuid of uuids) {
-      let cursor = "";
-      do {
-        const page = store.list(uuid, "routes", { limit: 50, cursor });
-        for (const row of page.rounds) {
-          if (!row.detailAvailable) continue;
-          for (const measurement of store.get(uuid, row.id)?.measurements || []) homeRoutes.observe(measurement, false);
+      if (routeHistoryQueue.has(uuid) || (!force && homeRoutes.isHistoryRecovered(uuid))) continue;
+      routeHistoryQueue.set(uuid, { uuid, cursor: "", rows: [], nextCursor: "", round: null, slot: 0 });
+      enqueued = true;
+    }
+    if (enqueued && Date.now() >= routeHistoryRetryAt) drainRouteHistory();
+    else if (routeHistoryQueue.size) scheduleRouteHistory();
+    else if (native.read().homeRouteProjectionVersion !== 3) drainRouteHistory();
+  }
+  function scheduleRouteHistory() {
+    if (!routeHistoryQueue.size || routeHistoryTimer !== null) return;
+    let firstReady = Infinity;
+    for (const work of routeHistoryQueue.values()) firstReady = Math.min(firstReady, work.retryAt || 0);
+    routeHistoryTimer = later(() => {
+      routeHistoryTimer = null;
+      if (!storageAlive()) return;
+      void native.lock(drainRouteHistory).catch(error => {
+        routeHistoryRetryAt = Date.now() + 60000;
+        console.error("Aster route recovery:", String(error.message || error));
+        scheduleRouteHistory();
+      });
+    }, Math.max(500, routeHistoryRetryAt - Date.now(), firstReady - Date.now()));
+  }
+  function drainRouteHistory() {
+    const started = Date.now(); let steps = 0, deferred = 0;
+    if (started < routeHistoryRetryAt) { scheduleRouteHistory(); return; }
+    while (routeHistoryQueue.size && steps++ < 32 && Date.now() - started < 8) {
+      const work = routeHistoryQueue.values().next().value;
+      if (work.retryAt > Date.now()) {
+        routeHistoryQueue.delete(work.uuid); routeHistoryQueue.set(work.uuid, work);
+        if (++deferred >= routeHistoryQueue.size) break;
+        continue;
+      }
+      deferred = 0;
+      try {
+        if (work.finished && !work.round) {
+          homeRoutes.markHistoryRecovered(work.uuid); routeHistoryQueue.delete(work.uuid); continue;
         }
-        cursor = page.nextCursor;
-      } while (cursor);
+        if (work.round) {
+          const slot = work.round.slots[work.slot];
+          if (slot) {
+            const measurement = store.measurement(work.uuid, work.round.id, slot.id);
+            if (measurement) homeRoutes.observe(measurement, false);
+            work.slot++;
+          }
+          if (!slot || work.slot >= work.round.slots.length) { work.round = null; work.slot = 0; }
+        } else {
+          if (!work.rows.length) {
+            const page = store.list(work.uuid, "routes", {limit:50,cursor:work.cursor});
+            work.rows = page.rounds.slice(); work.nextCursor = page.nextCursor;
+          }
+          const row = work.rows[0];
+          if (!row) {
+            homeRoutes.markHistoryRecovered(work.uuid); routeHistoryQueue.delete(work.uuid); continue;
+          }
+          if (row.detailAvailable && (!row.completedAt || Date.now() - Date.parse(row.completedAt) <= 7 * 86400000)) work.round = store.get(work.uuid, row.id, false);
+          work.rows.shift();
+          if (!work.rows.length) {
+            if (work.nextCursor) work.cursor = work.nextCursor;
+            else work.finished = true;
+          }
+        }
+        if (work.finished && !work.round) {
+          homeRoutes.markHistoryRecovered(work.uuid); routeHistoryQueue.delete(work.uuid);
+        } else { routeHistoryQueue.delete(work.uuid); routeHistoryQueue.set(work.uuid, work); }
+      } catch (error) {
+        // Keep both the UUID and its exact row/slot cursor. Explicit rebuilds
+        // also need retries even if a previous projection was already complete.
+        routeHistoryQueue.delete(work.uuid); routeHistoryQueue.set(work.uuid, work);
+        work.retryAt = Date.now() + 60000;
+        console.error("Aster route history recovery:", String(error.message || error));
+      }
     }
     homeRoutes.save();
+    const s = native.read();
+    if (s.homeRouteProjectionVersion !== 3 && s.inventory.length && s.inventory.every(node => homeRoutes.isHistoryRecovered(node.uuid))) {
+      s.homeRouteProjectionVersion = 3; native.save(s);
+    }
+    scheduleRouteHistory();
   }
   function homePayload(s, uuids, admin = false) {
     const nodes = homeRoutes.summary(uuids);
     // Tool diagnostics can contain private endpoint addresses; only admins receive them.
-    if (!admin) for (const node of Object.values(nodes)) for (const rows of Object.values(node)) for (const row of rows) for (const key of ["forward", "return"]) if (row[key]) row[key].diagnostic = "";
+    if (!admin) for (const uuid of Object.keys(nodes)) nodes[uuid] = Object.fromEntries(Object.entries(nodes[uuid]).map(([family, rows]) => [family,
+      rows.map(row => ({ ...row, forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
+        return: row.return ? { ...row.return, diagnostic: "" } : null }))]));
     return { available: true, nodes, access: admin ? "admin" : "public",
+      backfillPending: admin && uuids.some(uuid => routeHistoryQueue.has(uuid)),
       labelMode: s.homeRouteLabelMode || "preferred", showDetails: s.homeRouteShowDetails === true,
       published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false };
   }
@@ -279,12 +525,12 @@ function registerReportController(ctx, native) {
     const ids = s.inventory.map(n => n.uuid);
     // Rebuild once after upgrading the projection, using only retained v3 rounds.
     if (s.homeRouteProjectionVersion !== 3) {
-      rebuildHomeRoutes(ids); s.homeRouteProjectionVersion = 3; native.save(s);
+      rebuildHomeRoutes(ids);
     }
     ctx.respond(res, 200, homePayload(s, ids, true));
   });
   route("POST", "/home-routes/rebuild", (_req, res, s) => {
-    rebuildHomeRoutes(s.inventory.map(n => n.uuid));
+    rebuildHomeRoutes(s.inventory.map(n => n.uuid), true);
     ctx.respond(res, 200, homePayload(s, s.inventory.map(n => n.uuid), true));
   });
   // Explicit per-node publication; old installations publish nothing by default.
@@ -413,6 +659,13 @@ function registerReportController(ctx, native) {
   route("GET", "/capabilities", (_req, res) =>
     ctx.respond(res, 200, capabilities),
   );
+  route("GET", "/performance", (_req, res, s) => {
+    ctx.respond(res, 200, { ...performance, queuedJobs: s.jobs.length,
+      pendingBatches: s.reportDispatch.length,
+      pendingNodes: s.reportDispatch.reduce((total, work) => total + Math.max(0, work.nodes.length - work.cursor), 0),
+      limits: { dispatchNodes: 2, dispatchMs: 8, maintenanceSteps: 32, maintenanceMs: 8, gapMs: 500 },
+    });
+  });
   route("GET", "/catalog", (_req, res, s) => {
     void native.catalogTick();
     ctx.respond(res, 200, {
@@ -525,6 +778,9 @@ function registerReportController(ctx, native) {
         diagnostic: "本轮所属计划或模块已停用，或 VPS 已移出范围",
       });
     const old = s.reportSuites.find((p) => p.id === suite.id);
+    // Editing a plan invalidates only its not-yet-dispatched members. Active
+    // measurements still follow the cancellation rules above.
+    s.reportDispatch = s.reportDispatch.filter(work => work.suiteId !== suite.id);
     if (old) Object.assign(old, suite);
     else {
       if (s.reportSuites.length >= 100)
@@ -549,7 +805,8 @@ function registerReportController(ctx, native) {
       for (const mod of suite.modules.filter(
         (m) => m.enabled && (!selected || m.module === selected),
       )) {
-        const id = enqueue(s, suite, mod, node.uuid, batchId, Date.now());
+        const pending = s.reportDispatch.find(work => work.suiteId === suite.id && work.module === mod.module && work.nodes.slice(work.cursor).includes(node.uuid));
+        const id = enqueue(s, suite, mod, node.uuid, pending?.batchId || batchId, pending?.plannedAt || Date.now(), false, pending ? dispatchRoundId(pending, node.uuid) : undefined);
         if (id) rounds.push(id);
       }
     native.save(s);
@@ -564,6 +821,7 @@ function registerReportController(ctx, native) {
         diagnostic: "报告方案已删除",
       });
     s.reportSuites = s.reportSuites.filter((p) => p.id !== id);
+    s.reportDispatch = s.reportDispatch.filter(work => work.suiteId !== id);
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -692,11 +950,13 @@ function registerReportController(ctx, native) {
   function tick(s) {
     state(s);
     const now = Date.now();
+    let changed = false;
     if (s.homeRouteProjectionVersion !== 3 && s.inventory.length) {
-      rebuildHomeRoutes(s.inventory.map(n => n.uuid)); s.homeRouteProjectionVersion = 3;
+      rebuildHomeRoutes(s.inventory.map(n => n.uuid));
     }
     if (!recovered && s.inventory.length) {
       const pending = s.inventory.flatMap((node) => store.pending(node.uuid));
+      if (pending.length) changed = true;
       const knownIds = new Set(s.jobs.map((j) => j.id));
       const recoverableIds = new Set([
         ...knownIds,
@@ -707,57 +967,17 @@ function registerReportController(ctx, native) {
           .filter((j) => j.roundId && !j.sharedJobId)
           .map((j) => [measurementKey(j), j]),
       );
+      batch(() => {
       for (const job of pending) {
-        if (!knownIds.has(job.id)) {
-          if (job.sharedJobId && job.sharedRoundId) {
-            const result = store
-              .get(job.nodeUuid, job.sharedRoundId)
-              ?.measurements.find((m) => m.id === job.sharedJobId);
-            if (result && result.data.state !== "cancelled") {
-              completeAndProject(
-                job,
-                { ...result.data, sharedMeasurementId: result.id },
-                result.source,
-              );
-              continue;
-            }
-          }
-          const reason = readiness(s, job);
-          if (reason || job.expiresAt <= now)
-            completeAndProject(job, {
-              kind: R.kindFor(job.operation),
-              state: "missing",
-              diagnostic: reason || "恢复时任务已超过排队期限",
-            });
-          else {
-            if (!job.sharedJobId || !recoverableIds.has(job.sharedJobId)) {
-              delete job.sharedJobId;
-              delete job.sharedRoundId;
-              delete job.waitReason;
-              // A leased measurement may still be executing or in the worker's
-              // durable outbox. Keep its lease so recovery does not rerun traffic.
-              if (!["running", "provider", "bgp-running"].includes(job.phase))
-                job.phase = "queued";
-              if (job.phase === "queued")
-                shareJob(
-                  job,
-                  sharedJobs.get(measurementKey(job)),
-                  job.plannedAt || job.queuedAt,
-                );
-            }
-            s.jobs.push(job);
-            knownIds.add(job.id);
-            if (!job.sharedJobId) sharedJobs.set(measurementKey(job), job);
-            store.progress(job);
-          }
-        }
+        if (knownIds.has(job.id)) continue;
+        recoverJob(s, job, knownIds, recoverableIds, sharedJobs);
+        if (knownIds.has(job.id)) store.progress(job);
       }
       for (const follower of s.jobs.filter(
         (j) => j.sharedJobId && !knownIds.has(j.sharedJobId),
       )) {
-        const result = store
-          .get(follower.nodeUuid, follower.sharedRoundId)
-          ?.measurements.find((m) => m.id === follower.sharedJobId);
+        changed = true;
+        const result = storedJobResult(follower.nodeUuid, follower.sharedRoundId, follower.sharedJobId);
         if (result && result.data.state !== "cancelled")
           native.finish(
             s,
@@ -770,24 +990,29 @@ function registerReportController(ctx, native) {
           delete follower.sharedRoundId;
           delete follower.waitReason;
           follower.phase = "queued";
+          native.touchJob?.(follower);
           store.progress(follower);
         }
       }
+      });
       recovered = true;
     }
     for (const suite of s.reportSuites.filter((p) => p.enabled))
       for (const mod of suite.modules.filter(
         (m) => m.enabled && m.nextAt <= now,
       )) {
-        const batchId = crypto.randomUUID();
-        for (const node of members(suite, s))
-          enqueue(s, suite, mod, node.uuid, batchId, mod.nextAt, true);
+        if (!s.reportDispatch.some(work => work.suiteId === suite.id && work.module === mod.module)) {
+          s.reportDispatch.push({ suiteId: suite.id, module: mod.module, batchId: crypto.randomUUID(),
+            plannedAt: mod.nextAt, nodes: members(suite, s).map(node => node.uuid), cursor: 0 });
+        }
         mod.nextAt = M.next(mod.timing, now);
+        changed = true;
       }
-    if (!s.reportMaintenanceAt || now - s.reportMaintenanceAt > 3600000) {
-      for (const node of s.inventory) store.cleanup(node.uuid);
-      s.reportMaintenanceAt = now;
-    }
+    if (s.reportDispatch.length) scheduleDispatch();
+    // Retention uses its own resumable cursor and expiry deadlines. Never scan
+    // all nodes/history/receipts synchronously inside the hourly scheduler.
+    scheduleMaintenance();
+    return changed;
   }
   async function publicTick() {
     if (bgpBusy) return;
@@ -806,8 +1031,9 @@ function registerReportController(ctx, native) {
         candidate.phase = "bgp-running";
         candidate.startedAt ||= new Date().toISOString();
         candidate.expiresAt = Date.now() + 120000;
+        native.touchJob?.(candidate);
         store.progress(candidate);
-        native.save(s);
+        native.save(s, false, true);
         return { ...candidate };
       });
       if (!job) return;
@@ -844,7 +1070,7 @@ function registerReportController(ctx, native) {
           };
         }
         native.finish(s, current, data);
-        native.save(s);
+        native.save(s, false, true);
       });
     } finally {
       bgpBusy = false;
@@ -853,6 +1079,9 @@ function registerReportController(ctx, native) {
   return {
     store,
     tick,
+    batch,
+    dispatchStep,
+    recoverRoutesStep: drainRouteHistory,
     publicTick,
     preview,
     enqueue,
@@ -866,31 +1095,7 @@ function registerReportController(ctx, native) {
               r.detailAvailable &&
               ["complete", "partial"].includes(r.state),
           );
-        const old = recent
-          ? store
-              .get(job.nodeUuid, recent.id)
-              ?.measurements.find(
-                (r) =>
-                  r.slotId === job.slotId &&
-                  r.target === job.target &&
-                  r.options.family === job.options.family &&
-                  r.options.protocol === job.options.protocol &&
-                  JSON.stringify([
-                    r.source.provider,
-                    r.source.id || r.source.probeId || "",
-                    r.source.city,
-                    r.source.asn,
-                  ]) ===
-                    JSON.stringify([
-                      (source || job.source).provider,
-                      (source || job.source).id ||
-                        (source || job.source).probeId ||
-                        "",
-                      (source || job.source).city,
-                      (source || job.source).asn,
-                    ]),
-              )
-          : null;
+        const old = recent ? previousRouteMeasurement(job, source, recent.id) : null;
         const observed = (hops) =>
           hops
             .map((h) => h.asn || "?")

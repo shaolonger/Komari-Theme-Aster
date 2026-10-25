@@ -72,9 +72,8 @@ async function runControllerScenario() {
     throw new Error("Runtime shared queue mismatch");
   var state = native.read();
   state.jobs = [];
-  fs.writeFileSync(
-    require("path").join(__storageDir__, "native-state.json"),
-    JSON.stringify(state),
+  require("./src/native-queue-state.js").writeNativeState(
+    require("path").join(__storageDir__, "native-state.json"), state, isMissingFile,
   );
   var restarted =
     require("./src/native-controller.js").registerNativeController(ctx);

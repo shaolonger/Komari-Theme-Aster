@@ -75,8 +75,9 @@ function normalizeRange(input) {
   return { clients, groups, inherit: input.inherit !== false };
 }
 function members(p, inventory) {
+  const clients = new Set(p.clients), groups = new Set(p.groups);
   return inventory
-    .filter((n) => p.clients.includes(n.uuid) || p.groups.includes(n.group))
+    .filter((n) => clients.has(n.uuid) || groups.has(n.group))
     .map((n) => n.uuid);
 }
 function validateResult(data, kind) {

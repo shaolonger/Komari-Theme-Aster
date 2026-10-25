@@ -5,6 +5,7 @@ const fs = require("node:fs"),
   path = require("node:path"),
   crypto = require("node:crypto");
 const { registerNativeController } = require("../src/native-controller.js");
+const { readNativeState, writeNativeState } = require("../src/native-queue-state.js");
 const G = require("../src/globalping.js");
 const A = "c388e74d-a922-4ae1-bd10-1fb30e2e53de",
   B = "59d6e276-1d4b-4657-9021-908460853ba3",
@@ -139,6 +140,9 @@ test("capabilities and catalog are admin-only; old workers finish with explicit 
       (await f.invoke("GET", v3 + "/capabilities", {}, false)).status,
       403,
     );
+    assert.equal((await f.invoke("GET", v3 + "/performance", {}, false)).status,403);
+    const performance=(await f.invoke("GET",v3+"/performance")).body;
+    assert.equal(performance.queuedJobs,0);assert.equal(performance.limits.gapMs,500);
     const saved = await f.invoke("POST", v3 + "/suites", draft());
     assert.equal(saved.status, 200);
     const run = await f.invoke(
@@ -497,10 +501,7 @@ test("restart reconstructs shared queues and finishes a result committed before 
         leader = state.jobs.find((j) => !j.sharedJobId);
       if (committed) f.c.roundController.complete(leader, result());
       state.jobs = [];
-      fs.writeFileSync(
-        path.join(f.root, "native-state.json"),
-        JSON.stringify(state),
-      );
+      writeNativeState(path.join(f.root, "native-state.json"), state);
       const restarted = await fixture(f.root);
       await restarted.c.tick();
       assert.equal(restarted.c.read().jobs.length, committed ? 0 : 2);
@@ -602,14 +603,14 @@ test("controlled throughput listener respects endpoint busy backoff before openi
     const s = f.c.read();
     assert.equal(s.jobs.length, 1);
     s.jobs[0].availableAt = Date.now() + 60000;
-    fs.writeFileSync(path.join(f.root, "native-state.json"), JSON.stringify(s));
+    writeNativeState(path.join(f.root, "native-state.json"), s);
     assert.equal(
       (await f.invoke("GET", `${v2}/workers/node/${A}/poll`, {}, false, true))
         .body.task,
       null,
     );
     s.jobs[0].availableAt = 0;
-    fs.writeFileSync(path.join(f.root, "native-state.json"), JSON.stringify(s));
+    writeNativeState(path.join(f.root, "native-state.json"), s);
     assert.equal(
       (await f.invoke("GET", `${v2}/workers/node/${A}/poll`, {}, false, true))
         .body.task.operation,
@@ -648,7 +649,7 @@ test("recovered active lease accepts durable results without repeating a measure
     );
     const s = f.c.read();
     s.jobs = [];
-    fs.writeFileSync(path.join(f.root, "native-state.json"), JSON.stringify(s));
+    writeNativeState(path.join(f.root, "native-state.json"), s);
     const restarted = await fixture(f.root);
     assert.equal(restarted.c.read().jobs[0].phase, "running");
     assert.equal(
@@ -730,7 +731,7 @@ test("heartbeats coalesce, claims and results remain durable, and failed transac
   const f = await fixture(), originalNow = Date.now;
   let now = originalNow();
   Date.now = () => now;
-  const disk = () => JSON.parse(fs.readFileSync(path.join(f.root, "native-state.json"), "utf8"));
+  const disk = () => readNativeState(path.join(f.root, "native-state.json"));
   try {
     const heartbeat = { version: "live-test", tools: ["curl"], features: ["report-v3", "latency-samples"] };
     await f.invoke("POST", `${v2}/workers/node/${A}/heartbeat`, heartbeat, false, true);

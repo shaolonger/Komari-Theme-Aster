@@ -20,13 +20,14 @@ function registerNativeController(ctx) {
   const file = path.join(storageDir, "native-state.json"),
     enricher = createEnricher(ctx.enrichmentOptions);
   let queue = Promise.resolve(),
-    busy = false, lastCatalogTick = 0, lastSavedAt = 0;
+    busy = false, lastCatalogTick = 0, lastSavedAt = 0, heartbeatDirty = false;
+  let expiryJobs = [], expiryCursor = 0, expiryTimer = null;
   let indexedJobs = null;
   let roundController = null;
   const lock = (fn) => {
     const run = async () => {
       try { return await fn(); }
-      catch (error) { stateFile.invalidate(); indexedJobs = null; throw error; }
+      catch (error) { stateFile.invalidate(); indexedJobs = null; heartbeatDirty = false; throw error; }
     };
     const promise = queue.then(run, run);
     queue = promise.then(
@@ -51,7 +52,7 @@ function registerNativeController(ctx) {
       error: "",
     },
   });
-  const stateFile = require("./json-state.js").jsonState(file, isMissingFile, blank, value => {
+  const stateFile = require("./native-queue-state.js").nativeQueueState(file, isMissingFile, blank, value => {
     if (!value || !Array.isArray(value.jobs))
       throw new Error("原生观测状态损坏；停止写入");
     delete value.policies;
@@ -59,31 +60,57 @@ function registerNativeController(ctx) {
     return value;
   });
   const read = stateFile.read;
-  function save(s, heartbeatOnly = false) {
-    if (!heartbeatOnly) indexedJobs = null;
-    // Heartbeats update live status immediately. Persist renewals together at
-    // most once per 30s; claims, results, maintenance and credentials always
-    // commit immediately. The minute scheduler also flushes the live state.
+  function save(s, heartbeatOnly = false, jobOnly = false) {
+    // Structural indexes survive preference / heartbeat writes. Only occupancy
+    // depends on phases, and callers may have updated them before saving.
+    if (!heartbeatOnly && indexedJobs) indexedJobs.occupied = null;
+    if (heartbeatOnly) heartbeatDirty = true;
+    // Claims, results, credentials and maintenance leases remain durable before
+    // responding. Liveness renewals are coalesced and tracked for the next tick.
     if (heartbeatOnly && Date.now() - lastSavedAt < 30000) return;
-    stateFile.write(s); lastSavedAt = Date.now();
+    const result = stateFile.write(s, { metadata: !jobOnly });
+    if (!jobOnly || result.metadataWritten) { lastSavedAt = Date.now(); heartbeatDirty = false; }
   }
   function jobIndex(s) {
     if (indexedJobs?.jobs === s.jobs && indexedJobs.length === s.jobs.length) return indexedJobs;
-    const byWorker = new Map(), occupied = [];
+    const byWorker = new Map(), byId = new Map(), followers = new Map(), byScope = new Map(), byRound = new Map();
     const add = (key, job) => {
       if (!byWorker.has(key)) byWorker.set(key, []);
       byWorker.get(key).push(job);
     };
     for (const job of s.jobs) {
+      byId.set(job.id, job);
+      const roundKey = job.nodeUuid + "|" + job.roundId;
+      byRound.set(roundKey, (byRound.get(roundKey) || 0) + 1);
+      const scope = [job.nodeUuid, job.policyId, job.reportModule].join("|");
+      if (!byScope.has(scope)) byScope.set(scope, []);
+      byScope.get(scope).push(job);
       add(job.executor, job);
       if (job.operation === "benchmark" && job.executor !== "node:" + job.nodeUuid)
         add("node:" + job.nodeUuid, job);
-      if (["listening", "ready", "running", "submitting", "provider"].includes(job.phase)) occupied.push(job);
+      if (job.sharedJobId) {
+        if (!followers.has(job.sharedJobId)) followers.set(job.sharedJobId, []);
+        followers.get(job.sharedJobId).push(job);
+      }
     }
-    indexedJobs = { jobs: s.jobs, length: s.jobs.length, byWorker, occupied };
+    indexedJobs = { jobs: s.jobs, length: s.jobs.length, byWorker, byId, followers, byScope, byRound, occupied: null };
     return indexedJobs;
   }
+  function occupiedJobs(s) {
+    const index = jobIndex(s);
+    if (!index.occupied) index.occupied = s.jobs.filter(job =>
+      ["listening", "ready", "running", "submitting", "provider"].includes(job.phase));
+    return index.occupied;
+  }
   function workerJobs(s, w) { return jobIndex(s).byWorker.get(w.key) || []; }
+  function workerBusy(s, w) {
+    return workerJobs(s, w).some(j => ["running", "ready", "listening"].includes(j.phase));
+  }
+  function pendingJobsFor(s, nodeUuid, suiteId, module) {
+    return jobIndex(s).byScope.get([nodeUuid, suiteId, module].join("|")) || [];
+  }
+  function isRoundActive(s, nodeUuid, id) { return jobIndex(s).byRound.has(nodeUuid + "|" + id); }
+  function touchJob(job) { stateFile.touchJob(job); }
   function route(method, suffix, admin, fn, prepare) {
     server.route(method, BASE + suffix, async (req, res) => {
       if (admin && !authorized(req, res)) return;
@@ -176,29 +203,106 @@ function registerNativeController(ctx) {
     }
     return "";
   }
-  function finish(s, j, data, source = j.source) {
-    if (j.roundId) roundController.complete(j, data, source);
-    const followers = s.jobs.filter((x) => x.sharedJobId === j.id);
-    if (data.state !== "cancelled")
-      for (const follower of followers)
-        roundController.complete(
-          follower,
-          { ...data, sharedMeasurementId: j.id },
-          source,
-        );
-    else
-      for (const follower of followers) {
-        delete follower.sharedJobId;
-        delete follower.sharedRoundId;
-        delete follower.waitReason;
-        follower.phase = "queued";
-        roundController.progress(follower);
+  function finishMany(s, entries, options = {}) {
+    const index = jobIndex(s), removed = new Set(), started = Date.now();
+    let processed = 0;
+    const complete = () => {
+      for (const entry of entries) {
+        if (processed && options.budgetMs && Date.now() - started >= options.budgetMs) break;
+        processed++;
+        const j = entry.job, data = entry.data, source = entry.source || j.source;
+        // A leader may already have completed another entry as its follower.
+        if (removed.has(j.id) || index.byId.get(j.id) !== j) continue;
+        if (j.roundId) roundController.complete(j, data, source);
+        const followers = (index.followers.get(j.id) || []).filter(x =>
+          x.sharedJobId === j.id && !removed.has(x.id));
+        if (data.state !== "cancelled") {
+          for (const follower of followers) {
+            roundController.complete(follower, { ...data, sharedMeasurementId: j.id }, source);
+            removed.add(follower.id); stateFile.forgetJob(follower);
+          }
+        } else {
+          for (const follower of followers) {
+            delete follower.sharedJobId;
+            delete follower.sharedRoundId;
+            delete follower.waitReason;
+            follower.phase = "queued";
+            roundController.progress(follower); touchJob(follower);
+          }
+        }
+        removed.add(j.id); stateFile.forgetJob(j);
       }
-    const completed = new Set([
-      j.id,
-      ...(data.state !== "cancelled" ? followers.map((x) => x.id) : []),
-    ]);
-    s.jobs = s.jobs.filter((x) => !completed.has(x.id));
+      if (removed.size) {
+        // Preserve FIFO order with one compaction for the entire batch.
+        s.jobs = s.jobs.filter(x => !removed.has(x.id));
+        const workers = new Set(), scopes = new Set(), leaders = new Set();
+        for (const id of removed) {
+          const job = index.byId.get(id);
+          if (!job) continue;
+          workers.add(job.executor);
+          if (job.operation === "benchmark") workers.add("node:" + job.nodeUuid);
+          scopes.add([job.nodeUuid, job.policyId, job.reportModule].join("|"));
+          const key = job.nodeUuid + "|" + job.roundId, remaining = index.byRound.get(key) - 1;
+          if (remaining) index.byRound.set(key, remaining); else index.byRound.delete(key);
+          if (job.sharedJobId) leaders.add(job.sharedJobId);
+          index.followers.delete(id); index.byId.delete(id);
+        }
+        const prune = (map, keys) => { for (const key of keys) {
+          const rows = (map.get(key) || []).filter(job => !removed.has(job.id));
+          if (rows.length) map.set(key, rows); else map.delete(key);
+        } };
+        prune(index.byWorker, workers); prune(index.byScope, scopes); prune(index.followers, leaders);
+        index.jobs = s.jobs; index.length = s.jobs.length; index.occupied = null;
+        indexedJobs = index;
+      }
+    };
+    if (roundController.batch) roundController.batch(complete);
+    else complete();
+    return processed;
+  }
+  function finish(s, j, data, source = j.source) {
+    finishMany(s, [{ job: j, data, source }]);
+  }
+  function queueExpirations(s) {
+    if (expiryCursor < expiryJobs.length) return;
+    expiryJobs = s.jobs.filter(j => j.expiresAt < Date.now() || !j.target).map(j => j.id);
+    expiryCursor = 0;
+  }
+  function drainExpirations(s) {
+    const entries = [], index = jobIndex(s), now = Date.now();
+    while (expiryCursor < expiryJobs.length && entries.length < 16) {
+      const position = expiryCursor++, j = index.byId.get(expiryJobs[position]);
+      // A heartbeat, retry, cancellation or result can change a queued snapshot.
+      if (!j || (j.expiresAt >= now && j.target)) continue;
+      entries.push({ position, job: j, data: {
+        kind: require("./report-model.js").kindFor(j.operation),
+        state: !j.target || j.phase === "queued" ? "missing" : "failed",
+        diagnostic: !j.target
+          ? j.direction === "VPS→大陆"
+            ? "大陆探针未声明可达公网地址（NAT 后不推断反向路径）"
+            : "请设置此 VPS 的可达公网地址"
+          : "任务超时：" + (coverage(s, j) || "测量或排队没有按期完成"),
+      } });
+    }
+    if (!entries.length) return false;
+    const processed = finishMany(s, entries, { budgetMs: 10 });
+    if (processed < entries.length) expiryCursor = entries[processed].position;
+    return true;
+  }
+  function continueExpirations() {
+    if (expiryTimer !== null || expiryCursor >= expiryJobs.length) return;
+    expiryTimer = setTimeout(() => {
+      expiryTimer = null;
+      void lock(() => {
+        const s = read();
+        if (drainExpirations(s)) save(s, false, true);
+      }).then(continueExpirations, e => {
+        // A later minute tick retries persistent state / disk failures. Do not
+        // turn a corrupt report into a tight retry loop or lose its queue job.
+        expiryJobs = []; expiryCursor = 0;
+        console.error("Aster expiry maintenance:", String(e.message || e));
+      });
+    }, 500);
   }
   route("GET", "/catalog", true, (_req, res, s) => {
     void catalogTick();
@@ -221,7 +325,7 @@ function registerNativeController(ctx) {
     identities.nodes[uuid] = { tokenHash: crypto.createHash("sha256").update(token).digest("hex"), tokenIssuedAt: new Date().toISOString() };
     writeState(identities);
     delete s.workers["node:" + uuid];
-    for (const j of s.jobs.slice()) if (j.executor === "node:" + uuid || j.nodeUuid === uuid) finish(s, j, { kind: require("./report-model.js").kindFor(j.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已重置" });
+    finishMany(s, s.jobs.filter(j => j.executor === "node:" + uuid || j.nodeUuid === uuid).map(job => ({ job, data: { kind: require("./report-model.js").kindFor(job.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已重置" } })));
     save(s); respond(res, 201, { uuid, token });
   });
   route("DELETE", "/nodes/:uuid/token", true, (req, res, s) => {
@@ -229,7 +333,7 @@ function registerNativeController(ctx) {
     if (!UUID.test(uuid)) throw new Error("节点标识无效");
     const identities = readState(); delete identities.nodes[uuid]; writeState(identities);
     delete s.workers["node:" + uuid];
-    for (const j of s.jobs.slice()) if (j.executor === "node:" + uuid || j.nodeUuid === uuid) finish(s, j, { kind: require("./report-model.js").kindFor(j.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已撤销" });
+    finishMany(s, s.jobs.filter(j => j.executor === "node:" + uuid || j.nodeUuid === uuid).map(job => ({ job, data: { kind: require("./report-model.js").kindFor(job.operation), state: "cancelled", diagnostic: "VPS 探测器凭证已撤销" } })));
     save(s); respond(res, 200, { ok: true });
   });
   // Komari retains Gin route slots after unload. Preserve the pre-1.9 wildcard
@@ -301,13 +405,9 @@ function registerNativeController(ctx) {
     const id = String(req.url).split("/").pop();
     delete s.probes[id];
     delete s.workers["probe:" + id];
-    for (const j of s.jobs.slice())
-      if (j.executor === "probe:" + id)
-        finish(s, j, {
-          kind: j.operation === "benchmark" ? "speed" : "route",
-          state: "missing",
-          diagnostic: "探针已撤销",
-        });
+    finishMany(s, s.jobs.filter(j => j.executor === "probe:" + id).map(job => ({ job,
+      data: { kind: require("./report-model.js").kindFor(job.operation), state: "missing", diagnostic: "探针已撤销" },
+    })));
     s.revision++;
     save(s);
     respond(res, 200, { ok: true });
@@ -316,12 +416,16 @@ function registerNativeController(ctx) {
     route("PUT", `/workers/${role}/:id/update-policy`, true, (req, res, s) => {
       const w = workerId(req), b = readBody(req);
       if (!w || !(role === "node" ? readState().nodes[w.id] : s.probes[w.id]) || typeof b.enabled !== "boolean") throw new Error("测量端或自动更新偏好无效");
-      (s.updatePolicies ||= {})[w.key] = { enabled: b.enabled };
-      save(s); respond(res, 200, { ok: true });
+      const policies = (s.updatePolicies ||= {});
+      if (!policies[w.key] || policies[w.key].enabled !== b.enabled) {
+        policies[w.key] = { enabled: b.enabled };
+        save(s);
+      }
+      respond(res, 200, { ok: true });
     });
     route("GET", `/workers/${role}/:id/update-policy`, false, (req, res, s) => {
       const w = auth(req, res, s);
-      if (w) respond(res, 200, { enabled: s.updatePolicies?.[w.key]?.enabled === true, release: RUNNER_RELEASE, version: s.workers[w.key]?.version || "", instanceId: s.workers[w.key]?.instanceId || "", busy: s.jobs.some(j => ["running", "ready", "listening"].includes(j.phase) && (j.executor === w.key || (j.operation === "benchmark" && w.key === "node:" + j.nodeUuid))) });
+      if (w) respond(res, 200, { enabled: s.updatePolicies?.[w.key]?.enabled === true, release: RUNNER_RELEASE, version: s.workers[w.key]?.version || "", instanceId: s.workers[w.key]?.instanceId || "", busy: workerBusy(s, w) });
     });
     route("POST", `/workers/${role}/:id/maintenance`, false, (req, res, s) => {
       const w = auth(req, res, s);
@@ -329,13 +433,19 @@ function registerNativeController(ctx) {
       const b = readBody(req), leases = (s.maintenance ||= {}), lease = leases[w.key];
       if (b.action === "report") {
         if (!["ok", "waiting", "failed"].includes(b.state)) throw new Error("维护状态无效");
-        (s.updates ||= {})[w.key] = { state: b.state, message: M.text(b.message, 300), at: new Date().toISOString() };
-        save(s); respond(res, 200, { ok: true }); return;
+        const updates = (s.updates ||= {}), message = M.text(b.message, 300), previous = updates[w.key];
+        // Hourly checks normally report the same "waiting / already current"
+        // status. Preserve its change timestamp rather than rewriting every job.
+        if (!previous || previous.state !== b.state || previous.message !== message) {
+          updates[w.key] = { state: b.state, message, at: new Date().toISOString() };
+          save(s);
+        }
+        respond(res, 200, { ok: true }); return;
       }
       if (b.action === "claim") {
         if (b.automatic && s.updatePolicies?.[w.key]?.enabled !== true) { respond(res, 409, { error: "自动更新未启用" }); return; }
         if (b.version !== RUNNER_RELEASE.version) throw new Error("目标探测器版本与面板不兼容");
-        if ((lease && lease.until > Date.now()) || s.jobs.some(j => ["running", "ready", "listening"].includes(j.phase) && (j.executor === w.key || (j.operation === "benchmark" && w.key === "node:" + j.nodeUuid)))) {
+        if ((lease && lease.until > Date.now()) || workerBusy(s, w)) {
           respond(res, 409, { error: "测量端忙，等待当前测量完成后重试" }); return;
         }
         const id = crypto.randomBytes(16).toString("hex");
@@ -399,11 +509,10 @@ function registerNativeController(ctx) {
             j.executor === w.key &&
             j.phase === "running" &&
             active.includes(j.id)
-          )
-            j.expiresAt = Math.min(
-              Date.now() + 90000,
-              j.deadlineAt || j.expiresAt,
-            );
+          ) {
+            j.expiresAt = Math.min(Date.now() + 90000, j.deadlineAt || j.expiresAt);
+            touchJob(j);
+          }
         save(s, true);
         respond(res, 200, {
           ok: true,
@@ -425,9 +534,12 @@ function registerNativeController(ctx) {
       if (s.maintenance?.[w.key]?.until > Date.now()) {
         respond(res, 200, { task: null, listeners: [] }); return;
       }
-      const occupied = jobIndex(s).occupied;
+      const occupied = occupiedJobs(s);
       let task = null, changed = false;
       for (const j of workerJobs(s, w)) {
+        // Expired tasks may be awaiting a bounded maintenance batch. Never
+        // dispatch one merely because its disk cleanup has not run yet.
+        if (j.expiresAt <= Date.now() || !j.target) continue;
         if (
           j.roundId &&
           j.executor === w.key &&
@@ -495,6 +607,7 @@ function registerNativeController(ctx) {
               token: s.reportSecrets[j.options.endpoint.id],
             };
           if (j.roundId) roundController.progress(j);
+          touchJob(j);
           break;
         }
         if (
@@ -529,6 +642,7 @@ function registerNativeController(ctx) {
           j.phase = "listening";
           j.password = crypto.randomBytes(32).toString("hex");
           j.expiresAt = Date.now() + 240000;
+          touchJob(j);
           task = {
             id: j.id,
             operation: "listen",
@@ -547,6 +661,7 @@ function registerNativeController(ctx) {
         ) {
           changed = true;
           j.phase = "running";
+          touchJob(j);
           if (j.roundId) {
             j.startedAt = new Date().toISOString();
             j.deadlineAt = Date.now() + 300000;
@@ -564,7 +679,7 @@ function registerNativeController(ctx) {
           break;
         }
       }
-      if (changed) save(s);
+      if (changed) save(s, false, true);
       respond(res, 200, {
         task,
         listeners: workerJobs(s, w)
@@ -585,7 +700,7 @@ function registerNativeController(ctx) {
         const w = auth(req, res, s);
         if (!w) return;
         const b = prepared || readBody(req),
-          j = s.jobs.find((x) => x.id === b.id);
+          j = jobIndex(s).byId.get(b.id);
         if (!j) {
           if (roundController.receipt(b.id, w.key)) {
             respond(res, 200, { ok: true, replay: true });
@@ -608,7 +723,7 @@ function registerNativeController(ctx) {
           ) {
             j.publicKey = b.data.publicKey;
             j.scheme = b.data.scheme;
-            j.phase = "ready";
+            j.phase = "ready"; touchJob(j);
           } else
             finish(s, j, {
               kind: "speed",
@@ -645,7 +760,7 @@ function registerNativeController(ctx) {
             j.expiresAt = Date.now() + 6 * 3600000;
             delete j.deadlineAt;
             j.waitReason = "公共端点繁忙，尚未传输测速数据；等待退避后重试";
-            roundController.progress(j);
+            roundController.progress(j); touchJob(j);
             save(s);
             respond(res, 200, { ok: true, retrying: true });
             return;
@@ -656,7 +771,7 @@ function registerNativeController(ctx) {
             runnerVersion: s.workers[w.key]?.version || "",
           });
         }
-        save(s);
+        save(s, false, true);
         respond(res, 200, { ok: true });
       },
       async (req, res) => {
@@ -666,7 +781,7 @@ function registerNativeController(ctx) {
           w = auth(req, res, s);
         if (!w) return null;
         const b = readBody(req),
-          j = s.jobs.find((x) => x.id === b.id);
+          j = jobIndex(s).byId.get(b.id);
         if (
           j?.operation === "route" &&
           j.executor === w.key &&
@@ -708,82 +823,63 @@ function registerNativeController(ctx) {
         error = String(e.message || e).slice(0, 200);
       }
       const actions = await lock(async () => {
-        const s = read(),
-          now = Date.now();
+        const s = read(), now = Date.now();
+        let changed = false;
         if (inventory) {
-          s.inventory = inventory;
-          for (const n of inventory)
-            if (
-              !s.endpoints[n.uuid] &&
-              (n.ip || n.ipv6) &&
-              require("./model.js").isHost(n.ip || n.ipv6)
-            )
-              s.endpoints[n.uuid] = { address: n.ip || n.ipv6, port: 25201 };
+          const keys = ["uuid", "name", "group", "publicVisible", "ip", "ipv6"];
+          if (s.inventory.length !== inventory.length || inventory.some((row, i) => keys.some(key => row[key] !== s.inventory[i]?.[key]))) {
+            s.inventory = inventory;
+            changed = true;
+          }
           for (const n of inventory) {
+            if (!s.endpoints[n.uuid] && (n.ip || n.ipv6) && require("./model.js").isHost(n.ip || n.ipv6)) {
+              s.endpoints[n.uuid] = { address: n.ip || n.ipv6, port: 25201 };
+              changed = true;
+            }
             const endpoint = s.endpoints[n.uuid];
-            if (endpoint && endpoint.ipv6 === undefined && n.ipv6 && require("./model.js").isHost(n.ipv6))
+            if (endpoint && endpoint.ipv6 === undefined && n.ipv6 && require("./model.js").isHost(n.ipv6)) {
               endpoint.ipv6 = n.ipv6;
+              changed = true;
+            }
           }
         }
-        s.inventoryError = error;
-        for (const j of s.jobs.slice())
-          if (j.expiresAt < now)
-            finish(s, j, {
-              kind: require("./report-model.js").kindFor(j.operation),
-              state: j.phase === "queued" ? "missing" : "failed",
-              diagnostic:
-                "任务超时：" + (coverage(s, j) || "测量或排队没有按期完成"),
-            });
-        roundController.tick(s);
-        for (const j of s.jobs.slice())
-          if (!j.target)
-            finish(s, j, {
-              kind: j.operation === "benchmark" ? "speed" : "route",
-              state: "missing",
-              diagnostic:
-                j.direction === "VPS→大陆"
-                  ? "大陆探针未声明可达公网地址（NAT 后不推断反向路径）"
-                  : "请设置此 VPS 的可达公网地址",
-            });
+        if (s.inventoryError !== error) { s.inventoryError = error; changed = true; }
+        queueExpirations(s);
+        if (drainExpirations(s)) changed = true;
+        // Older report-controller implementations return undefined; retain
+        // their conservative persistence until they provide a no-change signal.
+        if (roundController.tick(s) !== false) changed = true;
+        queueExpirations(s);
         const hour = Math.floor(now / 3600000);
         if (s.provider.hour !== hour) {
+          // A zero quota needs no durable write merely to advance its clock.
+          if (s.provider.used) changed = true;
           s.provider.hour = hour;
           s.provider.used = 0;
         }
         const out = [];
         for (const j of s.jobs) {
           if (out.length >= 3) break;
+          if (j.expiresAt <= now || !j.target) continue;
           if (j.phase === "provider") {
-            out.push({
-              id: j.id,
-              measurementId: j.measurementId,
-              job: { ...j },
-              operation: "poll",
-            });
-          } else if (
-            j.operation === "globalping" &&
-            j.phase === "queued" &&
-            s.provider.used < 120 &&
-            s.provider.blockedUntil <= now
-          ) {
-            j.phase = "submitting";
+            out.push({ id: j.id, measurementId: j.measurementId, job: { ...j }, operation: "poll" });
+          } else if (j.operation === "globalping" && j.phase === "queued" &&
+            s.provider.used < 120 && s.provider.blockedUntil <= now) {
+            j.phase = "submitting"; touchJob(j);
             s.provider.used++;
+            changed = true;
             out.push({ id: j.id, operation: "create", job: { ...j } });
           }
         }
-        if (
-          (refreshProvider ||
-            s.reportSuites?.some(
-              (p) =>
-                p.enabled &&
-                p.modules.some((m) => m.module === "routes" && m.publicSources),
-            )) &&
-          s.provider.checkedAt < now - 10 * 60000
-        ) {
+        if ((refreshProvider || s.reportSuites?.some(p => p.enabled &&
+          p.modules.some(m => m.module === "routes" && m.publicSources))) &&
+          s.provider.checkedAt < now - 10 * 60000) {
           s.provider.checkedAt = now;
+          changed = true;
           out.push({ operation: "probes" });
         }
-        save(s);
+        if (changed || heartbeatDirty) save(s);
+        continueExpirations();
         return out;
       });
       await Promise.all(
@@ -807,47 +903,51 @@ function registerNativeController(ctx) {
           }
           await lock(async () => {
             const s = read();
+            let changed = false;
             if (a.operation === "probes") {
               if (Array.isArray(result)) {
-                s.provider.probes = result
-                  .filter((p) => p.location?.country === "CN")
-                  .slice(0, 2500);
-                s.provider.error = "";
-              } else s.provider.error = String(e?.message || "目录不可用");
-              save(s);
+                const probes = result.filter(p => p.location?.country === "CN").slice(0, 2500);
+                if (JSON.stringify(s.provider.probes) !== JSON.stringify(probes)) {
+                  s.provider.probes = probes; changed = true;
+                }
+                if (s.provider.error !== "") { s.provider.error = ""; changed = true; }
+              } else {
+                const message = String(e?.message || "目录不可用");
+                if (s.provider.error !== message) { s.provider.error = message; changed = true; }
+              }
+              if (changed) save(s);
               return;
             }
-            const j = s.jobs.find((x) => x.id === a.id);
+            const j = jobIndex(s).byId.get(a.id);
             if (!j) return;
             if (e) {
-              s.provider.error = String(e.message || e);
+              const message = String(e.message || e);
+              if (s.provider.error !== message) { s.provider.error = message; changed = true; }
               if (e.rateLimited) {
                 s.provider.blockedUntil = Date.now() + 3600000;
-                if (a.operation === "create") j.phase = "queued";
-              } else if (a.operation === "create")
-                finish(s, j, {
-                  kind: "route",
-                  state: e.noCoverage ? "missing" : "failed",
-                  diagnostic:
-                    "公共测量提交失败，未自动重复提交：" + s.provider.error,
-                });
+                if (a.operation === "create") { j.phase = "queued"; touchJob(j); }
+                changed = true;
+              } else if (a.operation === "create") {
+                finish(s, j, { kind: "route", state: e.noCoverage ? "missing" : "failed",
+                  diagnostic: "公共测量提交失败，未自动重复提交：" + s.provider.error });
+                changed = true;
+              }
             } else if (a.operation === "create") {
               if (!/^[a-zA-Z0-9_-]{1,80}$/.test(result.id || ""))
-                finish(s, j, {
-                  kind: "route",
-                  state: "missing",
-                  diagnostic: "公共测量没有返回可用测量 ID",
-                });
+                finish(s, j, { kind: "route", state: "missing", diagnostic: "公共测量没有返回可用测量 ID" });
               else {
                 j.measurementId = result.id;
                 j.phase = "provider";
                 j.expiresAt = Date.now() + 180000;
+                touchJob(j);
               }
+              changed = true;
             } else if (result.status === "finished") {
               const row = normalized || G.normalize(j, result)[0];
               finish(s, j, row.data, row.source);
+              changed = true;
             }
-            save(s);
+            if (changed) save(s);
           });
         }),
       );
@@ -860,7 +960,7 @@ function registerNativeController(ctx) {
   }
   roundController = require("./report-controller.js").registerReportController(
     ctx,
-    { read, lock, save, finish, coverage, online, tick, catalogTick },
+    { read, lock, save, finish, finishMany, pendingJobsFor, isRoundActive, touchJob, coverage, online, tick, catalogTick },
   );
   void tick();
   return { tick, read, lock, roundController };

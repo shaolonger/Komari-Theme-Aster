@@ -23,6 +23,8 @@ HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-
 _active = {}
 _active_lock = threading.Lock()
 _task_local = threading.local()
+_auth_scheme_cache = None
+_auth_scheme_lock = threading.Lock()
 
 
 @contextmanager
@@ -440,12 +442,26 @@ def route(target, options):
 
 
 def auth_scheme():
-    if not shutil.which("iperf3"):
+    executable = shutil.which("iperf3")
+    if not executable:
         return "unavailable"
-    _, output, error = execute(["iperf3", "--help"], 5)
-    if "--rsa-private-key-path" not in output + error:
+    try:
+        metadata = os.stat(executable)
+    except OSError:
         return "unavailable"
-    return "oaep" if "--use-pkcs1-padding" in output + error else "pkcs1"
+    # Heartbeats run every 30s. Probe once per binary identity; package upgrades
+    # and path changes invalidate the result without a permanent stale cache.
+    identity = (executable, metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
+    global _auth_scheme_cache
+    with _auth_scheme_lock:
+        if _auth_scheme_cache is not None and _auth_scheme_cache[0] == identity:
+            return _auth_scheme_cache[1]
+        code, output, error = execute([executable, "--help"], 5)
+        if code in {124, 130}:
+            return "unavailable"  # Do not cache an interrupted / timed-out probe.
+        scheme = "unavailable" if "--rsa-private-key-path" not in output + error else "oaep" if "--use-pkcs1-padding" in output + error else "pkcs1"
+        _auth_scheme_cache = (identity, scheme)
+        return scheme
 
 
 def receiver_intervals(payload, reverse):
@@ -655,9 +671,10 @@ def http_speed(target, options, credentials=None):
                 started = time.monotonic()
                 deadline = started + warmup + seconds
                 block = b"\0" * 65536
+                framed_block = b"10000\r\n" + block + b"\r\n"
                 last_tcp_sample = started
                 while time.monotonic() < deadline and not cancelled():
-                    connection.send(b"10000\r\n" + block + b"\r\n")
+                    connection.send(framed_block)
                     omitted += len(block)
                     now = time.monotonic()
                     if now - last_tcp_sample >= 0.25:

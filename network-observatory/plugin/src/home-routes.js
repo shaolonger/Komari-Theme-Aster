@@ -89,7 +89,7 @@ function project(result) {
 function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
   const directory = path.join(root, "home-routes"),
     nodes = new Map(),
-    dirty = new Set();
+    dirty = new Set(), summaries = new Map();
   function read(uuid) {
     if (!UUID.test(uuid)) throw new Error("节点 UUID 无效");
     if (nodes.has(uuid)) return nodes.get(uuid);
@@ -112,6 +112,7 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
       family = (node[row.family] ||= {}),
       carrier = (family[row.carrier] ||= {});
     dirty.add(result.nodeUuid);
+    summaries.delete(result.nodeUuid);
     // Keep each city/protocol separately so differing observed routes remain visible.
     const key = crypto
       .createHash("sha256")
@@ -136,6 +137,7 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
   }
   function save() {
     for (const uuid of dirty) {
+      summaries.delete(uuid);
       const node = read(uuid);
       for (const family of Object.values(node))
         for (const carrier of Object.values(family))
@@ -153,7 +155,11 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
   }
   function summary(allowed) {
     const output = {};
+    const now = clock();
     for (const uuid of allowed) {
+      const cached = summaries.get(uuid);
+      if (cached && now >= cached.from && now < cached.until) { output[uuid] = cached.families; continue; }
+      let until = now + 60000;
       const node = read(uuid);
       const families = {};
       for (const family of ["4", "6"]) {
@@ -163,13 +169,17 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
             const records = Object.values(
               node[family]?.[carrier]?.[direction] || {},
             )
-              .filter((e) => clock() - Date.parse(e.at) <= 7 * 86400000)
+              .filter((e) => now - Date.parse(e.at) <= 7 * 86400000)
               .sort((a, b) => b.at.localeCompare(a.at));
             if (!records.length) {
               row[direction] = null;
               continue;
             }
             const latest = records[0];
+            for (const evidence of records) {
+              const at = Date.parse(evidence.at);
+              for (const age of [86400000, 7 * 86400000]) if (at + age + 1 > now) until = Math.min(until, at + age + 1);
+            }
             // A card describes one round. Never stitch cities/protocols from older rounds.
             const current = records.filter(e => latest.reportId
               ? e.reportId === latest.reportId : e.at === latest.at);
@@ -198,7 +208,7 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
               reportId: latest.reportId || "",
               diagnostic: latest.diagnostic || "",
               state:
-                clock() - Date.parse(latest.at) > 86400000
+                now - Date.parse(latest.at) > 86400000
                   ? "stale"
                   : current.every((e) => e.state === "ok")
                     ? "ok"
@@ -211,9 +221,23 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
         });
       }
       output[uuid] = families;
+      summaries.delete(uuid); summaries.set(uuid, { from: now, until, families });
+      while (summaries.size > 256) summaries.delete(summaries.keys().next().value);
     }
     return output;
   }
-  return { observe, save, summary };
+  function markHistoryRecovered(uuid) {
+    const node = read(uuid);
+    if (node._projectionVersion === 3) { if (dirty.has(uuid)) save(); return; }
+    const previous = node._projectionVersion;
+    node._projectionVersion = 3; dirty.add(uuid);
+    try { save(); }
+    catch (error) {
+      if (previous === undefined) delete node._projectionVersion; else node._projectionVersion = previous;
+      dirty.add(uuid); throw error;
+    }
+  }
+  return { observe, save, summary, markHistoryRecovered,
+    isHistoryRecovered: uuid => read(uuid)._projectionVersion === 3 };
 }
 module.exports = { project, homeRouteStore, carrierName };

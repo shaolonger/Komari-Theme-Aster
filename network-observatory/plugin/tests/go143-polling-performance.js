@@ -1,6 +1,7 @@
 async function runPollingPerformance() {
   const fs = require("fs"), path = require("path"), crypto = require("crypto");
   const routes = new Map(), token = "e".repeat(64);
+  const { writeNativeState } = require("./src/native-queue-state.js");
   const nodes = Array.from({ length: 50 }, (_, i) => ({
     uuid: "00000000-0000-4000-8000-" + String(i).padStart(12, "0"),
     name: "Load test " + i, ipv4: "8.8.8.8", hidden: false,
@@ -34,7 +35,7 @@ async function runPollingPerformance() {
       source: { provider: "native", family: "4" },
       expiresAt: Date.now() + 3600000,
     }));
-    fs.writeFileSync(path.join(__storageDir__, "native-state.json"), JSON.stringify(s));
+    writeNativeState(path.join(__storageDir__, "native-state.json"), s, isMissingFile);
   });
   const originalRead = fs.readFileSync, originalWrite = fs.writeFileSync;
   let reads = 0, writes = 0;

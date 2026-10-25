@@ -16,7 +16,7 @@ const files = [
   ["script.js", resolve(plugin, "script.js")],
   ["src/route-networks.json", resolve(plugin, "src/route-networks.json")],
   ["src/model.js", resolve(plugin, "src/model.js")],
-  ...["json-state", "catalog", "native-model", "native-controller", "globalping", "route-enrichment", "route-evidence", "website-catalog", "round-store", "report-catalog", "report-model", "report-controller", "home-routes", "home-speeds", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
+  ...["json-state", "native-queue-state", "catalog", "native-model", "native-controller", "globalping", "route-enrichment", "route-evidence", "website-catalog", "round-store", "retention-store", "report-catalog", "report-model", "report-controller", "home-routes", "home-speeds", "report-resources", "report-share", "bgp"].map((name) => [`src/${name}.js`, resolve(plugin, `src/${name}.js`)]),
   ["src/timezones.json", resolve(plugin, "src/timezones.json")],
   ["runner/aster-network-observatory-http.service", resolve(root, "network-observatory/runner/aster-network-observatory-http.service")],
   ["runner/http_receiver.py", resolve(root, "network-observatory/runner/http_receiver.py")],

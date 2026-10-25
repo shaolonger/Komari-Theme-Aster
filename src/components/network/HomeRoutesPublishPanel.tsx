@@ -24,6 +24,7 @@ export function HomeRoutesPublishPanel({
     queryFn: ({ signal }) => getHomeRoutes({ signal }, true),
     staleTime: 30000,
     retry: false,
+    refetchInterval: query => query.state.data?.backfillPending ? 5000 : false,
   });
   const nodes = catalog.inventory.filter((n) => n.publicVisible);
   const selected = (selection ?? catalog.homeRouteNodes).filter((id) =>
@@ -53,7 +54,7 @@ export function HomeRoutesPublishPanel({
       }
       setMessage(
         rebuild
-          ? "已从仍保留的大陆路由报告重建摘要"
+          ? "已安排从仍保留的大陆路由报告分批重建摘要"
           : "显示与访客发布范围已保存到网络插件",
       );
     } catch (e) {

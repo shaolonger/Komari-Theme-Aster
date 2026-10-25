@@ -22,6 +22,9 @@ TASK = {
 
 
 class AgentValidationTests(unittest.TestCase):
+    def tearDown(self):
+        AGENT.close_outbox_scans()
+
     def test_openrc_registers_separate_probe_service_and_restarts_existing_node(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)

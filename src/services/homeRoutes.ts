@@ -28,6 +28,7 @@ export const homeRoutesSchema = z.object({
   display: z.boolean().default(true),
   labelMode: z.enum(["preferred", "full"]).default("preferred"),
   showDetails: z.boolean().default(false),
+  backfillPending: z.boolean().default(false),
   nodes: z.record(
     z.object({ "4": z.array(row).max(3), "6": z.array(row).max(3) }),
   ),
@@ -53,7 +54,7 @@ export async function getHomeRoutes(
       access: admin ? "admin" : "public",
       published: [],
       display: true,
-      labelMode: "preferred", showDetails: false,
+      labelMode: "preferred", showDetails: false, backfillPending: false,
     };
   if (!response.ok) throw new Error("线路摘要暂不可用");
   const body: unknown = await response.json().catch(() => null);
@@ -66,7 +67,7 @@ export async function getHomeRoutes(
         access: admin ? "admin" : "public",
         published: [],
         display: true,
-        labelMode: "preferred", showDetails: false,
+        labelMode: "preferred", showDetails: false, backfillPending: false,
       };
     throw new Error("线路摘要格式不兼容，请更新网络观测插件");
   }

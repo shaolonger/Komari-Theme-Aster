@@ -10,13 +10,33 @@ import (
 )
 
 func checkPollingPerformance(base string) {
+	checkPerformanceScenario(base, "go143-polling-performance.js", "runPollingPerformance")
+}
+
+func checkNativeMaintenancePerformance(base string) {
+	checkPerformanceScenario(base, "go143-native-maintenance-performance.js", "runNativeMaintenancePerformance")
+}
+
+func checkStorePerformance(base string) {
+	checkPerformanceScenario(base, "go143-store-performance.js", "runStorePerformance")
+}
+
+func checkDispatchPerformance(base string) {
+	checkPerformanceScenario(base, "go143-dispatch-performance.js", "runDispatchPerformance")
+}
+
+func checkQueueStatePerformance(base string) {
+	checkPerformanceScenario(base, "go143-queue-state-performance.js", "runQueueStatePerformance")
+}
+
+func checkPerformanceScenario(base, filename, entrypoint string) {
 	entry, err := os.ReadFile(filepath.Join(base, "script.js"))
 	if err != nil {
 		panic(err)
 	}
 	source := string(entry)
 	helper := source[strings.Index(source, "function isMissingFile("):strings.Index(source, "function readState(")]
-	scenario, err := os.ReadFile(filepath.Join(base, "tests/go143-polling-performance.js"))
+	scenario, err := os.ReadFile(filepath.Join(base, "tests", filename))
 	if err != nil {
 		panic(err)
 	}
@@ -36,7 +56,7 @@ func checkPollingPerformance(base string) {
 		panic(err)
 	}
 	defer runtime.Close()
-	if err = runtime.Call("runPollingPerformance"); err != nil {
+	if err = runtime.Call(entrypoint); err != nil {
 		panic(err)
 	}
 }

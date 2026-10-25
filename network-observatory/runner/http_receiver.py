@@ -45,8 +45,9 @@ class Receiver(BaseHTTPRequestHandler):
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
             deadline, block = time.monotonic() + 35, b"\0" * 65536
+            framed_block = b"10000\r\n" + block + b"\r\n"
             while time.monotonic() < deadline:
-                self.wfile.write(b"10000\r\n" + block + b"\r\n")
+                self.wfile.write(framed_block)
             self.wfile.write(b"0\r\n\r\n")
         except OSError:
             pass
