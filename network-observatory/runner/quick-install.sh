@@ -14,6 +14,62 @@ fail() {
   exit 1
 }
 
+# This must run before id/awk/cat (including command substitutions). In a
+# PID-starved LXC even the first such command aborts BusyBox ash with EAGAIN,
+# closing stdin and leaving the downloading curl with a misleading error 23.
+# Shell builtins still work when the container cannot create another task.
+check_pid_budget() {
+  pid_dir=$1
+  while :; do
+    if [ -r "$pid_dir/pids.max" ] && [ -r "$pid_dir/pids.current" ]; then
+      pid_max= pid_current=
+      IFS= read -r pid_max < "$pid_dir/pids.max" || :
+      IFS= read -r pid_current < "$pid_dir/pids.current" || :
+      case "$pid_max:$pid_current" in
+        *[!0-9:]*|:*|*:) ;;
+        *)
+          pid_free=$((pid_max - pid_current))
+          if [ "$pid_free" -lt 8 ]; then
+            fail "进程/线程配额不足：${pid_dir} 的 pids.current=${pid_current}，pids.max=${pid_max}。安装前至少预留 8 个任务名额；请停止不需要的服务，或由 LXC 宿主机/服务商调整容器及父级的 pids.max。内存有空闲也可能触发此限制。请先下载脚本到文件，再运行，避免 curl 管道额外占用进程。"
+          fi
+          ;;
+      esac
+    fi
+    # Also check visible ancestors: a child can say 'max' while its parent
+    # enforces the limit. Never walk beyond the standard controller mount.
+    case "$pid_dir" in
+      /sys/fs/cgroup|/sys/fs/cgroup/pids) break ;;
+      /sys/fs/cgroup/*) pid_dir=${pid_dir%/*} ;;
+      *) break ;;
+    esac
+  done
+}
+
+resource_preflight() {
+  cgroup_v2= cgroup_pids= cgroup_memory=
+  if [ -r /proc/self/cgroup ]; then
+    while IFS=: read -r hierarchy controllers cgroup_path; do
+      # These paths are kernel supplied; reject parent traversal rather than
+      # following a non-namespaced container path outside the mount.
+      case "$cgroup_path" in /*) ;; *) continue ;; esac
+      case "/$cgroup_path/" in */../*|*/./*) continue ;; esac
+      case ",$controllers," in
+        ,,) cgroup_v2=/sys/fs/cgroup${cgroup_path%/} ;;
+        *,pids,*) cgroup_pids=/sys/fs/cgroup/pids${cgroup_path%/} ;;
+      esac
+      case ",$controllers," in
+        *,memory,*) cgroup_memory=/sys/fs/cgroup/memory${cgroup_path%/} ;;
+      esac
+    done < /proc/self/cgroup
+  fi
+  [ -z "$cgroup_v2" ] || check_pid_budget "$cgroup_v2"
+  [ -z "$cgroup_pids" ] || check_pid_budget "$cgroup_pids"
+  # Namespaced controller roots remain useful when /proc is unavailable or
+  # exposes an ancestor path which is not mounted inside this container.
+  check_pid_budget /sys/fs/cgroup
+  check_pid_budget /sys/fs/cgroup/pids
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --upgrade) UPGRADE=1; shift ;;
@@ -36,7 +92,15 @@ while [ "$#" -gt 0 ]; do
 done
 case "$PROFILE" in auto|lite|full) ;; preserve) [ "$UPGRADE" -eq 1 ] || fail 'preserve 仅用于 --upgrade。' ;; *) fail '安装模式必须是 auto、lite、full 或 preserve。' ;; esac
 
-if [ "$(id -u)" -ne 0 ]; then
+resource_preflight
+effective_uid=
+if [ -r /proc/self/status ]; then
+  while read -r status_key real_uid status_uid rest; do
+    case "$status_key" in Uid:) effective_uid=$status_uid; break ;; esac
+  done < /proc/self/status
+fi
+if [ -z "$effective_uid" ]; then effective_uid=$(id -u) || fail '无法读取用户身份；请检查进程数限制。'; fi
+if [ "$effective_uid" != 0 ]; then
   fail '请用 sudo 运行，例如 curl -fsSL <安装器地址> | sudo sh。'
 fi
 if command -v rc-service >/dev/null 2>&1 && command -v rc-update >/dev/null 2>&1 && [ ! -d /run/systemd/system ]; then
@@ -86,15 +150,28 @@ install_packages() {
 
 if [ "$PROFILE" = preserve ]; then PROFILE=auto; fi
 if [ "$PROFILE" = auto ]; then
-  memory_kb=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo 2>/dev/null || true)
-  for limit_file in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+  memory_kb=
+  if [ -r /proc/meminfo ]; then
+    while read -r memory_key memory_value rest; do
+      case "$memory_key" in MemTotal:) memory_kb=$memory_value; break ;; esac
+    done < /proc/meminfo
+  fi
+  for limit_file in "${cgroup_v2:-/sys/fs/cgroup}/memory.max" "${cgroup_memory:-/sys/fs/cgroup/memory}/memory.limit_in_bytes" /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
     [ -r "$limit_file" ] || continue
-    limit_bytes=$(cat "$limit_file")
+    limit_bytes=
+    IFS= read -r limit_bytes < "$limit_file" || :
     case "$limit_bytes" in ''|*[!0-9]*) continue ;; esac
     limit_kb=$((limit_bytes / 1024))
     if [ "$limit_kb" -gt 0 ] && { [ -z "$memory_kb" ] || [ "$limit_kb" -lt "$memory_kb" ]; }; then memory_kb=$limit_kb; fi
   done
-  free_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+  disk_usage=$(df -Pk /) || fail '无法检查磁盘空间；请检查进程数限制和文件系统。'
+  free_kb=
+  while read -r filesystem blocks used available rest; do
+    case "$available" in ''|*[!0-9]*) continue ;; esac
+    free_kb=$available
+  done <<EOF
+$disk_usage
+EOF
   PROFILE=full
   if { [ -n "$memory_kb" ] && [ "$memory_kb" -le 196608 ]; } || { [ -n "$free_kb" ] && [ "$free_kb" -lt 196608 ]; }; then PROFILE=lite; fi
 fi

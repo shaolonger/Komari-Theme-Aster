@@ -1,6 +1,6 @@
 # Aster 网络观测
 
-主题 **1.17.0** / 插件 **1.14.0** / 探测器 **1.11.0**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
+主题 **1.17.1** / 插件 **1.14.1** / 探测器 **1.11.0**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
 
 所有配置统一在 **Aster 工作室 → 网络观测**：
 
@@ -22,6 +22,8 @@
 覆盖上传 `Aster-Network-Observatory-v1.9.1.zip`，然后重新启用插件；若出现权限提示，批准原有权限即可。**无需删除插件数据、重置凭证、重装 VPS 探测器或更换现有 1.12.0 主题。** 修复同时覆盖全新安装、从 1.8.0 升级、从全新安装的 1.9.0 升级和反复启停。
 
 ## 安装与升级
+
+**LXC 安装诊断（1.17.1）**：安装器在创建子进程前，用内置命令读取容器 / 可见父级的进程与线程配额；不足时直接显示实际 `pids.current` / `pids.max`，避免只剩 `can't fork` 和 curl 写入失败。正常安装的探测器仍为 **1.11.0**，无需升级或重置凭证；本次也不要求已更新至 1.17.0 / 1.14.0 的面板为此再更新。资源配额需由宿主机或服务商调整，见下方 LXC 排障。
 
 **小时 CPU 尖峰优化（1.17.0）**：优先更新面板插件 **1.14.0** 和主题 **1.17.0**。历史保留期改为到期索引与分片维护，计划按成员分批派发；活跃队列改为 64 桶原子分片和写前事务，领取 / 结果不再重写整份队列。旧内联队列自动迁移，凭证、原计划时间和报告保留；探测器 **1.11.0** 的测速 / 结果重试优化可使用现有保留凭证升级命令应用，旧探测器仍能通信。首次旧数据迁移可能持续数分钟至更久，后台有预算推进。性能数字、迁移边界及核验见 [CPU 排查与修复](../docs/network-observatory-cpu.md)。
 
@@ -54,6 +56,27 @@ curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/down
 Alpine 以 root 登录时可省略 `sudo`。升级同面板、同节点时在密钥提示处回车保留原凭证，无需重新生成。OpenRC 节点服务名为 `aster-network-observatory`，大陆测量点为 `aster-network-observatory-probe-<UUID>`；用 `rc-service <服务名> status/restart/stop` 管理，凭证验证成功后加入 default 运行级。日志交给系统 syslog，停止时取消正在执行的测量子进程。可选 HTTP 测速接收器不会随安装自动开启。
 
 **本版直接移除了旧工具诊断、旧单次报告、旧计划、图片报告、旧调度器与迁移界面。没有兼容与迁移面板。** 新版轮次报告和现有探测器凭证仍可使用；本版不提供旧数据迁移或旧报告浏览。为已安装的 1.7 探测器保留了凭证验证 / 心跳的通信应答，不执行任何旧检测。建议统一升级探测器以停止旧轮询。
+
+### LXC 安装时出现 `can't fork`
+
+`sh: can't fork: Resource temporarily unavailable` 表示 shell 无法创建新进程，优先检查容器或父级的进程 / 线程配额、用户进程限制；不能仅凭 128 MiB 内存就断言是内存不足。若紧接着出现 `curl: (23) Failure writing output to destination`，通常是安装 shell 退出，下载管道随之关闭。cgroup 的 `pids.current` 包含线程，进程列表看起来不多也可能达到 `pids.max`；父级限制同样生效。参见 [Linux 进程控制器说明](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v1/pids.html)。
+
+安装器先用 shell 内置命令读取可见的 cgroup v1 / v2 及父级配额；剩余少于 8 个任务名额时，在安装依赖、下载发布包之前停止并打印实际数值。这是安装前的最低余量检查，并非运行期资源保证；宿主机未暴露的父级配额和其他进程同时消耗名额仍可能导致后续失败。早期身份与内存读取也使用内置命令，减少 `id` / `cat` / `awk` 子进程。
+
+可将以下**整行**复制到容器终端，命令不创建外部进程；`pids.events` 中的 `max` 是历史拒绝计数，非零本身不表示此刻仍然满额。若这里没有可见配额，需由宿主机 / 服务商检查父级限制：
+
+```sh
+ulimit -a; for f in /proc/self/cgroup /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max /sys/fs/cgroup/pids.events /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events /sys/fs/cgroup/pids/pids.current /sys/fs/cgroup/pids/pids.max; do if [ -r "$f" ]; then printf '\n%s\n' "$f"; while IFS= read -r line; do printf '%s\n' "$line"; done < "$f"; fi; done
+```
+
+root 用户可先下载再执行，减少管道和 sudo 的同时占用；**两步分别执行，下载成功后再执行第二步**。它只能减少安装瞬时开销，不能绕过已耗尽的 LXC 配额。需先停止确认不需要的服务，或请宿主机 / 服务商调整限制，不能在容器内盲目修改 `pids.max` 或批量终止进程：
+
+```sh
+curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh -o /tmp/aster-network-observatory-install.sh
+sh /tmp/aster-network-observatory-install.sh --profile lite --server-url 'https://你的面板地址' --node-uuid '你的节点UUID'
+```
+
+Alpine 3.21 的 1 CPU / 128 MiB 安装与服务回归继续单独验证，另加入 `pids.max=1` 的实际容器测试，确保完全无法 fork 时也能输出上述配额诊断。这不代表探测器能在仅有一个任务名额的容器中运行。
 
 ## 三网线路
 
