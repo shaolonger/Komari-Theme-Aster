@@ -94,6 +94,13 @@ function validateResult(data, kind) {
   )
     bad();
   if (data.state === "application" && kind !== "website") bad();
+  if (kind === "speed") {
+    if (["trafficBytesObserved", "remainingTrafficBytes"].some(k => data[k] !== undefined && !number(data[k])) ||
+        (data.retryable !== undefined && typeof data.retryable !== "boolean") ||
+        (data.controlRequests !== undefined && (!Array.isArray(data.controlRequests) || data.controlRequests.length > 16 ||
+          data.controlRequests.some(r => !r || typeof r.stage !== "string" || !["ok", "failed"].includes(r.state) ||
+            !number(r.durationMs) || !Number.isInteger(r.attempt) || r.attempt < 1 || r.attempt > 2)))) bad();
+  }
   if (
     kind === "route" &&
     data.hops !== undefined &&
@@ -224,6 +231,10 @@ function validateResult(data, kind) {
           !["source-to-target", "target-to-source"].includes(r.direction) ||
           ![1, 4, 8].includes(r.streams) ||
           !["ok", "partial", "missing", "failed"].includes(r.state) ||
+          ["trafficBytesObserved", "warmupBytesObserved", "setupSeconds"].some(k => r[k] !== undefined && !number(r[k])) ||
+          (r.attempts !== undefined && (!Array.isArray(r.attempts) || r.attempts.length > 2 || r.attempts.some(a =>
+            !a || !["ok", "partial", "failed"].includes(a.state) ||
+            (a.trafficBytesObserved != null && !number(a.trafficBytesObserved))))) ||
           (["ok", "partial"].includes(r.state) &&
             (!number(r.bitsPerSecond) ||
               !number(r.bytes) ||

@@ -742,24 +742,44 @@ function registerNativeController(ctx) {
               ? "speed"
               : j.operation;
           M.validateResult(data, kind);
+          const publicSpeed = j.operation === "public-speed";
+          const publicNoPayload = publicSpeed && !(data.trafficBytesObserved > 0) &&
+            !(data.runs || []).some(r => r.trafficBytesObserved > 0 || r.bytes > 0 || r.warmupBytesObserved > 0 ||
+              (r.attempts || []).some(a => a.trafficBytesObserved > 0));
+          const legacyTransient = publicSpeed && data.toolVersion !== "aster-public-speed/2" &&
+            /timed out|time[ -]?out|connection reset|connection refused|temporar(?:y|ily)|HTTP (?:408|429|500|502|503|504)/i.test(data.diagnostic || "") &&
+            !/certificate|HTTP (?:400|401|403|404)|参数|格式/i.test(data.diagnostic || "");
           const busyOnly =
             kind === "speed" &&
             data.state === "failed" &&
-            ((j.operation === "public-speed" && data.retryable === true && !(data.runs || []).some(r => r.trafficBytesObserved > 0)) || (data.runs?.length &&
+            ((publicNoPayload && (data.retryable === true || legacyTransient)) || (!publicSpeed && data.runs?.length &&
             data.runs.every(
               (r) =>
                 r.state === "failed" &&
                 !r.bytes &&
                 /server is busy|server busy/i.test(r.diagnostic || ""),
             )));
+          if (publicSpeed) {
+            // Cool down between every public measurement, without timers or a
+            // fleet-wide pause for a single VPS's broken network connection.
+            s.publicSpeedBlockedUntil = Math.max(s.publicSpeedBlockedUntil || 0,
+              Date.now() + 4000 + parseInt(crypto.createHash("sha256").update(j.id).digest("hex").slice(0, 6), 16) % 3000);
+            data.queueAttempts = (j.busyAttempts || 0) + 1;
+            if (j.publicSpeedFailures?.length) data.previousFailures = j.publicSpeedFailures;
+          }
           if (j.roundId && busyOnly && (j.busyAttempts || 0) < 2) {
             j.busyAttempts = (j.busyAttempts || 0) + 1;
             j.phase = "queued";
-            j.availableAt = Date.now() + j.busyAttempts * 60000;
-            if (j.operation === "public-speed") s.publicSpeedBlockedUntil = j.availableAt;
+            const jitter = publicSpeed ? parseInt(crypto.createHash("sha256").update(j.id + ":" + j.busyAttempts).digest("hex").slice(0, 6), 16) % 15000 : 0;
+            j.availableAt = Date.now() + j.busyAttempts * 60000 + jitter;
+            if (publicSpeed) {
+              (j.publicSpeedFailures ||= []).push({ diagnostic: M.text(data.diagnostic, 500), stage: M.text(data.failureStage, 100), at: new Date().toISOString() });
+              if (/繁忙|server.{0,8}busy|HTTP (?:429|503)/i.test(data.diagnostic || ""))
+                s.publicSpeedBlockedUntil = Math.max(s.publicSpeedBlockedUntil, j.availableAt);
+            }
             j.expiresAt = Date.now() + 6 * 3600000;
             delete j.deadlineAt;
-            j.waitReason = "公共端点繁忙，尚未传输测速数据；等待退避后重试";
+            j.waitReason = "公共端点暂不可用，尚未传输测速数据；等待退避后重试";
             roundController.progress(j); touchJob(j);
             save(s);
             respond(res, 200, { ok: true, retrying: true });
@@ -771,7 +791,7 @@ function registerNativeController(ctx) {
             runnerVersion: s.workers[w.key]?.version || "",
           });
         }
-        save(s, false, true);
+        save(s, false, j.operation !== "public-speed");
         respond(res, 200, { ok: true });
       },
       async (req, res) => {

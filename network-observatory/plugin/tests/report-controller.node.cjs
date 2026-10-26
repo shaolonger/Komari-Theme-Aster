@@ -10,7 +10,7 @@ const G = require("../src/globalping.js");
 const A = "c388e74d-a922-4ae1-bd10-1fb30e2e53de",
   B = "59d6e276-1d4b-4657-9021-908460853ba3",
   token = "a".repeat(64);
-async function fixture(existingRoot) {
+async function fixture(existingRoot, clients = [A]) {
   const root =
       existingRoot ||
       fs.mkdtempSync(path.join(os.tmpdir(), "aster-report-api-")),
@@ -18,7 +18,7 @@ async function fixture(existingRoot) {
   const c = registerNativeController({
     server: {
       route: (m, p, f) => routes.set(m + " " + p, f),
-      call: async () => [{ uuid: A, name: "VPS", ipv4: "8.8.8.8" }],
+      call: async () => clients.map(uuid => ({ uuid, name: "VPS", ipv4: "8.8.8.8" })),
     },
     storageDir: root,
     isMissingFile: (e) => e.code === "ENOENT",
@@ -724,6 +724,106 @@ test("native TCP quality and public speed use the same plans, claims, history an
   assert.equal(rows[0].counts.failed,0);
   const history=(await f.invoke('GET',`${v3}/nodes/${A}/rounds?module=tcp-quality`)).body.rounds;
   assert.equal(history[0].counts.ok,1);
+ }finally{f.close();}
+});
+
+test("legacy directory timeouts have bounded durable retries and do not block the whole fleet during network backoff", async () => {
+ const f=await fixture(), originalNow=Date.now; let now=originalNow(); Date.now=()=>now;
+ try {
+  const hello={version:'1.10.0',tools:[],features:['report-v3','public-speed']};
+  const heartbeat=()=>f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,hello,false,true);
+  await heartbeat();
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],trafficAccepted:true,modules:[{module:'china-speed',preset:'china-public',family:'6',endpoints:['taier:上海:电信']}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  let finalTask;
+  for(let attempt=1;attempt<=3;attempt++) {
+   await heartbeat();
+   const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+   assert.equal(task.operation,'public-speed'); finalTask=task;
+   const response=await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{kind:'speed',state:'failed',runs:[],toolVersion:'aster-public-speed/1',retryable:false,diagnostic:'<urlopen error _ssl.c:975: The handshake operation timed out>'}},false,true);
+   assert.equal(response.status,200,JSON.stringify(response.body));
+   if(attempt<3) {
+    assert.equal(response.body.retrying,true);
+    const queued=f.c.read().jobs.find(j=>j.id===task.id);
+    assert.equal(queued.busyAttempts,attempt);
+    assert.ok(queued.availableAt>=now+attempt*60000 && queued.availableAt<now+attempt*60000+15000);
+    assert.ok(f.c.read().publicSpeedBlockedUntil<queued.availableAt);
+    assert.equal((await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task,null);
+    const disk=readNativeState(path.join(f.root,'native-state.json'));
+    assert.equal(disk.jobs.find(j=>j.id===task.id).publicSpeedFailures.length,attempt);
+    now=queued.availableAt+1;
+   } else assert.equal(response.body.retrying,undefined);
+  }
+  assert.equal(f.c.read().jobs.length,0);
+  const measurement=f.c.roundController.store.measurement(A,finalTask.roundId,finalTask.slotId);
+  assert.equal(measurement.data.queueAttempts,3);
+  assert.equal(measurement.data.previousFailures.length,2);
+ } finally {Date.now=originalNow;f.close();}
+});
+
+test("public speed never requeues transferred payload, partial success, certificates or an explicit permanent v2 failure", async () => {
+ const failedRun={direction:'target-to-source',streams:1,state:'failed',trafficBytesObserved:16,diagnostic:'server busy'};
+ const upload={direction:'source-to-target',streams:1,state:'ok',vpsDirection:'upload',trafficBytesObserved:100,bytes:100,bitsPerSecond:80,seconds:10};
+ for(const data of [
+  {state:'failed',runs:[failedRun],retryable:true,diagnostic:'server busy'},
+  {state:'failed',runs:[],trafficBytesObserved:16,retryable:true,diagnostic:'timed out'},
+  {state:'partial',runs:[{...failedRun,trafficBytesObserved:0},upload],retryable:true,diagnostic:'timed out'},
+  {state:'failed',runs:[],retryable:false,diagnostic:'CERTIFICATE_VERIFY_FAILED'},
+  {state:'failed',runs:[],retryable:false,toolVersion:'aster-public-speed/2',diagnostic:'timed out'},
+ ]) {
+  const f=await fixture();
+  try {
+   await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.12.0',tools:[],features:['report-v3','public-speed']},false,true);
+   const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],trafficAccepted:true,modules:[{module:'china-speed',preset:'china-public',endpoints:['taier:上海:电信']}]});
+   await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+   const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+   const response=await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{kind:'speed',...data}},false,true);
+   assert.equal(response.status,200,JSON.stringify(response.body));
+   assert.equal(response.body.retrying,undefined);
+   assert.equal(f.c.read().jobs.length,0);
+   const row=f.c.roundController.store.measurement(A,task.roundId,task.slotId);
+   assert.equal(row.data.state,data.state);
+   if(data.state==='partial') assert.deepEqual(row.data.runs[1],upload);
+  } finally {f.close();}
+ }
+});
+
+test("simultaneous VPS polls serialize public speed and persist the inter-measurement cooldown across restart", async () => {
+ const f=await fixture(undefined,[A,B]), originalNow=Date.now; let now=originalNow(); Date.now=()=>now;
+ try {
+  for(const id of [A,B]) await f.invoke('POST',`${v2}/workers/node/${id}/heartbeat`,{version:'1.12.0',tools:[],features:['report-v3','public-speed']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A,B],trafficAccepted:true,modules:[{module:'china-speed',preset:'china-public',endpoints:['taier:上海:电信']}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const claims=await Promise.all([A,B].map(id=>f.invoke('GET',`${v2}/workers/node/${id}/poll`,{},false,true)));
+  assert.equal(claims.filter(r=>r.body.task).length,1);
+  const first=claims.findIndex(r=>r.body.task), other=[A,B][1-first];
+  await f.invoke('POST',`${v2}/workers/node/${[A,B][first]}/result`,{id:claims[first].body.task.id,data:{kind:'speed',state:'failed',runs:[],diagnostic:'permanent'}},false,true);
+  assert.equal((await f.invoke('GET',`${v2}/workers/node/${other}/poll`,{},false,true)).body.task,null);
+  const until=f.c.read().publicSpeedBlockedUntil;
+  assert.ok(until>=now+4000 && until<now+7000);
+  const restarted=await fixture(f.root,[A,B]);
+  assert.equal(restarted.c.read().publicSpeedBlockedUntil,until);
+  assert.equal((await restarted.invoke('GET',`${v2}/workers/node/${other}/poll`,{},false,true)).body.task,null);
+  now=until+1;
+  assert.equal((await restarted.invoke('GET',`${v2}/workers/node/${other}/poll`,{},false,true)).body.task.operation,'public-speed');
+ } finally {Date.now=originalNow;f.close();}
+});
+
+test("malformed public-speed retry accounting is rejected without changing the active job", async () => {
+ const f=await fixture();
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.12.0',tools:[],features:['report-v3','public-speed']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],trafficAccepted:true,modules:[{module:'china-speed',preset:'china-public',endpoints:['taier:上海:电信']}]});
+  await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  for(const invalid of [{trafficBytesObserved:-1},{runs:[{direction:'target-to-source',streams:1,state:'failed',attempts:{}}]},
+    {controlRequests:[{stage:'directory-match',state:'failed',attempt:1,durationMs:-1}]}]) {
+   const response=await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{kind:'speed',state:'failed',runs:[],...invalid}},false,true);
+   assert.equal(response.status,400);
+   assert.equal(f.c.read().jobs.find(j=>j.id===task.id).phase,'running');
+  }
  }finally{f.close();}
 });
 

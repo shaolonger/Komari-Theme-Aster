@@ -56,7 +56,8 @@ class PublicSpeedTests(unittest.TestCase):
 
     def test_single_multi_and_directions_share_one_budget(self):
         budgets = []
-        def phase(server, session, direction, streams, seconds, warmup, budget, runtime):
+        def phase(server, session, direction, streams, seconds, warmup, budget, runtime, deadline_limit):
+            self.assertGreater(deadline_limit, 0)
             budgets.append(budget)
             self.assertEqual(budget.reserve(5), 5)
             budget.account(5, 5)
