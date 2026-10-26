@@ -35,6 +35,7 @@ const files = [
   ["docs/network-report-implementation-status.md", resolve(root, "docs/network-report-implementation-status.md")],
   ["docs/network-observatory-cpu.md", resolve(root, "docs/network-observatory-cpu.md")],
   ["docs/network-card-presentation.md", resolve(root, "docs/network-card-presentation.md")],
+  ["docs/network-card-quick-check.md", resolve(root, "docs/network-card-quick-check.md")],
 ];
 
 function crc32(buffer) {

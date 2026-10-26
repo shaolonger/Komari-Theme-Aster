@@ -1,0 +1,30 @@
+.carrier-check-trigger { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--hairline); border-radius: 6px; background: var(--fill-tertiary); color: var(--text-secondary); flex-shrink: 0; }
+.carrier-check-trigger:hover:not(:disabled) { color: var(--accent-500); border-color: var(--accent-500); }
+.carrier-check-trigger:focus-visible { outline: 2px solid var(--accent-500); outline-offset: 2px; }
+.carrier-check-trigger:disabled { cursor: wait; opacity: .65; }
+.carrier-check-trigger[data-busy="true"] svg { animation: carrier-check-spin 1.2s linear infinite; }
+.carrier-check-status { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0; color: var(--accent-500); font-variant-numeric: tabular-nums; }
+.carrier-check-status[data-tone="success"] { color: var(--status-success); }
+.carrier-check-status[data-tone="partial"], .carrier-check-status[data-tone="failed"] { color: var(--status-warning); }
+.carrier-check-error { font-size: 10px; line-height: 1.5; color: var(--status-warning); margin: 4px 0 0; overflow-wrap: anywhere; }
+.carrier-check-error a { color: var(--accent-500); text-decoration: underline; }
+.carrier-check-progress { height: 3px; overflow: hidden; position: relative; border-radius: 3px; background: var(--fill-tertiary); margin-top: 4px; }
+.carrier-check-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--accent-500); transition: width .4s ease; }
+.carrier-check-progress[data-tone="success"] > span { background: var(--status-success); }
+.carrier-check-progress[data-tone="partial"] > span, .carrier-check-progress[data-tone="failed"] > span { background: var(--status-warning); }
+.carrier-check-progress[data-queued="true"]::after { content: ""; position: absolute; inset: 0; width: 35%; background: linear-gradient(90deg,transparent,var(--accent-500),transparent); opacity: .45; animation: carrier-check-queue 1.5s ease-in-out infinite; }
+.carrier-routes[data-completion="success"] .carrier-route-evidence, .carrier-routes[data-completion="partial"] .carrier-route-evidence { animation: carrier-check-settle .8s ease both; }
+.carrier-routes[data-completion] .carrier-check-status svg { animation: carrier-check-done .4s ease both; }
+@keyframes carrier-check-spin { to { transform: rotate(360deg); } }
+@keyframes carrier-check-queue { from { transform: translateX(-110%); } to { transform: translateX(400%); } }
+@keyframes carrier-check-settle { 0%,100% { filter: brightness(1); } 40% { filter: brightness(1.22); box-shadow: 0 0 0 1px currentColor inset; } }
+@keyframes carrier-check-done { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (pointer: coarse) {
+  .carrier-check-trigger { width: 28px; height: 28px; }
+  .carrier-family-switch button { min-height: 26px; }
+  .carrier-route-evidence[data-details="false"] { height: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carrier-check-trigger svg, .carrier-check-progress::after, .carrier-routes[data-completion] .carrier-route-evidence, .carrier-routes[data-completion] .carrier-check-status svg { animation: none !important; }
+  .carrier-check-progress > span { transition: none; }
+}

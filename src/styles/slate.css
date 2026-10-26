@@ -102,13 +102,12 @@ html[data-theme-style="slate"][data-appearance="light"] {
 .ping-history-strips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 7px; }
 .ping-history-strip { display: flex; gap: 2px; min-width: 0; }
 .ping-history-strip span { flex: 1; height: 5px; border-radius: 1.5px; min-width: 0; }
-[data-theme-style="slate"] .carrier-routes { border: 0; padding: 10px 10px 6px; margin-top: 0; }
+[data-theme-style="slate"] .carrier-routes { border: 0; padding: 6px 0 0; margin-top: 0; }
 [data-theme-style="slate"] .carrier-routes-head { font-size: 11px; }
-[data-theme-style="slate"] .carrier-family-switch { border-radius: 9px; padding: 3px; }
-[data-theme-style="slate"] .carrier-family-switch button { padding: 4px 7px; font-size: 10px; }
-[data-theme-style="slate"] .carrier-family-switch button[aria-pressed="true"] { background: transparent; }
-[data-theme-style="slate"] .carrier-routes-columns { font-size: 8px; margin-top: 10px; }
-[data-theme-style="slate"] .carrier-route-row { grid-template-columns: 35px minmax(0,1fr) 16px minmax(0,1fr); gap: 7px; font-size: 11px; }
+[data-theme-style="slate"] .carrier-family-switch { border-radius: 7px; padding: 1px; }
+[data-theme-style="slate"] .carrier-family-switch button { padding: 2px 5px; font-size: 10px; }
+[data-theme-style="slate"] .carrier-routes-columns { font-size: 9px; margin-top: 4px; }
+[data-theme-style="slate"] .carrier-route-row { grid-template-columns: 28px minmax(0,1fr) minmax(0,1fr); gap: 5px; font-size: 11px; }
 [data-theme-style="slate"] .carrier-route-evidence { min-height: 21px; padding: 3px 5px; }
 [data-theme-style="slate"] .server-card-footer { padding-top: 4px; border: 0; }
 [data-theme-style="slate"] .server-card-footer .dstatus-tags-row { display: none; }

@@ -146,6 +146,58 @@ function registerReportController(ctx, native) {
     const row = tail.split("&").find((value) => value.split("=", 1)[0] === key);
     return row ? decodeURIComponent(row.slice(row.indexOf("=") + 1)) : "";
   }
+  function cardCandidates(s, uuid, module, family) {
+    return s.reportSuites.filter(suite => suite.enabled && (module !== "china-speed" || suite.trafficAccepted) &&
+      members(suite, s).some(node => node.uuid === uuid)).flatMap(suite =>
+      suite.modules.filter(mod => mod.enabled && mod.module === module && mod.family === family).map(mod => ({ suite, mod })));
+  }
+  function cardFamilies(s, module) {
+    const result = {};
+    for (const suite of s.reportSuites.filter(p => p.enabled && (module !== "china-speed" || p.trafficAccepted))) {
+      const families = suite.modules.filter(m => m.enabled && m.module === module).map(m => m.family);
+      if (families.length) for (const node of members(suite, s)) result[node.uuid] = [...new Set([...(result[node.uuid] || []), ...families])];
+    }
+    return result;
+  }
+  function cardProgress(s, uuid, id) {
+    const round = store.get(uuid, id, false);
+    if (!round) return { nodeUuid: uuid, id, phase: "unavailable", state: "missing", counts: { expected: 0, completed: 0, ok: 0, partial: 0, failed: 0, missing: 0, cancelled: 0 } };
+    if (!["routes", "china-speed"].includes(round.module)) throw new Error("卡片检测仅支持大陆线路和大陆测速");
+    // Unconfigured cells in the speed report's nine-cell grid are not work.
+    const slots = round.module === "china-speed" ? round.slots.filter(slot => slot.target || slot.endpoint || slot.source?.id) : round.slots;
+    const summary = store.summarize({ ...round, slots });
+    const complete = round.slots.every(slot => ["ok", "partial", "failed", "missing", "cancelled", "application"].includes(slot.state));
+    const jobs = native.pendingJobsFor(s, uuid, round.suiteId, round.module).filter(j => j.roundId === id);
+    const running = jobs.some(j => ["running", "ready", "listening", "provider", "submitting"].includes(j.phase));
+    const wait = jobs.find(j => j.waitReason);
+    return { nodeUuid: uuid, id, module: round.module, family: round.parameters.family,
+      phase: complete ? "finished" : running ? "running" : "queued", state: summary.state,
+      counts: summary.counts, completedAt: round.completedAt || null,
+      waitReason: wait?.waitReason || (!complete && !running ? "等待测量端或公共端点队列" : ""),
+      suiteName: s.reportSuites.find(p => p.id === round.suiteId)?.name || "网络报告" };
+  }
+  route("POST", "/nodes/:uuid/card-check", (req, res, s) => {
+    const uuid = part(req, 2), { module, family } = ctx.readBody(req);
+    if (!UUID.test(uuid) || !["routes", "china-speed"].includes(module) || !["4", "6"].includes(family)) throw new Error("卡片检测范围无效");
+    const candidates = cardCandidates(s, uuid, module, family);
+    if (!candidates.length) throw new Error(`此 VPS 尚未配置已启用的 IPv${family} ${module === "routes" ? "大陆线路" : "大陆测速"}方案，请先配置检测方案`);
+    const active = candidates.flatMap(({ suite }) => native.pendingJobsFor(s, uuid, suite.id, module)).find(j => j.options.family === family);
+    if (active) { ctx.respond(res, 202, cardProgress(s, uuid, active.roundId)); return; }
+    // Prefer the most recently used matching plan, not every plan on the VPS.
+    const recent = store.list(uuid, module, { limit: 20 }).rounds.find(r => r.family === family && candidates.some(c => c.suite.id === r.suiteId));
+    const chosen = candidates.find(c => c.suite.id === recent?.suiteId) || candidates[0];
+    const dispatch = s.reportDispatch.find(work => work.suiteId === chosen.suite.id && work.module === module && work.nodes.slice(work.cursor).includes(uuid));
+    const id = enqueue(s, chosen.suite, chosen.mod, uuid, dispatch?.batchId || crypto.randomUUID(), dispatch?.plannedAt || Date.now(), false,
+      dispatch ? dispatchRoundId(dispatch, uuid) : undefined);
+    if (!id) throw new Error("此方案已有检测正在收尾，请稍后重试");
+    native.save(s);
+    ctx.respond(res, 202, cardProgress(s, uuid, id));
+  });
+  route("POST", "/card-checks/progress", (req, res, s) => {
+    const { checks } = ctx.readBody(req);
+    if (!Array.isArray(checks) || checks.length > 64 || checks.some(c => !UUID.test(c?.nodeUuid || "") || !UUID.test(c?.id || ""))) throw new Error("检测进度查询范围无效");
+    ctx.respond(res, 200, { checks: checks.map(c => cardProgress(s, c.nodeUuid, c.id)) });
+  });
   function readiness(s, job, previewOnly = false) {
     if (job.missingReason) return job.missingReason;
     if (job.executor === "bgp")
@@ -527,7 +579,7 @@ function registerReportController(ctx, native) {
     if (s.homeRouteProjectionVersion !== 3) {
       rebuildHomeRoutes(ids);
     }
-    ctx.respond(res, 200, homePayload(s, ids, true));
+    ctx.respond(res, 200, { ...homePayload(s, ids, true), quickCheck: true, quickFamilies: cardFamilies(s, "routes") });
   });
   route("POST", "/home-routes/rebuild", (_req, res, s) => {
     rebuildHomeRoutes(s.inventory.map(n => n.uuid), true);
@@ -625,7 +677,7 @@ function registerReportController(ctx, native) {
   route("GET", "/home-speeds", (req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);
     rebuildHomeSpeeds(ids);
-    ctx.respond(res, 200, speedPayload(s, ids, true, query(req, "families") === "1"));
+    ctx.respond(res, 200, { ...speedPayload(s, ids, true, query(req, "families") === "1"), quickCheck: true, quickFamilies: cardFamilies(s, "china-speed") });
   });
   route("POST", "/home-speeds/rebuild", (req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);

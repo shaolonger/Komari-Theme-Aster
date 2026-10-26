@@ -3,6 +3,8 @@ import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { type RouteEvidence } from "@/services/homeRoutes";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 import { routeHeadline } from "@/utils/carrierRoutePresentation";
+import { useCardCheck } from "@/hooks/useCardChecks";
+import { CardCheckButton, CardCheckFeedback, completionTone } from "./CardCheckControls";
 
 const RouteDetails = lazy(() => import("./RouteEvidenceDetails"));
 
@@ -46,10 +48,13 @@ export const CarrierRoutes = memo(function CarrierRoutes({
   uuid: string;
   compact?: boolean;
 }) {
-  const [family, setFamily] = useState<"4" | "6">("4");
+  const [selectedFamily, setFamily] = useState<"4" | "6" | null>(null);
   const routes = useHomeRoutes();
   const { displayTimeZone, isSlate } = routes;
   const node = routes.data?.nodes[uuid];
+  const configured = routes.data?.quickFamilies[uuid] || [];
+  const family = selectedFamily || (node?.["4"].some(r => r.forward || r.return) ? "4" : node?.["6"].some(r => r.forward || r.return) ? "6" : configured[0] || "4");
+  const check = useCardCheck(uuid, "routes", family);
   // Empty routes stay out of existing compact dashboards. The reference theme
   // always retains this area, with an honest empty state.
   const hasMeasurements =
@@ -57,7 +62,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
     Object.values(node).some((rows) =>
       rows.some((row) => row.forward || row.return),
     );
-  if (routes.data?.display === false || (!hasMeasurements && !isSlate))
+  if (routes.data?.display === false || (!hasMeasurements && !isSlate && !configured.length))
     return null;
   const rows =
     node?.[family] ||
@@ -76,9 +81,11 @@ export const CarrierRoutes = memo(function CarrierRoutes({
       className="carrier-routes"
       data-compact={compact}
       aria-label="三网线路"
+      data-completion={check.celebrate ? completionTone(check) : undefined}
     >
       <header className="carrier-routes-head">
         <strong>三网线路</strong>
+        <div className="carrier-observation-actions">
         <div
           className="carrier-family-switch"
           role="group"
@@ -95,11 +102,12 @@ export const CarrierRoutes = memo(function CarrierRoutes({
             </button>
           ))}
         </div>
+        <CardCheckButton check={check} supported={routes.data?.quickCheck === true} configured={configured.includes(family)} uuid={uuid} family={family} label="三网线路" />
+        </div>
       </header>
       <div className="carrier-routes-columns" aria-hidden>
         <span />
         <span>去程</span>
-        <span />
         <span>回程</span>
       </div>
       {rows.map((row) => (
@@ -112,9 +120,6 @@ export const CarrierRoutes = memo(function CarrierRoutes({
             labelMode={routes.data?.labelMode || "preferred"}
             showDetails={routes.data?.showDetails === true}
           />
-          <span className="carrier-route-arrow" aria-hidden>
-            ⇄
-          </span>
           <Evidence
             value={row.return}
             direction={`${row.carrier} IPv${family} 回程（VPS→大陆）`}
@@ -124,23 +129,10 @@ export const CarrierRoutes = memo(function CarrierRoutes({
           />
         </div>
       ))}
-      {!node && (
-        <p className="carrier-routes-empty">
-          {routes.isPending
-            ? "正在读取线路…"
-            : routes.isError
-              ? "线路读取失败，请稍后刷新"
-              : routes.data?.available
-                ? "暂无可展示的线路观测"
-                : "请升级网络观测插件至 1.9.1"}
-        </p>
-      )}
-      {node && !rows.some((row) => row.forward || row.return) && (
-        <p className="carrier-routes-empty">
-          此地址族暂无测量，请运行大陆路由方案
-        </p>
-      )}
-      {at && <p className="carrier-speeds-time carrier-routes-time" title={timeRange}><span>最近测试 · </span><time dateTime={at}>{formatTime(at)}</time></p>}
+      <CardCheckFeedback check={check} uuid={uuid}>
+        {at ? <span className="carrier-speeds-time carrier-routes-time" title={timeRange}><span>最近测试 </span><time dateTime={at}>{formatDisplayDateTime(Date.parse(at), displayTimeZone, { month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23" })}</time></span>
+          : routes.isPending ? "正在读取线路…" : routes.isError ? "线路读取失败" : `IPv${family} 尚未检测`}
+      </CardCheckFeedback>
     </section>
   );
 });

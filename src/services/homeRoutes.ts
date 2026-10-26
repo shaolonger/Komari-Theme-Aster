@@ -23,6 +23,8 @@ const row = z.object({
 });
 export const homeRoutesSchema = z.object({
   available: z.boolean(),
+  quickCheck: z.boolean().default(false),
+  quickFamilies: z.record(z.array(z.enum(["4", "6"]))).default({}),
   access: z.enum(["admin", "public"]).default("public"),
   published: z.array(z.string()).default([]),
   display: z.boolean().default(true),
@@ -50,6 +52,7 @@ export async function getHomeRoutes(
   if ([404, 401, 403].includes(response.status))
     return {
       available: false,
+      quickCheck: false, quickFamilies: {},
       nodes: {},
       access: admin ? "admin" : "public",
       published: [],
@@ -63,6 +66,7 @@ export async function getHomeRoutes(
     if (response.headers.get("content-type")?.includes("text/html"))
       return {
         available: false,
+        quickCheck: false, quickFamilies: {},
         nodes: {},
         access: admin ? "admin" : "public",
         published: [],

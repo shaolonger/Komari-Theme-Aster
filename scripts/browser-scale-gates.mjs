@@ -1,5 +1,6 @@
 import { checkSlate } from "./slate-browser-gates.mjs";
 import { checkClearSky } from "./clear-sky-browser-gates.mjs";
+import { checkCardObservations } from "./card-observation-browser-gates.mjs";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -85,6 +86,15 @@ let homeRouteNodes = [];
 let homeRouteDisplay = true;
 let homeSpeedNodes = [], homeSpeedDisplay = true;
 let homeRouteLabelMode = 'preferred', homeRouteShowDetails = false, homeSpeedShowDetails = false;
+const cardRuns = new Map();
+let cardSerial = 0;
+const cardFamilies = fixture => Object.fromEntries(nodeList(fixture.nodes).map(n => [n.uuid,['4','6']]));
+const cardStamp = (node,module,family) => [...cardRuns.values()].find(r=>r.nodeUuid===node&&r.module===module&&r.family===family&&r.phase==='finished')?.completedAt;
+function cardProjection(value, stamp) {
+  if (!stamp) return value;
+  if (Array.isArray(value)) return value.map(row=>({...row,forward:row.forward?{...row.forward,at:stamp}:null,return:row.return?{...row.return,at:stamp}:null}));
+  return {...value,at:stamp};
+}
 const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
 const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki'],modules:['routes','tcp-quality','china-speed','international','idc','international-speed','bgp'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
@@ -418,12 +428,13 @@ const server = createServer(async (request, response) => {
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
     return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => {
       const families = n.uuid==='node-2' ? {...projectedSpeeds,'6':null} : n.uuid==='node-1' ? {...projectedSpeeds,'4':null} : projectedSpeeds;
-      return [n.uuid, url.searchParams.get('families')==='1' ? families : families['6']||families['4']];
-    })), access: fixture.ui ? 'admin' : 'public', display: homeSpeedDisplay, showDetails: homeSpeedShowDetails, published: homeSpeedNodes });
+      const updated=Object.fromEntries(['4','6'].map(f=>[f,families[f]?cardProjection(families[f],cardStamp(n.uuid,'china-speed',f)):null]));
+      return [n.uuid, url.searchParams.get('families')==='1' ? updated : updated['6']||updated['4']];
+    })), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, access: fixture.ui ? 'admin' : 'public', display: homeSpeedDisplay, showDetails: homeSpeedShowDetails, published: homeSpeedNodes });
   }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
-    if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid, projectedRouteFamilies])), published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
+    if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
     if (!fixture.slate) { response.writeHead(404, { 'Content-Type':'application/json' }); response.end(JSON.stringify({error:'plugin unavailable'})); return; }
     const evidence = (label, asn, state = 'ok') => ({ label, asns: [asn], at: new Date().toISOString(), samples: 1, state });
     const family4 = [
@@ -441,6 +452,19 @@ const server = createServer(async (request, response) => {
     if(/^nodes\/[^/]+\/rounds$/.test(suffix)){const r=reportRoundData[url.searchParams.get('module')];return sendJson(response,{rounds:[r],nextCursor:null});}
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1);return sendJson(response,Object.values(reportRoundData).find(r=>r.id===id));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
+    if(/^nodes\/[^/]+\/card-check$/.test(suffix)) {
+      count('card-check-start'); const nodeUuid=suffix.split('/')[1];
+      let run=[...cardRuns.values()].find(r=>r.nodeUuid===nodeUuid&&r.module===body.module&&r.family===body.family&&r.phase!=='finished');
+      if(!run) {run={nodeUuid,id:`00000000-0000-4000-8000-${String(++cardSerial).padStart(12,'0')}`,module:body.module,family:body.family,phase:'queued',state:'running',polls:0,suiteName:'卡片测试方案',waitReason:'等待公共端点队列',counts:{expected:3,completed:0,ok:0,partial:0,failed:0,missing:0,cancelled:0}};cardRuns.set(run.id,run);}
+      return sendJson(response,run);
+    }
+    if(suffix==='card-checks/progress') {
+      count('card-check-status');
+      return sendJson(response,{checks:body.checks.map(ref=>{const run=cardRuns.get(ref.id);if(!run)throw new Error('Unknown card fixture round');
+        run.polls++; if(run.polls>=3){run.phase='finished';run.state=run.module==='china-speed'?'partial':'complete';run.completedAt||=new Date().toISOString();run.counts={...run.counts,completed:3,ok:run.module==='china-speed'?2:3,missing:run.module==='china-speed'?1:0};}
+        else if(run.polls>=2){run.phase='running';run.waitReason='';run.counts={...run.counts,completed:1,ok:1};}
+        return {...run};})});
+    }
     if(suffix==='home-routes' && request.method==='PUT'){homeRouteNodes=body.nodeUuids;homeRouteDisplay=body.display;homeRouteLabelMode=body.labelMode??homeRouteLabelMode;homeRouteShowDetails=body.showDetails??homeRouteShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='home-speeds' && request.method==='PUT'){homeSpeedNodes=body.nodeUuids;homeSpeedDisplay=body.display;homeSpeedShowDetails=body.showDetails??homeSpeedShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}
@@ -1403,6 +1427,8 @@ try {
   // Rich route metadata remains readable on all appearances and narrow screens.
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'measurement-maintenance' };
   pointFixture.registeredNodes=['node-0'];
+  await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/`});
+  await waitUntil(cdp,`document.querySelector('.app-shell')!==null`,6000);
   for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
     await cdp.value(`localStorage.setItem('appearance',JSON.stringify(${JSON.stringify(appearance)}))`);
     await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/?view=theme-manage&section=network&panel=agents&nodes=node-0`});
@@ -1497,6 +1523,8 @@ try {
     await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await cdp.call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   }
+  results.push(await checkCardObservations({cdp,waitUntil,failGate,captureScreenshot,
+    count:key=>requestCounts.get('network-center')?.[key]||0}));
   for (const mode of ['standard','large','compact','list']) {
     await cdp.value(`sessionStorage.setItem('komaritheme:node-view-mode-session:desktop',${JSON.stringify(mode)});sessionStorage.setItem('komaritheme:node-view-mode-session:mobile',${JSON.stringify(mode)})`);
     const before = requestCounts.get('network-center')?.['home-speeds'] || 0;

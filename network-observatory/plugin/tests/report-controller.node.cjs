@@ -133,6 +133,61 @@ const result = () => ({
     })),
   },
 });
+test("card checks enforce admin scope, reuse active rounds and report real queue/running/completion counts", async () => {
+ const f=await fixture(undefined,[A,B]);
+ try {
+  const hello={version:'1.12.0',tools:['mtr'],features:['report-v3','full-mtr']};
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,hello,false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A,B],modules:[{module:'routes',family:'4',protocols:['tcp'],publicSources:false,endpoints:['route:pek_ipv4_4134']},{module:'international',endpoints:['aws:ap-east-1']}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  assert.equal((await f.invoke('POST',`${v3}/nodes/${A}/card-check`,{module:'routes',family:'4'},false)).status,403);
+  assert.equal((await f.invoke('POST',v3+'/card-checks/progress',{checks:[]},false)).status,403);
+  assert.equal(f.c.read().jobs.length,0);
+  const clicks=await Promise.all([1,2].map(()=>f.invoke('POST',`${v3}/nodes/${A}/card-check`,{module:'routes',family:'4'})));
+  assert.equal(clicks[0].status,202,JSON.stringify(clicks[0].body));
+  assert.equal(clicks[0].body.id,clicks[1].body.id);
+  assert.deepEqual(clicks[0].body.counts,{expected:1,completed:0,ok:0,partial:0,missing:0,failed:0,cancelled:0});
+  assert.ok(f.c.read().jobs.every(j=>j.nodeUuid===A&&j.reportModule==='routes'&&j.options.family==='4'));
+  assert.equal(f.c.read().jobs.length,1);
+  const ref={nodeUuid:A,id:clicks[0].body.id};
+  const status=async()=> (await f.invoke('POST',v3+'/card-checks/progress',{checks:[ref]})).body.checks[0];
+  assert.equal((await status()).phase,'queued');
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal((await status()).phase,'running');
+  const originalRead=fs.readFileSync;let jsonReads=0;
+  fs.readFileSync=function(file,...args){if(String(file).startsWith(f.root)&&String(file).endsWith('.json'))jsonReads++;return originalRead.call(this,file,...args);};
+  try {for(let i=0;i<20;i++) await status();}finally{fs.readFileSync=originalRead;}
+  assert.equal(jsonReads,0,'unchanged progress repeatedly parsed report or queue JSON');
+  await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{kind:'route',state:'ok',complete:true,hops:[{ttl:1,address:'8.8.8.8',asn:'4134',rttMs:10}]}},false,true);
+  const final=await status();
+  assert.equal(final.phase,'finished');assert.equal(final.counts.completed,1);assert.equal(final.counts.ok,1);
+  assert.equal((await f.invoke('POST',`${v3}/nodes/${A}/card-check`,{module:'routes',family:'6'})).status,400);
+  assert.equal((await f.invoke('POST',`${v3}/nodes/${A}/card-check`,{module:'international',family:'4'})).status,400);
+  assert.equal((await f.invoke('POST',v3+'/card-checks/progress',{checks:Array(65).fill(ref)})).status,400);
+  const missing=await f.invoke('POST',v3+'/card-checks/progress',{checks:[{nodeUuid:A,id:crypto.randomUUID()}]});
+  assert.equal(missing.body.checks[0].phase,'unavailable');
+ }finally{f.close();}
+});
+
+test("speed card progress excludes unconfigured grid cells and exposes configured address families only to admins", async () => {
+ const f=await fixture();
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.12.0',tools:[],features:['report-v3','public-speed']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],trafficAccepted:true,modules:[{module:'china-speed',preset:'china-public',family:'6',endpoints:['taier:上海:电信']}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  const summary=await f.invoke('GET',v3+'/home-speeds?families=1');
+  assert.equal(summary.body.quickCheck,true);assert.deepEqual(summary.body.quickFamilies[A],['6']);
+  const publicView=await f.invoke('GET',v3+'/public/speeds?families=1',{},false);
+  assert.equal(publicView.body.quickFamilies,undefined);assert.equal(publicView.body.quickCheck,undefined);
+  const started=await f.invoke('POST',`${v3}/nodes/${A}/card-check`,{module:'china-speed',family:'6'});
+  assert.equal(started.status,202,JSON.stringify(started.body));
+  assert.equal(started.body.counts.expected,1);assert.equal(started.body.counts.completed,0);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{kind:'speed',state:'failed',missingCoverage:true,runs:[],diagnostic:'无严格覆盖'}},false,true);
+  const status=(await f.invoke('POST',v3+'/card-checks/progress',{checks:[{nodeUuid:A,id:started.body.id}]})).body.checks[0];
+  assert.equal(status.phase,'finished');assert.equal(status.counts.missing,1);assert.equal(status.counts.ok,0);
+ }finally{f.close();}
+});
 test("capabilities and catalog are admin-only; old workers finish with explicit missing coverage", async () => {
   const f = await fixture();
   try {
