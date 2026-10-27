@@ -912,3 +912,24 @@ test("heartbeats coalesce, claims and results remain durable, and failed transac
     assert.ok(next && next.id !== task.id);
   } finally { Date.now = originalNow; f.close(); }
 });
+
+test("history summary exposes retained per-target metrics only to admins without reading raw files", async () => {
+  const f = await fixture(), { roundStore } = require('../src/round-store.js');
+  const store = roundStore(f.root, e => e.code === 'ENOENT');
+  const originalRead = fs.readFileSync;
+  try {
+    const slotId = 'route:shanghai', jobId = crypto.randomUUID();
+    const r = store.create({ nodeUuid: A, module: 'routes', suiteId: crypto.randomUUID(), batchId: crypto.randomUUID(), parameters: { family: '4' }, slots: [{ id: slotId, jobId, target: '8.8.8.8', direction: 'VPS→大陆', source: { city: '上海', carrier: '电信', provider: '测试', token: 'SECRET' }, options: { protocol: 'tcp' } }] });
+    store.complete({ id: jobId, roundId: r.id, slotId, nodeUuid: A, executor: 'node:' + A, operation: 'route', target: '8.8.8.8', options: { family: '4', protocol: 'tcp' }, source: { city: '上海', carrier: '电信', provider: '测试' } }, { kind: 'route', state: 'ok', hops: [{ asn: '4809' }], routeEvidence: { headlineLabels: ['CN2'] } });
+    const dir = path.join(f.root, 'report-v3', 'nodes', A), manifest = path.join(dir, 'rounds', r.id, 'manifest.json'), index = path.join(dir, 'indexes', 'routes', r.plannedAt.slice(0, 10) + '.json');
+    const m = JSON.parse(fs.readFileSync(manifest)); m.detailAvailable = false; fs.writeFileSync(manifest, JSON.stringify(m));
+    const rows = JSON.parse(fs.readFileSync(index)); rows[0].detailAvailable = false; fs.writeFileSync(index, JSON.stringify(rows));
+    let rawReads = 0; fs.readFileSync = function(file, ...args) { if (String(file).includes('/measurements/')) rawReads++; return originalRead(file, ...args); };
+    assert.equal((await f.invoke('GET', `${v3}/nodes/${A}/history-summary?module=routes`, {}, false)).status, 403);
+    const response = await f.invoke('GET', `${v3}/nodes/${A}/history-summary?module=routes`);
+    assert.equal(response.status, 200); assert.equal(rawReads, 0);
+    assert.deepEqual(response.body.rounds[0].slots[0].metrics.routeEvidence.headlineLabels, ['CN2']);
+    assert.equal(response.body.rounds[0].slots[0].source.city, '上海');
+    assert.equal(JSON.stringify(response.body).includes('SECRET'), false);
+  } finally { fs.readFileSync = originalRead; f.close(); }
+});

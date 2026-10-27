@@ -888,6 +888,22 @@ function registerReportController(ctx, native) {
       }),
     );
   });
+  // Bounded, authenticated history pages recover per-target summaries after
+  // raw measurement files expire. They do not load the measurement files.
+  route("GET", "/nodes/:uuid/history-summary", (req, res) => {
+    const uuid = part(req, 2), module = query(req, "module") || "international";
+    const page = store.list(uuid, module, { limit: Math.min(20, Number(query(req, "limit")) || 20), cursor: query(req, "cursor") });
+    const rounds = page.rounds.map(row => {
+      if (row.detailAvailable !== false) return row;
+      const round = store.get(uuid, row.id, false);
+      return { ...row, slots: (round?.slots || []).map(slot => ({
+        id: slot.id, state: slot.state, completedAt: slot.completedAt, target: slot.target, direction: slot.direction,
+        source: { id: slot.source?.id, city: slot.source?.city, carrier: slot.source?.carrier, provider: slot.source?.provider, name: slot.source?.name },
+        options: { protocol: slot.options?.protocol }, metrics: slot.metrics,
+      })) };
+    });
+    ctx.respond(res, 200, { ...page, rounds });
+  });
   route("GET", "/nodes/:uuid/rounds/:id", (req, res) => {
     const result = store.get(part(req, 2), part(req, 4));
     ctx.respond(

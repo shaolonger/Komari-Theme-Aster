@@ -107,6 +107,20 @@ const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module
  return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',batchId:'batch-fixture',plannedAt:new Date().toISOString(),startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),state:'partial',counts:{expected:slots.length,completed:slots.length,ok:slots.length-1,partial:0,failed:0,missing:1,cancelled:0},detailAvailable:true,parameters:config,catalogVersion:reportCatalogVersion,slots,measurements}];
 }));
 
+function fixtureReportRound(module, prior = false) {
+  const round = structuredClone(reportRoundData[module]);
+  if (!round || !activeFixture.comprehensive) return round;
+  const at = new Date(Date.now() - (prior ? 65 : 5) * 60000).toISOString();
+  if (prior) round.id += '-older';
+  round.plannedAt = round.startedAt = round.completedAt = at;
+  for (const measurement of round.measurements) {
+    measurement.roundId = round.id; measurement.startedAt = measurement.completedAt = at;
+    if (module === 'routes' && measurement.data.state === 'ok') measurement.data.routeEvidence = { headlineLabels: prior ? ['163'] : ['163', 'CN2'] };
+    if (prior && Array.isArray(measurement.data.runs)) for (const run of measurement.data.runs) run.bitsPerSecond /= 2;
+  }
+  return round;
+}
+
 // Real preset → normalized measurements → round storage → private projection.
 const routeFixtureRoot = mkdtempSync(join(tmpdir(), 'aster-browser-routes-'));
 const routePipeline = await reportRequire('../network-observatory/plugin/tests/carrier-route-fixture.cjs').carrierFixture(routeFixtureRoot);
@@ -272,12 +286,14 @@ function officialPingMetricSeries(params, fixture) {
     if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey) && !fixture.comprehensive) continue;
     for (const [index, uuid] of entityIds.entries()) {
       let points = Array.from({ length: pointCount }, (_, point) => {
-        const fraction = pointCount === 1 ? 1 : point / (pointCount - 1);
+        const fraction = pointCount === 1 ? 1 : fixture.comprehensive && metricKey === 'cpu.usage' && end - windowStart > 2 * 86400000
+          ? point < pointCount / 2 ? (point / (pointCount / 2)) * .97 : .97 + ((point - pointCount / 2) / (pointCount / 2 - 1)) * .03
+          : point / (pointCount - 1);
         const hasLoss = point === Math.floor(pointCount / 2);
         const count = hasLoss ? 2 : 1;
         return {
           time: new Date(windowStart + (end - windowStart) * fraction).toISOString(),
-          value: metricKey === "ping.latency_ms"
+          value: fixture.comprehensive && metricKey === "cpu.usage" && [201, 203].includes(point) ? null : metricKey === "ping.latency_ms"
             ? 20 + ((index + point) % 30)
             : metricKey === "ping.loss"
               ? hasLoss ? 0.5 : 0
@@ -449,8 +465,8 @@ const server = createServer(async (request, response) => {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
     if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails});
-    if(/^nodes\/[^/]+\/rounds$/.test(suffix)){const r=reportRoundData[url.searchParams.get('module')];return sendJson(response,{rounds:[r],nextCursor:null});}
-    if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1);return sendJson(response,Object.values(reportRoundData).find(r=>r.id===id));}
+    if(/^nodes\/[^/]+\/(?:rounds|history-summary)$/.test(suffix)){const module=url.searchParams.get('module');const r=fixtureReportRound(module);return sendJson(response,{rounds:fixture.comprehensive?[r,fixtureReportRound(module,true)]:[r],nextCursor:null});}
+    if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1), prior=id.endsWith('-older'), base=prior?id.slice(0,-6):id;const module=Object.keys(reportRoundData).find(key=>reportRoundData[key].id===base);return sendJson(response,fixtureReportRound(module,prior));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
     if(/^nodes\/[^/]+\/card-check$/.test(suffix)) {
       count('card-check-start'); const nodeUuid=suffix.split('/')[1];
@@ -597,10 +613,11 @@ const server = createServer(async (request, response) => {
     }
     if (fixture.comprehensive && payload.method === "common:getRecords") {
       const end = Date.parse(toIsoOrNow(payload.params.end));
-      const start = payload.params.start ? Date.parse(payload.params.start) : end - (payload.params.hours || 6) * 3600000;
-      const records = Array.from({ length: 480 }, (_, i) => payload.params.type === "ping"
-        ? { client: "node-0", task_id: 1, time: new Date(start + (end - start) * i / 480).toISOString(), value: i === 200 ? -1 : 20 + i % 20 }
-        : { client: "node-0", time: new Date(start + (end - start) * i / 480).toISOString(), cpu: i === 120 ? 87 : 10 + i % 25, ram: 500000000 + i * 1000, disk: 5000000000 + i * 1000, net_total_up: i * 10000, net_total_down: i * 30000, net_in: i * 100, net_out: i * 50, load: .5, process: 20, connections: 30, connections_udp: 2 });
+      const requestedStart = payload.params.start ? Date.parse(payload.params.start) : end - (payload.params.hours || 6) * 3600000;
+      const start = Math.max(requestedStart, Date.now() - 60 * 86400000);
+      const records = end <= start ? [] : Array.from({ length: 150 }, (_, i) => payload.params.type === "ping"
+        ? { client: "node-0", task_id: 1, time: new Date(start + (end - start) * i / 150).toISOString(), value: i === 100 ? -1 : 20 + i % 20 }
+        : { client: "node-0", time: new Date(start + (end - start) * i / 150).toISOString(), cpu: i === 120 ? 87 : 10 + i % 25, ram: 500000000 + i * 1000, disk: 5000000000 + i * 1000, net_total_up: i * 10000, net_total_down: i * 30000, net_in: i * 100, net_out: i * 50, load: .5, process: 20, connections: 30, connections_udp: 2 });
       return sendRpcResult(response, payload.id, { records, count: records.length, tasks: [{ id: 1, name: "历史任务", interval: 60, type: "icmp", target: "203.0.113.19" }] });
     }
     return sendRpcMethodMissing(response, payload.id, payload.method);
@@ -1590,19 +1607,38 @@ try {
     await waitUntil(cdp, `document.querySelector('.instance-report-generate')!==null`, 6000);
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-dates.png`, { waitForImages: false });
     failGate(await cdp.value(`location.pathname.endsWith('/report')`), 'report entry did not navigate to the lazy route');
+    await cdp.value(`Array.from(document.querySelectorAll('.instance-report-presets button')).find(b=>b.textContent.includes('全部历史')).click()`);
+    failGate(await cdp.value(`document.querySelector('.instance-report-presets button[aria-pressed="true"]')?.textContent.includes('全部历史') && document.querySelector('.instance-report-options input[type="checkbox"]').disabled`), 'all-history preset or comparison behavior missing');
+    console.log(`  ${backend.label}: generating all-history report`);
+    await cdp.value(`document.querySelector('.instance-report-generate').click()`);
+    await waitUntil(cdp, `document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null`, 15000);
+    console.log(`  ${backend.label}: all-history generated`);
+    failGate(await cdp.value(`!document.querySelector('.instance-report-error') && JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent).range.allHistory===true`), 'all-history generation failed');
+    failGate(rpcRequests(activeFixture.run, backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords').some(r=>r.params.start==='1970-01-01T00:00:00.000Z'), 'all-history query did not cover the epoch');
+    await cdp.value(`document.querySelector('.instance-report-page-actions button').click()`);
     await cdp.value(`document.querySelector('.instance-report-presets button:nth-child(3)').click()`);
     await cdp.value(`document.querySelector('.instance-report-generate').click()`);
     await waitUntil(cdp, `document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null`, 15000);
     failGate(await cdp.value(`!document.querySelector('.instance-report-error')`), 'report generation failed: '+await cdp.value(`document.querySelector('.instance-report-error')?.textContent`));
     failGate(await cdp.value(`(()=>{const trigger=document.querySelector('.floating-controls-trigger').getBoundingClientRect();return Array.from(document.querySelectorAll('.instance-report-page-actions button')).every(button=>{const r=button.getBoundingClientRect();return r.right<=trigger.left||r.top>=trigger.bottom||r.bottom<=trigger.top})})()`), 'report actions overlap the floating controls');
-    const html = await cdp.value(`document.querySelector('.instance-report-frame').srcdoc`);
-    const model = await cdp.value(`JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent)`);
+    console.log(`  ${backend.label}: reading 30-day report`);
+    // Transfer the archive in bounded CDP messages. Node's WebSocket can stall
+    // on multi-megabyte frames even though the browser has generated the file.
+    const sourceLength = await cdp.value(`document.querySelector('.instance-report-frame').srcdoc.length`);
+    let html = '';
+    for (let offset = 0; offset < sourceLength; offset += 131072)
+      html += await cdp.value(`document.querySelector('.instance-report-frame').srcdoc.slice(${offset},${offset + 131072})`);
+    const archive = html.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/);
+    failGate(Boolean(archive), 'report archive missing');
+    const model = JSON.parse(archive[1]);
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-online.png`, { waitForImages: false });
     failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence: '+JSON.stringify(model.sources));
+    failGate(model.networkTrends.some(t=>t.module==='routes' && t.unit==='线路' && t.points.length>=2) && model.networkTrends.some(t=>t.module==='china-speed' && t.unit==='Mbps' && t.points.length>=2), 'report omitted route or speed history trends');
     if (backend.id === BACKEND_PROFILES.official.id) failGate(model.metrics.filter(m=>m.key.startsWith('gpu_memory[')).length===2, 'report merged separate GPU devices');
     failGate(!html.includes('203.0.113.19') && !html.includes('8.8.8.8'), 'redacted report leaked an address');
     const rpcMethod = backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords';
-    failGate(rpcRequests(activeFixture.run, rpcMethod).some(r => r.params.start === new Date(model.range.start).toISOString() && r.params.end === new Date(model.range.end).toISOString()), 'report did not query its exact frozen window');
+    const windowQueries = rpcRequests(activeFixture.run, rpcMethod).filter(r => Date.parse(r.params.start) >= model.range.start && Date.parse(r.params.end) <= model.range.end && (rpcMethod !== 'common:getRecords' || r.params.type === 'load')).map(r=>r.params);
+    failGate(windowQueries.some(r => r.start === new Date(model.range.start).toISOString()) && windowQueries.some(r => r.end === new Date(model.range.end).toISOString()), 'report did not cover its exact frozen window');
     // The exported model, not a screenshot or current visible chapter, is the archive.
     const offlinePath = join(profile, `report-${backend.id}.html`); writeFileSync(offlinePath, html);
     await clearFixturePage(cdp);
@@ -1612,6 +1648,16 @@ try {
     await waitUntil(cdp, `document.querySelector('#overview [data-chart] svg')!==null`, 6000);
     await waitUntil(cdp, `document.querySelector('#overview [data-chart^="ping:"] path')?.getAttribute('d').includes('L')`, 2000);
     failGate(await cdp.value(`Math.min(...Array.from(document.querySelector('#overview [data-chart="cpu"] path').getAttribute('d').matchAll(/[ML][^, ]+,(-?[\\d.]+)/g),m=>Number(m[1])))<50`), 'display reduction lost the original CPU spike');
+    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`document.querySelector('#overview [data-chart="cpu"] svg circle')!==null`), 'isolated valid CPU sample disappeared across gaps');
+    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`/^M[^ML]+L/.test(document.querySelector('#overview [data-chart="cpu"] path').getAttribute('d'))`), 'mixed retention cadences fragmented an otherwise continuous historical series');
+    console.log(`  ${backend.label}: drawing offline network trends`);
+    await cdp.value(`document.querySelector('[data-chapter="network"]').click()`);
+    await waitUntil(cdp, `document.querySelector('#network [data-chart^="network-category:"] svg circle')!==null && document.querySelector('#network [data-chart^="network:"] svg')!==null`, 4000);
+    if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) {
+      await cdp.value(`document.querySelector('.network-trend-group').scrollIntoView({block:'start'})`);
+      await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-network.png`, { waitForImages: false });
+    }
+    await cdp.value(`document.querySelector('[data-chapter="overview"]').click()`);
     failGate(await cdp.value(`JSON.parse(document.getElementById('report-data').textContent).reportId===${JSON.stringify(model.reportId)}`), 'offline report identity changed');
     for (const chapter of ['resources','network','traffic','stability','assets','events','sources','overview']) {
       await cdp.value(`document.querySelector('[data-chapter="${chapter}"]').click()`);

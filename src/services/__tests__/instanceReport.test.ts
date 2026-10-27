@@ -17,7 +17,7 @@ import {
   forkMetrics,
 } from "@/services/instanceReport";
 import { NodeInfoSchema } from "@/types/komari";
-import { RpcTransportError } from "@/services/rpc2Client";
+import { RpcResponseError, RpcTransportError } from "@/services/rpc2Client";
 
 const start = Date.parse("2026-01-01T00:00:00Z"),
   end = start + 3600000;
@@ -425,5 +425,116 @@ describe("strict report data collector", () => {
     expect(result.sources.find((s) => s.id === "network-v3")?.detail).toContain(
       "bgp 查询失败（HTTP 403）",
     );
+  });
+});
+
+describe("long report history", () => {
+  beforeEach(() => { profile.mockReset().mockResolvedValue({ kind: "fork-v2.4" }); call.mockReset(); });
+  afterEach(() => vi.unstubAllGlobals());
+  it("preserves supported official metrics when an older server rejects an unknown metric", async () => {
+    profile.mockResolvedValue({ kind: "official-v1.4" });
+    call.mockImplementation(async (_method: string, params: { metric_keys: string[] }) => {
+      if (params.metric_keys.includes("gpu.temperature")) throw new RpcResponseError("unknown metric key: gpu.temperature", -32602);
+      return { series: params.metric_keys.includes("cpu.usage") ? [{ entity_id: "a", metric_key: "cpu.usage", points: [{ time: start, value: 4, count: 1 }] }] : [] };
+    });
+    const result = await collectMetrics("a", range, new AbortController().signal);
+    expect(result.metrics.find(m => m.key === "cpu")?.points[0]?.v).toBe(4);
+    expect(result.source.state).toBe("partial");
+    expect(result.source.detail).toContain("gpu.temperature");
+  });
+  it("queries all history from the epoch then refines rollups to the earliest available data", async () => {
+    profile.mockResolvedValue({ kind: "official-v1.4" });
+    call.mockImplementation(async (method: string, params: { metric_keys?: string[] }) => {
+      if (method === "public:getPublicPingTasks") return [];
+      return { series: params.metric_keys?.includes("cpu.usage") ? [{ entity_id: "a", metric_key: "cpu.usage", points: [{ time: start, value: 10, count: 1 }] }] : [] };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("/capabilities") ? Response.json({ schema: 3, modules: [], retention: {} }) : new Response("{}", { status: 404 })));
+    const result = await collectReportInput({ meta, range: { ...range, start: 0, allHistory: true }, theme: "light", showAddresses: false, compare: false, loggedIn: false }, new AbortController().signal, () => {});
+    expect(result.range.start).toBe(start - 86400000);
+    const resourceQueries = call.mock.calls.filter(([method, params]) => method === "public:queryMetrics" && params.metric_keys.includes("cpu.usage"));
+    expect(resourceQueries).toHaveLength(2);
+    expect(resourceQueries[0]![1].start).toBe("1970-01-01T00:00:00.000Z");
+    expect(resourceQueries[1]![1].start).toBe(new Date(start - 86400000).toISOString());
+  });
+  it("splits capped fork responses and retains both halves without boundary duplication", async () => {
+    call.mockImplementation(async (_method: string, params: { start: string; end: string }) => {
+      const a = Date.parse(params.start), b = Date.parse(params.end);
+      if (b - a === 3600000) return { records: Array.from({ length: 20000 }, () => ({ time: a, cpu: 1 })), count: 22000 };
+      return { records: [{ time: a, cpu: a === start ? 1 : 2 }, { time: b, cpu: 99 }], count: 2 };
+    });
+    const result = await collectMetrics("a", range, new AbortController().signal);
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(result.metrics.find(m => m.key === "cpu")?.points.map(p => p.v)).toEqual([1, 2]);
+    expect(result.source.state).toBe("available");
+  });
+  it("reads the fork's recent load tail separately and uses integer-safe explicit dates", async () => {
+    const now = Date.now(), longRange = { start: now - 24 * 3600000, end: now - 1000, timeZone: "UTC" };
+    call.mockImplementation(async (_method: string, params: { start: string; end: string; hours?: number }) => ({
+      records: [{ time: params.start, cpu: Date.parse(params.start) > now - 5 * 3600000 ? 42 : 12 }], count: 1,
+    }));
+    const result = await collectMetrics("a", longRange, new AbortController().signal);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls.every(([, params]) => params.hours === undefined)).toBe(true);
+    expect(result.metrics.find(m => m.key === "cpu")?.points.map(p => p.v)).toEqual([12, 42]);
+    expect(call.mock.calls[1]![1].end).toBe(call.mock.calls[0]![1].start);
+  });
+  it("bounds recent fork reads before asking the server to materialize a long history", async () => {
+    const now = Date.now(), longRange = { start: now - 30 * 86400000, end: now - 1000, timeZone: "UTC" };
+    call.mockImplementation(async (_method: string, params: { start: string }) => ({ records: [{ time: params.start, cpu: 1 }], count: 1 }));
+    await collectMetrics("a", longRange, new AbortController().signal);
+    const windows = call.mock.calls.map(([, p]) => ({ start: Date.parse(p.start), end: Date.parse(p.end) })).sort((a, b) => a.start - b.start);
+    expect(windows[0]!.start).toBe(longRange.start);
+    expect(windows.at(-1)!.end).toBe(longRange.end);
+    expect(windows.every(w => w.end - w.start <= 7 * 86400000)).toBe(true);
+    expect(windows.slice(1).every((w, i) => w.start === windows[i]!.end)).toBe(true);
+  });
+  it("keeps target-level route and speed summaries after raw files expire", async () => {
+    call.mockImplementation(async (method: string) => method === "public:getPublicPingTasks" ? [] : { series: [] });
+    profile.mockResolvedValue({ kind: "official-v1.4" });
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("/capabilities")) return Response.json({ schema: 3, modules: ["routes", "china-speed"], retention: { detailDays: 7, summaryDays: 90 } });
+      if (path.includes("history-summary")) {
+        const speed = path.includes("china-speed");
+        return Response.json({ rounds: [{ id: speed ? "speed" : "route", family: "6", plannedAt: new Date(start).toISOString(), completedAt: new Date(end - 1000).toISOString(), detailAvailable: false,
+          slots: [{ id: "slot", state: "ok", completedAt: new Date(end - 1000).toISOString(), target: "203.0.113.5", direction: "VPS→大陆", source: { city: "上海", carrier: "电信", provider: "测试" },
+            metrics: speed ? { runs: [{ state: "ok", streams: 1, vpsDirection: "download", bitsPerSecond: 250000000 }] } : { routeEvidence: { headlineLabels: ["CN2"] } } }] }], nextCursor: null });
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    const result = await collectReportInput({ meta, range, theme: "light", showAddresses: false, compare: false, loggedIn: false }, new AbortController().signal, () => {});
+    expect(result.network).toHaveLength(2);
+    expect(result.network.every(e => e.summaryOnly && e.family === "6" && e.city === "上海")).toBe(true);
+    expect(JSON.stringify(result.network)).toContain("CN2");
+    expect(JSON.stringify(result.network)).toContain("250000000");
+    expect(JSON.stringify(result)).not.toContain("203.0.113.5");
+    expect(result.sources.find(s => s.id === "network-v3")?.state).toBe("partial");
+  });
+  it("continues the same module after a round becomes unavailable", async () => {
+    profile.mockResolvedValue({ kind: "official-v1.4" });
+    call.mockImplementation(async (method: string) => method === "public:getPublicPingTasks" ? [] : { series: [] });
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("/capabilities")) return Response.json({ schema: 3, modules: ["routes"] });
+      if (path.includes("history-summary")) return Response.json({ rounds: ["gone", "present"].map(id => ({ id, state: "complete", startedAt: new Date(start).toISOString(), completedAt: new Date(end - 1).toISOString(), detailAvailable: true })), nextCursor: null });
+      if (path.endsWith("/rounds/present")) return Response.json({ slots: [], measurements: [{ id: "m", completedAt: new Date(end - 1).toISOString(), data: { state: "ok" } }] });
+      return new Response("{}", { status: 404 });
+    }));
+    const result = await collectReportInput({ meta, range, theme: "light", showAddresses: false, compare: false, loggedIn: false }, new AbortController().signal, () => {});
+    expect(result.network).toHaveLength(2);
+    expect(result.network.some(e => e.id.includes("present"))).toBe(true);
+    expect(result.network.find(e => e.id.includes("gone"))?.summaryOnly).toBe(true);
+    expect(result.sources.find(s => s.id === "network-v3")?.detail).toContain("1 个轮次明细不可用");
+  });
+  it("marks summary-only data when retention expires between list and detail reads", async () => {
+    profile.mockResolvedValue({ kind: "official-v1.4" });
+    call.mockImplementation(async (method: string) => method === "public:getPublicPingTasks" ? [] : { series: [] });
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("/capabilities")) return Response.json({ schema: 3, modules: ["routes"] });
+      if (path.includes("history-summary")) return Response.json({ rounds: [{ id: "r", state: "complete", family: "4", startedAt: new Date(start).toISOString(), completedAt: new Date(end - 1).toISOString(), detailAvailable: true }], nextCursor: null });
+      if (path.endsWith("/rounds/r")) return Response.json({ detailAvailable: false, slots: [{ id: "s", state: "ok", completedAt: new Date(end - 1).toISOString(), metrics: { routeEvidence: { headlineLabels: ["CN2"] } } }] });
+      return new Response("{}", { status: 404 });
+    }));
+    const result = await collectReportInput({ meta, range, theme: "light", showAddresses: false, compare: false, loggedIn: false }, new AbortController().signal, () => {});
+    expect(result.network[0]?.summaryOnly).toBe(true);
+    expect(result.sources.find(s => s.id === "network-v3")?.state).toBe("partial");
   });
 });

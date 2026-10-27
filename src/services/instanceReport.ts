@@ -27,7 +27,7 @@ import type {
 } from "@/types/komari";
 
 const POINT_LIMIT = 20000;
-const INPUT_LIMIT = 32 * 1024 * 1024;
+const INPUT_LIMIT = 128 * 1024 * 1024;
 type Obj = Record<string, unknown>;
 const object = (v: unknown): Obj =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {};
@@ -94,7 +94,7 @@ async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > INPUT_LIMIT / 2) {
+      if (size > 16 * 1024 * 1024) {
         await reader.cancel();
         throw new Error("单次响应超过 16 MiB，请缩小范围");
       }
@@ -111,6 +111,51 @@ async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
     clearTimeout(timer);
     signal.removeEventListener("abort", abort);
   }
+}
+
+// The fork can truncate a single getRecords response. Split only windows that
+// actually hit its limit, retaining half-open boundaries and a bounded budget.
+async function forkHistory(uuid: string, type: "load" | "ping", range: ReportRange, signal: AbortSignal) {
+  // The fork collapses the recent four hours to 15-minute points when a
+  // query also includes long-term rows. Read that tail separately.
+  const tail = Date.now() - 4 * 3600000, windows: { start: number; end: number }[] = [];
+  let cursor = range.end, span = 7 * 86400000, segments = 0;
+  while (cursor > range.start) {
+    let start = Math.max(range.start, cursor - span);
+    if (type === "load" && start < tail && tail < cursor) start = tail;
+    windows.push({ start, end: cursor }); cursor = start;
+    // Bound recent database reads to a week, then widen empty/older windows.
+    if (++segments >= 53) span *= 2;
+  }
+  windows.reverse(); // pop the newest window first when the input budget is reached
+  const records: Obj[] = [], tasks = new Map<number, Obj>();
+  let requests = 0, limited = false;
+  while (windows.length) {
+    check(signal);
+    const window = windows.pop()!;
+    const raw = object(await getRpc2Client().call("common:getRecords", {
+      uuid, type, start: new Date(window.start).toISOString(), end: new Date(window.end).toISOString(),
+      maxCount: POINT_LIMIT,
+    }, { signal }));
+    requests++;
+    if (!Array.isArray(raw.records) && !(uuid in object(raw.records))) throw new Error("历史响应缺少节点记录");
+    const rows = Array.isArray(raw.records) ? array(raw.records) : array(object(raw.records)[uuid]);
+    for (const task of array(raw.tasks)) if (typeof task.id === "number") tasks.set(task.id, task);
+    const truncated = rows.length >= POINT_LIMIT || (num(raw.count) ?? 0) > rows.length;
+    const middle = Math.floor((window.start + window.end) / 2);
+    if (truncated && requests + windows.length + 2 <= 256 && middle > window.start && middle < window.end) {
+      windows.push({ start: window.start, end: middle }, { start: middle, end: window.end });
+    } else {
+      if (truncated) limited = true;
+      const available = rows.filter(row => { const t = timestamp(row.time); return t >= window.start && t < window.end; });
+      const remaining = Math.max(0, 150000 - records.length);
+      if (available.length > remaining) limited = true;
+      records.push(...(remaining ? available.slice(-remaining) : []));
+      if (records.length >= 150000 && windows.length) { limited = true; break; }
+    }
+  }
+  records.sort((a, b) => timestamp(a.time) - timestamp(b.time));
+  return { records, tasks: [...tasks.values()], limited };
 }
 
 export function reportNode(meta: NodeInfo, current?: NodeMetrics): ReportNode {
@@ -210,9 +255,11 @@ export async function collectMetrics(
   check(signal);
   let metrics: ReportMetric[],
     limited = false;
+  const unsupported: string[] = [];
   if (profile.kind === "official-v1.4") {
-    const response = await queryOfficialMetrics({
-      metricKeys: METRIC_FIELDS.map((f) => f[3]).filter(Boolean),
+    const query = async (metricKeys: string[]): Promise<Awaited<ReturnType<typeof queryOfficialMetrics>>["series"]> => {
+      try { return (await queryOfficialMetrics({
+      metricKeys,
       uuids: [uuid],
       window: { start: new Date(range.start), end: new Date(range.end) },
       maxPoints: POINT_LIMIT,
@@ -220,13 +267,21 @@ export async function collectMetrics(
       aggregationByMetric: { "net.total.up": "last", "net.total.down": "last" },
       options: { signal },
       strictResponse: true,
-    });
-    if (!Array.isArray(response.series)) throw new Error("历史指标响应无效");
+      })).series; } catch (error) {
+        check(signal);
+        if (!(error instanceof RpcResponseError) || !/unknown metric key/i.test(error.message)) throw error;
+        if (metricKeys.length === 1) { unsupported.push(metricKeys[0]!); return []; }
+        const middle = Math.floor(metricKeys.length / 2);
+        return [...await query(metricKeys.slice(0, middle)), ...await query(metricKeys.slice(middle))];
+      }
+    };
+    const availableSeries = await query(METRIC_FIELDS.map((f) => f[3]).filter(Boolean));
+    if (unsupported.length) limited = true;
     metrics = METRIC_FIELDS.flatMap(([key, label, unit, remoteKey]) => {
-      const series = response.series.filter(
+      const series = availableSeries.filter(
         (s) => s.entity_id === uuid && s.metric_key === remoteKey,
       );
-      if (series.some((s) => s.points.length >= POINT_LIMIT)) limited = true;
+      if (series.some((s) => s.downsampled !== true && s.points.length >= POINT_LIMIT)) limited = true;
       const grouped = new Map<string, ReportMetric>();
       for (const s of series)
         for (const p of s.points) {
@@ -272,25 +327,9 @@ export async function collectMetrics(
       );
     });
   } else {
-    const payload = await getRpc2Client().call(
-      "common:getRecords",
-      {
-        uuid,
-        type: "load",
-        start: new Date(range.start).toISOString(),
-        end: new Date(range.end).toISOString(),
-        hours: (range.end - range.start) / 3600000,
-        maxCount: POINT_LIMIT,
-      },
-      { signal },
-    );
-    metrics = forkMetrics(payload, uuid, range);
-    const raw = object(payload),
-      records = Array.isArray(raw.records)
-        ? array(raw.records)
-        : array(object(raw.records)[uuid]);
-    limited =
-      records.length >= POINT_LIMIT || (num(raw.count) ?? 0) > records.length;
+    const history = await forkHistory(uuid, "load", range, signal);
+    metrics = forkMetrics({ records: history.records }, uuid, range);
+    limited = history.limited;
   }
   return {
     metrics,
@@ -299,7 +338,7 @@ export async function collectMetrics(
       name: "资源与流量历史",
       state: limited ? "partial" : metrics.length ? "available" : "empty",
       detail: limited
-        ? "返回点达到上限或响应计数超过明细；可能截断，不保证完整历史。"
+        ? `部分指标未提供或返回点达到上限；可能截断，不保证完整历史。${unsupported.length ? `后端未提供：${unsupported.join("、")}。` : ""}`
         : metrics.length
           ? "严格查询所选 UTC 起止时间；统计基于返回点，采样间距估计覆盖，缺字段不补零。"
           : "所选日期没有可读取的资源历史。",
@@ -463,31 +502,13 @@ export async function collectPings(
         target: "",
       })) as PingTask[];
   } else {
-    const data = object(
-      await getRpc2Client().call(
-        "common:getRecords",
-        {
-          uuid,
-          type: "ping",
-          start: new Date(range.start).toISOString(),
-          end: new Date(range.end).toISOString(),
-          hours: (range.end - range.start) / 3600000,
-          maxCount: POINT_LIMIT,
-        },
-        { signal },
-      ),
-    );
-    if (!Array.isArray(data.records) && !(uuid in object(data.records)))
-      throw new Error("历史 Ping 响应无效");
-    records = (Array.isArray(data.records)
-      ? array(data.records)
-      : array(object(data.records)[uuid])
-    )
+    const data = await forkHistory(uuid, "ping", range, signal);
+    records = data.records
       .filter((r) => !r.client || r.client === uuid)
       .filter(
         (r) => typeof r.task_id === "number" && typeof r.value === "number",
       ) as unknown as PingRecord[];
-    tasks = array(data.tasks)
+    tasks = data.tasks
       .filter((t) => typeof t.id === "number")
       .map((t) => ({
         id: Number(t.id),
@@ -496,8 +517,7 @@ export async function collectPings(
         interval: num(t.interval) ?? 0,
         target: str(t.target),
       })) as PingTask[];
-    limited =
-      records.length >= POINT_LIMIT || (num(data.count) ?? 0) > records.length;
+    limited = data.limited;
   }
   const pings = normalizeReportPings(records, tasks, range),
     any = pings.some((p) => p.points.length);
@@ -516,162 +536,103 @@ export async function collectPings(
   };
 }
 
-async function networkV3(
-  uuid: string,
-  range: ReportRange,
-  signal: AbortSignal,
-) {
-  const base = `/api/aster-network-observatory/v3`,
-    nodePath = `${base}/nodes/${encodeURIComponent(uuid)}`;
+async function networkV3(uuid: string, range: ReportRange, signal: AbortSignal) {
+  const base = `/api/aster-network-observatory/v3`, nodePath = `${base}/nodes/${encodeURIComponent(uuid)}`;
   const caps = object(await readJson(`${base}/capabilities`, signal));
-  if (!Array.isArray(caps.modules) || caps.schema !== 3)
-    throw new Error("网络报告能力响应无效");
-  const evidence: NetworkEvidence[] = [];
-  let partial = false,
-    bytes = 0;
-  const warnings: string[] = [];
-  for (const module of caps.modules.filter(
-    (m): m is string => typeof m === "string",
-  )) {
+  if (!Array.isArray(caps.modules) || caps.schema !== 3) throw new Error("网络报告能力响应无效");
+  const evidence: NetworkEvidence[] = [], warnings: string[] = [];
+  const targetRefs = new Map<string, string>();
+  const targetCounts = new Map<string, number>();
+  const targetRef = (module: string, source: Obj, target: unknown, family: string, direction: unknown, protocol: unknown) => {
+    const key = JSON.stringify([module, source.id || target || "", family, direction, protocol]);
+    if (!targetRefs.has(key)) { const count = (targetCounts.get(module) || 0) + 1; targetCounts.set(module, count); targetRefs.set(key, `测点 ${count}`); }
+    return targetRefs.get(key)!;
+  };
+  let partial = false, bytes = 0, unavailableRounds = 0, summaryApi: boolean | undefined;
+  const append = (entry: NetworkEvidence) => {
+    bytes += JSON.stringify(entry).length * 2;
+    evidence.push(entry);
+  };
+  for (const module of caps.modules.filter((m): m is string => typeof m === "string")) {
     try {
-      let cursor = "";
+      let cursor = "", pages = 0;
       const seen = new Set<string>();
-      let pages = 0;
       do {
         check(signal);
-        if (seen.has(cursor) || pages++ >= 100) {
-          partial = true;
-          break;
-        }
+        if (seen.has(cursor) || pages++ >= 10000) { partial = true; warnings.push(`${module} 分页未正常结束。`); break; }
         seen.add(cursor);
-        const page = object(
-          await readJson(
-            `${nodePath}/rounds?module=${encodeURIComponent(module)}&cursor=${encodeURIComponent(cursor)}`,
-            signal,
-          ),
-        );
-        if (!Array.isArray(page.rounds))
-          throw new Error("网络轮次分页响应无效");
+        const suffix = `?module=${encodeURIComponent(module)}&limit=20&cursor=${encodeURIComponent(cursor)}`;
+        let page: Obj;
+        if (summaryApi !== false) {
+          try { page = object(await readJson(`${nodePath}/history-summary${suffix}`, signal)); summaryApi = true; }
+          catch (error) {
+            if (!(error instanceof ReportHttpError) || ![404, 405].includes(error.status)) throw error;
+            summaryApi = false;
+            page = object(await readJson(`${nodePath}/rounds${suffix}`, signal));
+          }
+        } else page = object(await readJson(`${nodePath}/rounds${suffix}`, signal));
+        if (!Array.isArray(page.rounds)) throw new Error("网络轮次分页响应无效");
         for (const round of array(page.rounds)) {
-          const start = timestamp(round.startedAt),
-            end = timestamp(round.completedAt);
-          if (
-            !(start < range.end) ||
-            (Number.isFinite(end) && end < range.start)
-          )
-            continue;
-          if (evidence.length >= 1500 || bytes > INPUT_LIMIT / 2) {
-            partial = true;
-            break;
-          }
-          if (round.detailAvailable === false) {
-            if (end >= range.start && end < range.end)
-              evidence.push({
-                id: `v3:${str(round.id)}`,
-                module,
-                time: end,
-                startedAt: start,
-                state: str(round.state),
-                target: "",
-                direction: "",
-                source: "网络报告 v3",
-                summaryOnly: true,
-                detail: projectEvidence({
-                  counts: round.counts,
-                  detailAvailable: false,
-                }),
-              });
-            partial = true;
+          const start = timestamp(round.startedAt || round.plannedAt || round.completedAt), end = timestamp(round.completedAt);
+          if (!(start < range.end) || (Number.isFinite(end) && end < range.start)) continue;
+          if (evidence.length >= 100000 || bytes > INPUT_LIMIT / 2) { partial = true; break; }
+          let expired = round.detailAvailable === false;
+          let full: Obj;
+          try {
+            if (expired && Array.isArray(round.slots)) full = round;
+            else full = object(await readJson(`${nodePath}/rounds/${encodeURIComponent(str(round.id))}`, signal));
+            expired = expired || full.detailAvailable === false;
+            if (!Array.isArray(full.slots) || (!expired && !Array.isArray(full.measurements))) throw new Error("网络轮次明细响应无效");
+          } catch (error) {
+            check(signal); partial = true; unavailableRounds++;
+            if (Number.isFinite(end) && end >= range.start && end < range.end)
+              append({ id: `v3:${str(round.id)}`, module, time: end, state: str(round.state), target: "", direction: "", source: "轮次明细不可用", summaryOnly: true,
+                family: str(round.family), detail: projectEvidence({ counts: round.counts, detailAvailable: false }) });
             continue;
           }
-          const full = object(
-            await readJson(
-              `${nodePath}/rounds/${encodeURIComponent(str(round.id))}`,
-              signal,
-            ),
-          );
-          if (!Array.isArray(full.measurements) || !Array.isArray(full.slots))
-            throw new Error("网络轮次明细响应无效");
-          for (const measurement of array(full.measurements)) {
-            if (measurement.nodeUuid && measurement.nodeUuid !== uuid) {
-              partial = true;
-              continue;
-            }
-            const t = timestamp(measurement.completedAt),
-              started = timestamp(measurement.startedAt);
-            if (t < range.start || t >= range.end || !Number.isFinite(t))
-              continue;
-            const source = object(measurement.source);
-            const entry: NetworkEvidence = {
-              id: `v3:${str(round.id)}:${str(measurement.id)}`,
-              module,
-              time: t,
-              startedAt: Number.isFinite(started) ? started : undefined,
-              state: str(object(measurement.data).state),
-              target: str(measurement.target),
-              direction: str(measurement.direction),
-              source: [
-                source.provider,
-                source.name,
-                source.city,
-                source.carrier,
-              ]
-                .filter((v) => typeof v === "string")
-                .join(" · "),
-              detail: projectEvidence({
-                ...object(measurement.data),
-                protocol: object(measurement.options).protocol,
-                family: object(full.parameters).family,
-              }),
-            };
-            bytes += JSON.stringify(entry).length * 2;
-            evidence.push(entry);
+          const measurements = array(full.measurements), matched = new Set(measurements.map(m => str(m.slotId)));
+          const family = str(object(full.parameters).family) || str(round.family);
+          for (const measurement of measurements) {
+            if (measurement.nodeUuid && measurement.nodeUuid !== uuid) { partial = true; continue; }
+            const t = timestamp(measurement.completedAt), started = timestamp(measurement.startedAt);
+            if (!Number.isFinite(t) || t < range.start || t >= range.end) continue;
+            const source = object(measurement.source), options = object(measurement.options);
+            append({ id: `v3:${str(round.id)}:${str(measurement.id)}`, module, time: t,
+              startedAt: Number.isFinite(started) ? started : undefined, state: str(object(measurement.data).state),
+              target: str(measurement.target), direction: str(measurement.direction),
+              source: [source.provider, source.name, source.city, source.carrier].filter(v => typeof v === "string").join(" · "),
+              family: str(options.family) || family, city: str(source.city), carrier: str(source.carrier),
+              provider: str(source.provider), protocol: str(options.protocol), targetRef: targetRef(module, source, measurement.target, str(options.family) || family, measurement.direction, options.protocol),
+              detail: projectEvidence({ ...object(measurement.data), protocol: options.protocol, family: str(options.family) || family }) });
           }
-          // Missing/cancelled slots without a measurement are evidence too.
-          if (end >= range.start && end < range.end && start >= range.start) {
-            const slots = array(full.slots).filter(
-              (s) => !array(full.measurements).some((m) => m.slotId === s.id),
-            );
-            for (const slot of slots)
-              evidence.push({
-                id: `v3:${str(round.id)}:slot:${str(slot.id)}`,
-                module,
-                time: end,
-                state: str(slot.state),
-                target: str(slot.target),
-                direction: str(slot.direction),
-                source: "未完成的检测项",
-                detail: projectEvidence({
-                  state: slot.state,
-                  family: object(full.parameters).family,
-                }),
-              });
+          if (expired) partial = true;
+          for (const slot of array(full.slots)) {
+            if (matched.has(str(slot.id))) continue;
+            const slotTime = timestamp(slot.completedAt), t = Number.isFinite(slotTime) ? slotTime : end;
+            if (!Number.isFinite(t) || t < range.start || t >= range.end) continue;
+            const source = object(slot.source), options = object(slot.options), saved = object(slot.metrics);
+            append({ id: `v3:${str(round.id)}:slot:${str(slot.id)}`, module, time: t,
+              state: str(slot.state), target: str(slot.target), direction: str(slot.direction),
+              source: [source.provider, source.name, source.city, source.carrier].filter(v => typeof v === "string").join(" · ") || "未完成的检测项",
+              family, city: str(source.city), carrier: str(source.carrier), provider: str(source.provider), protocol: str(options.protocol), targetRef: targetRef(module, source, slot.target, family, slot.direction, options.protocol),
+              summaryOnly: expired, detail: projectEvidence({ ...saved, state: slot.state, family, protocol: options.protocol, detailAvailable: !expired }) });
           }
+          if (expired && !array(full.slots).length && Number.isFinite(end) && end >= range.start && end < range.end)
+            append({ id: `v3:${str(round.id)}`, module, time: end, state: str(round.state), target: "", direction: "", source: "网络报告 v3", summaryOnly: true,
+              family, detail: projectEvidence({ counts: round.counts, detailAvailable: false }) });
         }
         cursor = str(page.nextCursor);
-        if (evidence.length >= 1500 || bytes > INPUT_LIMIT / 2) {
-          partial = true;
-          break;
-        }
+        if (evidence.length >= 100000 || bytes > INPUT_LIMIT / 2) { partial = true; warnings.push("网络观测超过单份报告预算，已保留先读取的记录。"); break; }
       } while (cursor);
     } catch (error) {
-      check(signal);
-      partial = true;
-      warnings.push(
-        `${module} 查询失败${error instanceof ReportHttpError ? `（HTTP ${error.status}）` : ""}，其余模块已保留。`,
-      );
+      check(signal); partial = true;
+      warnings.push(`${module} 查询失败${error instanceof ReportHttpError ? `（HTTP ${error.status}）` : ""}，其余模块已保留。`);
     }
   }
+  if (unavailableRounds) warnings.push(`${unavailableRounds} 个轮次明细不可用，保留可读取的轮次摘要。`);
   const retention = object(caps.retention);
-  return {
-    evidence,
-    source: {
-      id: "network-v3",
-      name: "网络报告 v3",
-      state: partial ? "partial" : evidence.length ? "available" : "empty",
-      detail: `只汇总既有测量；明细保留 ${num(retention.detailDays) ?? "未知"} 天，摘要 ${num(retention.summaryDays) ?? "未知"} 天。${partial ? "存在明细过期、查询失败或预算限制，不能保证全部证据完整。" : "已完成所有模块分页。"}${warnings.join(" ")}`,
-    } satisfies ReportSource,
-  };
+  return { evidence, source: { id: "network-v3", name: "网络报告 v3", state: partial ? "partial" : evidence.length ? "available" : "empty",
+    detail: `只汇总既有测量；明细保留 ${num(retention.detailDays) ?? "未知"} 天，摘要 ${num(retention.summaryDays) ?? "未知"} 天。${partial ? "存在明细过期、查询失败或预算限制，不能保证全部证据完整。" : "已完成所有模块分页。"}${warnings.join(" ")}` } satisfies ReportSource };
 }
 
 export interface ReportRequest {
@@ -756,6 +717,26 @@ export async function collectReportInput(
     })(),
   ]);
   check(signal);
+  if (range.allHistory) {
+    let earliest = range.end;
+    for (const metric of metrics) for (const point of metric.points) if (point.v != null && Number.isFinite(point.t)) earliest = Math.min(earliest, point.t);
+    for (const ping of pings) for (const point of ping.points) if (point.sent > 0 && Number.isFinite(point.t)) earliest = Math.min(earliest, point.t);
+    for (const item of network) if (Number.isFinite(item.time)) earliest = Math.min(earliest, item.time);
+    if (earliest < range.end) {
+      // First pass covers the Unix epoch onward. Tighten only the display and
+      // repeat official rollups, so a 50-year empty prefix cannot turn a month
+      // of available data into coarse daily buckets.
+      range.start = Math.max(0, Math.floor(earliest / 86400000) * 86400000 - 86400000);
+      if (backend === "official-v1.4" && range.start > 0) {
+        progress("正在按最早可用数据提高历史曲线精度…");
+        const refined = await Promise.allSettled([collectMetrics(meta.uuid, range, signal), collectPings(meta.uuid, range, signal)]);
+        check(signal);
+        if (refined[0].status === "fulfilled") { metrics = refined[0].value.metrics; const i = sources.findIndex(s => s.id === "metrics"); if (i >= 0) sources[i] = refined[0].value.source; }
+        if (refined[1].status === "fulfilled") { pings = refined[1].value.pings; const i = sources.findIndex(s => s.id === "ping"); if (i >= 0) sources[i] = refined[1].value.source; }
+      }
+    }
+    sources.push({ id: "all-history", name: "全部历史范围", state: "available", detail: "已从 1970 年起查询；图表从最早可读取数据附近开始。已过期、被删除或无权限的数据无法恢复。" });
+  }
   const reportId =
     typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
@@ -804,7 +785,7 @@ export async function collectReportInput(
   }
   const size = new TextEncoder().encode(JSON.stringify(input)).byteLength;
   if (size > INPUT_LIMIT)
-    throw new Error("报告输入超过 32 MiB，请缩小日期范围后重试。");
+    throw new Error("报告输入超过 128 MiB，请缩小日期范围后重试。");
   progress("正在计算统计、数据覆盖与报告结论…");
   return redactReport(input);
 }

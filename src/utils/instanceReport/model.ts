@@ -2,6 +2,7 @@ export interface ReportRange {
   start: number;
   end: number;
   timeZone: string;
+  allHistory?: boolean;
 }
 export interface ReportPoint {
   t: number;
@@ -62,6 +63,12 @@ export interface NetworkEvidence {
   target: string;
   direction: string;
   source: string;
+  family?: string;
+  city?: string;
+  carrier?: string;
+  provider?: string;
+  protocol?: string;
+  targetRef?: string;
   detail: EvidenceValue;
   summaryOnly?: boolean;
 }
@@ -143,6 +150,14 @@ export interface ReportModel extends ReportInput {
   previousStats?: Record<string, MetricStats>;
   previousPingStats?: Record<number, PingStats>;
   rules: { cpu: number; memory: number; disk: number; version: string };
+  networkTrends: NetworkTrend[];
+}
+export interface NetworkTrend {
+  title: string;
+  module: string;
+  unit: string;
+  kind: "number" | "category";
+  points: { t: number; v: number | null; label?: string; state: string }[];
 }
 
 export const METRIC_FIELDS = [
@@ -190,8 +205,6 @@ export function validateReportRange(range: ReportRange, now: number) {
   )
     throw new Error("请选择有效日期，结束时间须晚于开始时间。");
   if (range.end > now) throw new Error("结束时间不能晚于当前时间。");
-  if (range.end - range.start > 366 * 86400000)
-    throw new Error("单份报告最长支持 366 天，请缩小日期范围。");
   new Intl.DateTimeFormat("en", { timeZone: range.timeZone });
 }
 

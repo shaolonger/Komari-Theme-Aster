@@ -9,6 +9,8 @@ const evidenceKeys = new Set(
 );
 for (const key of ["whois", "domain", "hostname", "geoSource", "geoQueriedAt", "geoStatus", "asnStatus", "registryCountry"])
   evidenceKeys.add(key);
+for (const key of ["routeEvidence", "headlineLabels", "labels", "asPath", "ruleVersion", "measurementBasis"])
+  evidenceKeys.add(key);
 export function projectEvidence(value: unknown, depth = 0): EvidenceValue {
   if (depth > 12) return "明细嵌套过深，未纳入";
   if (value == null || typeof value === "boolean" || typeof value === "number")

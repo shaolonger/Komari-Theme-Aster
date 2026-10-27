@@ -34,6 +34,12 @@ export function readerRuntime() {
     label: string;
     step: number;
   } {
+    if (key.startsWith("network:")) {
+      const trend = model.networkTrends?.[Number(key.slice(8))];
+      const points: { t: number; v: number | null }[] = trend?.points || [];
+      const intervals = points.slice(1).map((p, i) => p.t - points[i]!.t).filter(v => v > 0).sort((a, b) => a - b);
+      return { points, unit: trend?.unit || "", label: trend?.title || "网络观测", step: intervals.length ? intervals[Math.floor((intervals.length - 1) / 2)]! : 0 };
+    }
     if (key.startsWith("ping:")) {
       const ping = model.pings.find(
         (p: { id: number }) => p.id === Number(key.slice(5)),
@@ -63,6 +69,10 @@ export function readerRuntime() {
       drawTraffic(container);
       return;
     }
+    if (container.dataset.chart?.startsWith("network-category:")) {
+      drawNetworkCategory(container, Number(container.dataset.chart.slice(17)));
+      return;
+    }
     const data = dataset(container.dataset.chart || ""),
       full = data.points;
     const width = Math.max(200, Math.round(container.clientWidth)),
@@ -90,36 +100,43 @@ export function readerRuntime() {
     const x = (t: number) =>
       left +
       ((t - model.range.start) / (model.range.end - model.range.start)) * pw;
-    // Bin only for drawing. Retain boundaries, both extrema, and null sentinels.
-    const points: { t: number; v: number | null }[] = [];
-    const stride = Math.max(1, Math.ceil(full.length / 200));
-    for (let i = 0; i < full.length; i += stride) {
-      const group = full.slice(i, i + stride),
-        valid = group.filter((p): p is { t: number; v: number } => p.v != null);
-      const min = valid.reduce(
-        (a: { t: number; v: number } | null, p: { t: number; v: number }) =>
-          !a || p.v < a.v ? p : a,
-        null,
-      );
-      const max = valid.reduce(
-        (a: { t: number; v: number } | null, p: { t: number; v: number }) =>
-          !a || p.v > a.v ? p : a,
-        null,
-      );
-      const picks = [
-        group[0],
-        group[group.length - 1],
-        min,
-        max,
-        group.find((p: { v: number | null }) => p.v == null),
-      ];
-      for (const p of [
-        ...new Set(
-          picks.filter((p): p is { t: number; v: number | null } => p != null),
-        ),
-      ].sort((a, b) => a.t - b.t))
-        points.push(p);
+    // Split at every real null or cadence gap before reducing for display.
+    // Otherwise isolated valid observations can disappear as invisible M-only paths.
+    const segments: { t: number; v: number }[][] = [];
+    let segment: { t: number; v: number }[] = [];
+    let previousTime: number | null = null;
+    const flush = () => { if (segment.length) segments.push(segment); segment = []; };
+    const localCadence = (index: number) => {
+      const side = (from: number, direction: -1 | 1) => {
+        const values: number[] = [];
+        for (let i = from; i >= 1 && i < full.length && values.length < 3; i += direction) {
+          if (full[i - 1]!.v == null || full[i]!.v == null) break;
+          const delta = full[i]!.t - full[i - 1]!.t; if (delta > 0) values.push(delta);
+        }
+        values.sort((a, b) => a - b);
+        return values.length ? values[Math.floor((values.length - 1) / 2)]! : 0;
+      };
+      return Math.max(side(index, -1), side(index + 2, 1)) || data.step;
+    };
+    for (let i = 0; i < full.length; i++) {
+      const p = full[i]!;
+      if (p.v == null) { flush(); previousTime = null; continue; }
+      const cadence = localCadence(i - 1);
+      if (previousTime != null && cadence && p.t - previousTime > cadence * 1.5) flush();
+      segment.push({ t: p.t, v: p.v }); previousTime = p.t;
     }
+    flush();
+    const stride = Math.max(1, Math.ceil(full.length / 200));
+    const reduced = segments.map(group => {
+      const points: { t: number; v: number }[] = [];
+      for (let i = 0; i < group.length; i += stride) {
+        const chunk = group.slice(i, i + stride);
+        const min = chunk.reduce((a, p) => p.v < a.v ? p : a);
+        const max = chunk.reduce((a, p) => p.v > a.v ? p : a);
+        points.push(...[...new Set([chunk[0]!, chunk[chunk.length - 1]!, min, max])].sort((a, b) => a.t - b.t));
+      }
+      return points;
+    });
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -196,39 +213,15 @@ export function readerRuntime() {
       },
       "日期 · " + model.range.timeZone,
     );
-    let path = "",
-      open = false,
-      previous = 0;
-    // Detect real gaps in the original points before reducing them.
-    const gaps: { start: number; end: number }[] = [];
-    for (let i = 1; i < full.length; i++)
-      if (data.step && full[i]!.t - full[i - 1]!.t > data.step * 3)
-        gaps.push({ start: full[i - 1]!.t, end: full[i]!.t });
-    for (const p of points) {
-      if (p.v == null) {
-        open = false;
-        previous = p.t;
-        continue;
+    let path = "";
+    for (const points of reduced) {
+      if (points.length === 1) {
+        node("circle", { cx: x(points[0]!.t), cy: y(points[0]!.v), r: 3, fill: "var(--blue)" });
+      } else {
+        points.forEach((p, i) => { path += `${i ? "L" : "M"}${x(p.t).toFixed(2)},${y(p.v).toFixed(2)} `; });
       }
-      if (gaps.some((g) => g.start >= previous && g.end <= p.t)) open = false;
-      path += `${open ? "L" : "M"}${x(p.t).toFixed(2)},${y(p.v).toFixed(2)} `;
-      open = true;
-      previous = p.t;
     }
-    node("path", {
-      d: path,
-      fill: "none",
-      stroke: "var(--blue)",
-      "stroke-width": 1.7,
-      "stroke-linejoin": "round",
-    });
-    if (values.length === 1)
-      node("circle", {
-        cx: x(values[0]!.t),
-        cy: y(values[0]!.v!),
-        r: 3,
-        fill: "var(--blue)",
-      });
+    node("path", { d: path, fill: "none", stroke: "var(--blue)", "stroke-width": 1.7, "stroke-linejoin": "round" });
     const guide = node("line", {
       x1: 0,
       x2: 0,
@@ -284,6 +277,42 @@ export function readerRuntime() {
       guide.setAttribute("opacity", "0");
     });
     container.replaceChildren(svg, tooltip);
+  }
+  function drawNetworkCategory(container: HTMLElement, index: number) {
+    const trend = model.networkTrends?.[index];
+    const points: { t: number; label?: string; state: string }[] = trend?.points || [];
+    if (!points.length) { container.textContent = "所选期间没有可用观测"; return; }
+    const frequencies = new Map<string, number>();
+    for (const point of points) { const label = point.label || "未知"; frequencies.set(label, (frequencies.get(label) || 0) + 1); }
+    const ranked = [...frequencies].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label]) => label);
+    const labels = ranked.length > 12 ? [...ranked.slice(0, 11), "其他类别"] : ranked;
+    const width = Math.max(200, container.clientWidth), height = 218, left = Math.min(130, width * .35), right = 12, top = 20, bottom = 43;
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", trend.title + "，按时间显示观测类别");
+    const node = (tag: string, attrs: Record<string, string | number>, text?: string) => {
+      const el = document.createElementNS(ns, tag); for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+      if (text != null) el.textContent = text; svg.append(el); return el;
+    };
+    const x = (t: number) => left + (t - model.range.start) / (model.range.end - model.range.start) * (width - left - right);
+    const y = (i: number) => top + (i + .5) * (height - top - bottom) / labels.length;
+    labels.forEach((label, i) => {
+      node("line", { x1: left, x2: width - right, y1: y(i), y2: y(i), stroke: "var(--line)" });
+      const text = node("text", { x: left - 7, y: y(i) + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 10 }, label.length > 15 ? label.slice(0, 14) + "…" : label);
+      const title = document.createElementNS(ns, "title"); title.textContent = label; text.append(title);
+    });
+    // Coalesce only visually overlapping markers. The archive retains every observation.
+    const bins = new Map<string, { x: number; y: number; label: string; count: number; time: number; state: string }>();
+    for (const p of points) {
+      const label = p.label || "未知", index = labels.indexOf(label), lane = index < 0 ? labels.length - 1 : index, px = x(p.t), key = `${lane}:${Math.floor(px / 3)}`;
+      const old = bins.get(key); if (old) old.count++; else bins.set(key, { x: px, y: y(lane), label, count: 1, time: p.t, state: p.state });
+    }
+    for (const mark of bins.values()) {
+      const dot = node("circle", { cx: mark.x, cy: mark.y, r: 3.5, fill: mark.state === "failed" || mark.state === "missing" ? "var(--amber)" : "var(--blue)", opacity: .8 });
+      const title = document.createElementNS(ns, "title"); title.textContent = `${date(mark.time)} · ${mark.label}${mark.count > 1 ? ` · ${mark.count} 条重叠观测` : ""}`; dot.append(title);
+    }
+    [0, .5, 1].forEach(r => node("text", { x: left + r * (width - left - right), y: height - 24, "text-anchor": r === 0 ? "start" : r === 1 ? "end" : "middle", fill: "var(--muted)", "font-size": 10 }, date(model.range.start + r * (model.range.end - model.range.start)).split(" ")[0] || ""));
+    node("text", { x: left + (width - left - right) / 2, y: height - 6, "text-anchor": "middle", fill: "var(--muted)", "font-size": 10 }, "日期 · " + model.range.timeZone);
+    container.replaceChildren(svg);
   }
   function drawTraffic(container: HTMLElement) {
     const rows: { date: string; up: number | null; down: number | null }[] =

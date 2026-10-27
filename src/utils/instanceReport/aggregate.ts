@@ -1,3 +1,4 @@
+import { networkTrends } from "./networkTrends";
 import type {
   MetricStats,
   PingStats,
@@ -21,6 +22,22 @@ export function orderedPoints(points: ReportPoint[], range: ReportRange) {
   return [...byTime.values()].sort((a, b) => a.t - b.t);
 }
 
+// Adjacent retention tiers can have different cadences. Look on both sides of
+// a candidate interval; one global median misclassifies coarser old samples.
+function localInterval(points: ReportPoint[], index: number, fallback: number) {
+  const side = (from: number, direction: -1 | 1) => {
+    const values: number[] = [];
+    for (let i = from; i >= 1 && i < points.length && values.length < 3; i += direction) {
+      if (points[i - 1]!.v == null || points[i]!.v == null) break;
+      const delta = points[i]!.t - points[i - 1]!.t;
+      if (delta > 0) values.push(delta);
+    }
+    values.sort((a, b) => a - b);
+    return values.length ? values[Math.floor((values.length - 1) / 2)]! : 0;
+  };
+  return Math.max(side(index, -1), side(index + 2, 1)) || fallback;
+}
+
 export function metricStats(
   points: ReportPoint[],
   range: ReportRange,
@@ -31,7 +48,7 @@ export function metricStats(
   );
   const diffs = all
     .slice(1)
-    .map((p, i) => p.t - all[i]!.t)
+    .map((p, i) => p.v != null && all[i]!.v != null ? p.t - all[i]!.t : 0)
     .filter((x) => x > 0)
     .sort((a, b) => a - b);
   // Cadence is inferred, not a claim of a complete historical event stream.
@@ -46,7 +63,10 @@ export function metricStats(
     const p = all[i]!;
     if (p.v == null || !intervalMs) continue;
     const next = all[i + 1]?.t ?? range.end;
-    const stop = Math.min(next, p.t + intervalMs, range.end);
+    const cadence = localInterval(all, i, intervalMs);
+    const delta = next - p.t;
+    const continuous = all[i + 1]?.v != null && delta <= cadence * 1.5;
+    const stop = Math.min(next, p.t + (continuous ? delta : cadence), range.end);
     if (p.t > cursor) gaps.push({ start: cursor, end: p.t });
     const weight = Math.max(0, stop - p.t);
     sum += p.v * weight;
@@ -139,7 +159,7 @@ export function trafficStats(
         partial = true;
         continue;
       }
-      if (b.t - a.t > stats.intervalMs * 3) partial = true;
+      if (b.t - a.t > localInterval(points, i - 1, stats.intervalMs) * 1.5) partial = true;
       const delta = b.v - a.v;
       total += delta;
       const date = dateFormat.format(b.t),
@@ -248,6 +268,7 @@ export function buildReport(input: ReportInput): ReportModel {
     traffic,
     findings,
     rules,
+    networkTrends: networkTrends(input.network),
     previousStats: input.previous
       ? Object.fromEntries(
           input.previous.metrics.map((m) => [

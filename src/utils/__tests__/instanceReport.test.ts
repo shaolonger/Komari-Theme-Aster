@@ -84,6 +84,19 @@ describe("VPS report statistics and archival", () => {
     expect(report.metrics[0]!.points.map((p) => p.v)).toEqual([0, 4]);
     expect(source.metrics[0]!.points).toHaveLength(3);
   });
+  it("recognizes adjacent retention tiers with different sampling intervals without inventing gaps", () => {
+    const points = [0, 900000, 1800000, 2700000, 3600000, ...Array.from({ length: 10 }, (_, i) => 3660000 + i * 60000)].map(t => ({ t: start + t, v: 1 }));
+    const period = { start, end: points.at(-1)!.t + 60000, timeZone: "UTC" };
+    const result = metricStats(points, period);
+    expect(result.gaps).toEqual([]);
+    expect(result.coveredMs).toBe(period.end - period.start);
+    expect(result.mean).toBe(1);
+  });
+  it("still marks an actual missing interval within a regular sampling tier", () => {
+    const points = [0, 60000, 120000, 240000, 300000, 360000].map(t => ({ t: start + t, v: 1 }));
+    const result = metricStats(points, { start, end: start + 420000, timeZone: "UTC" });
+    expect(result.gaps).toEqual([{ start: start + 180000, end: start + 240000 }]);
+  });
   it("weights loss and successful latency by probe counts, preserving valid zero latency", () => {
     const result = pingStats({
       id: 1,
@@ -121,7 +134,7 @@ describe("VPS report statistics and archival", () => {
         { ...range, end: start + 367 * 86400000 },
         start + 400 * 86400000,
       ),
-    ).toThrow();
+    ).not.toThrow();
     expect(parseReportDate("2026-02-30T10:00", "UTC")).toBeNull();
     expect(
       parseReportDate("2026-03-08T02:30", "America/Los_Angeles"),

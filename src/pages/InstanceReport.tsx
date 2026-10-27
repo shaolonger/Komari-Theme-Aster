@@ -64,6 +64,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
   });
   const [compare, setCompare] = useState(false),
     [showAddresses, setShowAddresses] = useState(false);
+  const [allHistory, setAllHistory] = useState(() => search.get("scope") === "all");
   const [busy, setBusy] = useState(false),
     [phase, setPhase] = useState("");
   const [error, setError] = useState("");
@@ -96,8 +97,14 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
     return () => window.removeEventListener("message", resize);
   }, [report?.model.reportId]);
 
-  function preset(days: number | "month") {
+  function preset(days: number | "month" | "all") {
     const now = Date.now();
+    setAllHistory(days === "all");
+    if (days === "all") {
+      setCompare(false);
+      setDraft({ start: formatDateTimeLocalValue(0, zone), end: formatDateTimeLocalValue(now / 1000, zone) });
+      return;
+    }
     let start: number;
     if (days === "month") {
       const p = getZonedDateTimeParts(now, zone);
@@ -134,7 +141,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         {
           meta: { ...meta },
           current: current ? { ...current } : undefined,
-          range: { start: start * 1000, end: end * 1000, timeZone: zone },
+          range: { start: allHistory ? 0 : start * 1000, end: end * 1000, timeZone: zone, allHistory },
           theme: resolvedAppearance === "dark" ? "dark" : "light",
           showAddresses,
           compare,
@@ -156,6 +163,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         {
           start: new Date(input.range.start).toISOString(),
           end: new Date(input.range.end).toISOString(),
+          ...(input.range.allHistory ? { scope: "all" } : {}),
         },
         { replace: true },
       );
@@ -238,11 +246,13 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
                   [7, "最近 7 天"],
                   [30, "最近 30 天"],
                   ["month", "本月"],
+                  ["all", "全部历史"],
                 ].map(([days, label]) => (
                   <button
                     type="button"
                     key={label}
-                    onClick={() => preset(days as number | "month")}
+                    onClick={() => preset(days as number | "month" | "all")}
+                    aria-pressed={days === "all" ? allHistory : undefined}
                   >
                     {label}
                   </button>
@@ -255,9 +265,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
                     type="datetime-local"
                     required
                     value={draft.start}
-                    onChange={(event) =>
-                      setDraft((d) => ({ ...d, start: event.target.value }))
-                    }
+                    onChange={(event) => { setAllHistory(false); setDraft((d) => ({ ...d, start: event.target.value })); }}
                   />
                 </label>
                 <label>
@@ -274,7 +282,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
                 </label>
               </div>
               <p className="instance-report-zone">
-                所有日期与图表使用 {zone} · 精确到分钟 · 单份最长 366 天
+                所有日期与图表使用 {zone} · 精确到分钟{allHistory ? " · 从最早可读取的数据开始展示" : ""}
               </p>
               <details className="instance-report-options">
                 <summary>可选设置</summary>
@@ -282,6 +290,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
                   <input
                     type="checkbox"
                     checked={compare}
+                    disabled={allHistory}
                     onChange={(event) => setCompare(event.target.checked)}
                   />
                   与前一等长区间比较

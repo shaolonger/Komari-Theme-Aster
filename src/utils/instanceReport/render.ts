@@ -133,6 +133,7 @@ export function renderReportHtml(model: ReportModel) {
         .map((p) => [date(p.t), f(p.v, m.unit), p.n ?? "未知"]),
     )}</details>`;
 
+  const overviewPing = model.pings.find(p => p.points.some(point => point.v != null));
   const overview =
     summary(
       model.stats.cpu?.count
@@ -141,7 +142,7 @@ export function renderReportHtml(model: ReportModel) {
       "先看趋势与线索，再查看每个章节。未采集、过期、无权限与查询失败均单独列明；配置与当前状态是生成时快照。",
     ) +
     kpis +
-    `<div class="charts">${chart("cpu", "CPU 使用趋势")}${model.pings[0] ? chart(`ping:${model.pings[0].id}`, model.pings[0].name) : chart("ram", "内存使用趋势")}</div>` +
+    `<div class="charts">${chart("cpu", "CPU 使用趋势")}${overviewPing ? chart(`ping:${overviewPing.id}`, overviewPing.name) : chart("ram", "内存使用趋势")}</div>` +
     div +
     "<h3>值得留意的发现</h3>" +
     findings(4) +
@@ -202,17 +203,20 @@ export function renderReportHtml(model: ReportModel) {
     ];
   });
   const pingCharts = model.pings
+    .filter(p => p.points.some(point => point.v != null))
     .map((p) => chart(`ping:${p.id}`, `${p.name} · ${p.protocol}`))
     .join("");
   const networkModules = [...new Set(model.network.map((n) => n.module))];
   const networkDetail = networkModules
     .map((module) => {
       const rows = model.network.filter((n) => n.module === module);
+      const visible = rows.slice(0, 100);
       return (
         `<h3>${e(networkLabel(module))}</h3>` +
+        (rows.length > visible.length ? note(`此处展示最近 ${visible.length} 条，全部 ${rows.length} 条已保存在报告数据 JSON。`) : "") +
         table(
           ["测量时间", "状态", "方向 / 来源", "目标"],
-          rows.map((r) => [
+          visible.map((r) => [
             date(r.time),
             (measurementLabels[r.state] || r.state) +
               (r.summaryOnly ? " · 仅摘要" : ""),
@@ -220,7 +224,7 @@ export function renderReportHtml(model: ReportModel) {
             r.target || "未提供",
           ]),
         ) +
-        rows
+        visible
           .map((r) => {
             const data = evidenceObject(r.detail),
               hops = Array.isArray(data.hops)
@@ -350,6 +354,16 @@ export function renderReportHtml(model: ReportModel) {
       );
     })
     .join(div);
+  const priority = ["routes", "china-speed", "international", "tcp-quality", "international-speed", "idc", "bgp"];
+  const trendModules = [...new Set(model.networkTrends.map(t => t.module))].sort((a, b) => {
+    const x = priority.indexOf(a), y = priority.indexOf(b);
+    return (x < 0 ? priority.length : x) - (y < 0 ? priority.length : y) || a.localeCompare(b);
+  });
+  const networkCharts = trendModules.map(module => {
+    const trends = model.networkTrends.map((trend, index) => ({ trend, index })).filter(row => row.trend.module === module);
+    return `<section class="network-trend-group"><h3>${e(networkLabel(module))} · 历史趋势</h3><div class="charts">${trends.map(({ trend, index }) =>
+      `<figure><figcaption>${e(trend.title)}</figcaption><div class="chart" data-chart="${trend.kind === "category" ? "network-category:" : "network:"}${index}"><p class="muted">正在准备历史趋势…</p></div><p class="muted">${trend.kind === "category" ? "每个标记代表实际观测；同位置可有多条" : "按测点、方向和协议分别显示，缺测不连接"} · ${trend.points.length} 条观测</p><details class="chart-tables"><summary>查看观测数据</summary>${trend.points.length > 50 ? note("展示最近 50 条，全部观测保存在数据 JSON。") : ""}${table(["时间", "观测值", "状态"], trend.points.slice(-50).reverse().map(p => [date(p.t), p.label || f(p.v, trend.unit), measurementLabels[p.state] || p.state]))}</details></figure>`).join("")}</div></section>`;
+  }).join("");
   const network =
     summary(
       "网络质量按任务、方向、协议和来源分别呈现。",
@@ -378,6 +392,10 @@ export function renderReportHtml(model: ReportModel) {
           )}</details>`,
       )
       .join("") +
+    div +
+    "<h3>网络观测历史趋势</h3>" +
+    note("线路名称是观察到的网络标识，不代表商业产品认证。测速按 VPS 方向、连接数和测点分开；空白不代表 0。明细过期后仅展示仍保留的摘要。") +
+    (networkCharts || note("当前范围内没有可绘制的网络观测数据。")) +
     div +
     "<h3>既有网络检测档案</h3>" +
     (networkDetail ||
@@ -612,8 +630,8 @@ export function renderReportHtml(model: ReportModel) {
     (cpu && cpu.gaps.length > 0);
   const payload = safeJson(model);
   const html = `<!doctype html><html lang="zh-CN" data-theme="${model.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><title>${e(model.node.name)} · VPS 全面报告 · Aster</title><style>${reportCss}</style></head><body><header class="masthead"><div><div class="kicker">Aster · VPS Comprehensive Report</div><div class="title-line"><h1>${e(model.node.name)}</h1><span class="tag${limited || !history ? " warning" : ""}">${history ? (limited ? "已生成 · 部分覆盖" : "已生成 · 详见数据覆盖") : "无历史数据 · 仅配置快照"}</span></div><p class="period">${e(date(model.range.start))} — ${e(date(model.range.end))}<br>${e(model.range.timeZone)} · 生成于 ${e(date(model.generatedAt))}</p></div><div class="toolbar"><button type="button" data-print>打印 / 存为 PDF</button><button type="button" data-json>数据 JSON</button></div></header><div class="workspace"><nav aria-label="报告章节">${CHAPTERS.map(([key, name], i) => `<button type="button" data-chapter="${key}"${i === 0 ? ' aria-current="page"' : ""}><small>${String(i + 1).padStart(2, "0")}</small>${name}</button>`).join("")}<div class="nav-foot">独立快照 · 断网可读<br>${e(model.showAddresses ? "完整地址已包含" : "地址已脱敏")}<br>${e(model.reportId)}</div></nav><article class="paper">${CHAPTERS.map(([key, name], i) => `<section id="${key}" class="chapter"${i ? " hidden" : ""}><header class="chapter-head"><div><h2>${name}</h2><p>${e(model.node.name)} · 所选日期范围的已授权数据</p></div><span class="page-number">${String(i + 1).padStart(2, "0")} / 08</span></header><div class="chapter-body">${contents[i]}</div></section>`).join("")}<footer class="footer"><span>Aster · VPS 全面报告 · 格式版本 1</span><span>${e(model.node.name)} · ${e(date(model.generatedAt))}</span></footer></article></div><script id="report-data" type="application/json">${payload}</script><script>(${readerRuntime.toString()})();</script></body></html>`;
-  if (new TextEncoder().encode(html).byteLength > 20 * 1024 * 1024)
-    throw new Error("完整报告文件超过 20 MiB，请缩小日期范围后重新生成。");
+  if (new TextEncoder().encode(html).byteLength > 128 * 1024 * 1024)
+    throw new Error("完整报告文件超过 128 MiB，请缩小日期范围后重新生成。");
   return html;
 }
 
