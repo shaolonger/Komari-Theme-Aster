@@ -88,7 +88,7 @@ import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
-import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
+import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
@@ -184,7 +184,7 @@ function HomeWorkbenchPanel({
   risks,
   expanded,
   showOverview,
-  todayTrafficLabel,
+  todayTraffic,
   costSummary,
   costLoading,
   showCostDetailButton,
@@ -197,7 +197,7 @@ function HomeWorkbenchPanel({
   risks: HomeRiskItem[];
   expanded: boolean;
   showOverview: boolean;
-  todayTrafficLabel: string;
+  todayTraffic: { label: string; detail: string };
   costSummary: { remainingCny: number } | null;
   costLoading: boolean;
   showCostDetailButton: boolean;
@@ -261,10 +261,11 @@ function HomeWorkbenchPanel({
                 className="home-fleet-metric"
                 data-home-overview-trigger="traffic"
                 onClick={() => onOpenMetric("traffic")}
-                title="查看今日、本月和累计流量排行"
+                title={`${todayTraffic.detail} 点击查看流量排行。`}
+                aria-label={`今日流量 ${todayTraffic.label}。${todayTraffic.detail} 点击查看流量排行。`}
               >
                 <span>今日流量</span>
-                <strong>{todayTrafficLabel}</strong>
+                <strong>{todayTraffic.label}</strong>
               </button>
               <button
                 type="button"
@@ -1082,14 +1083,17 @@ export function NodeGrid() {
     () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone),
     [overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone],
   );
-  const todayTrafficLabel = useMemo(() => {
-    if (trafficHistoryQuery.isError) return "读取失败";
-    const available = trafficOverviewRows.filter((row) => row.today.quality !== "unavailable");
-    if (available.length === 0) return trafficHistoryQuery.isLoading ? "加载中" : "待计算";
-    if (available.length !== trafficOverviewRows.length || available.some((row) => row.today.quality === "partial")) {
-      return "部分数据";
-    }
-    return formatBytes(available.reduce((total, row) => total + row.today.total, 0));
+  const todayTraffic = useMemo(() => {
+    if (trafficHistoryQuery.isError) return { label: "读取失败", detail: "历史流量读取失败。" };
+    const summary = summarizeHomeTodayTraffic(trafficOverviewRows);
+    if (summary.available === 0) return { label: trafficHistoryQuery.isLoading ? "加载中" : "待计算", detail: "暂无可计算的今日流量。" };
+    const limited = summary.partial > 0 || summary.unavailable > 0;
+    return {
+      label: `${limited ? "≈ " : ""}${formatBytes(summary.total)}`,
+      detail: limited
+        ? `已汇总 ${summary.available}/${trafficOverviewRows.length} 台 VPS；其中 ${summary.partial} 台覆盖不完整，${summary.unavailable} 台暂无可计算数据，结果可能低估。`
+        : `已汇总全部 ${summary.available} 台 VPS 的今日流量。`,
+    };
   }, [trafficHistoryQuery.isError, trafficHistoryQuery.isLoading, trafficOverviewRows]);
   const hasNodes = allMeta.length > 0;
   // 资产概览卡片(剩余价值)始终显示,这样切换花费相关设置不会让整行重排。
@@ -1521,7 +1525,7 @@ export function NodeGrid() {
           risks={operationRisks}
           expanded={workbenchOpen}
           showOverview={showHomeOverview}
-          todayTrafficLabel={todayTrafficLabel}
+          todayTraffic={todayTraffic}
           costSummary={costSummary}
           costLoading={costLoading}
           showCostDetailButton={showCostDetailButton}
@@ -1569,7 +1573,7 @@ export function NodeGrid() {
         risks={operationRisks}
         expanded={workbenchOpen}
         showOverview={showHomeOverview}
-        todayTrafficLabel={todayTrafficLabel}
+        todayTraffic={todayTraffic}
         costSummary={costSummary}
         costLoading={costLoading}
         showCostDetailButton={showCostDetailButton}

@@ -311,7 +311,7 @@ function officialPingMetricSeries(params, fixture) {
         metric_key: metricKey,
         entity_id: uuid,
         tags: { task_id: "1" },
-        points: metricKey.startsWith("net.total.") && fixture.ui && !fixture.comprehensive && index === entityIds.length - 1
+        points: metricKey.startsWith("net.total.") && (fixture.trafficEmpty || (fixture.ui && !fixture.comprehensive && index === entityIds.length - 1))
           ? null
           : points,
       });
@@ -409,7 +409,7 @@ const server = createServer(async (request, response) => {
       theme: "Aster",
       ...(fixture.ui ? { record_preserve_time: 744, ping_record_preserve_time: 24 } : {}),
       theme_settings: {
-        showHomeOverview: Boolean(fixture.docs),
+        showHomeOverview: Boolean(fixture.docs || fixture.trafficSummary),
         showGroupTabs: Boolean(fixture.docs),
         desktopNodeViewMode: fixture.docs ? "large" : "compact",
         mobileNodeViewMode: "compact",
@@ -553,6 +553,8 @@ const server = createServer(async (request, response) => {
         }]);
       }
       if (payload.method === "public:queryMetrics") {
+        if (fixture.trafficFailure && payload.params?.metric_keys?.includes("net.total.up"))
+          return sendJson(response, { jsonrpc: "2.0", id: payload.id, error: { code: -32603, message: "fixture history unavailable" } });
         return sendRpcResult(response, payload.id, officialPingMetricSeries(payload.params, fixture));
       }
       if (payload.method === "public:getPingMetricStats") {
@@ -1009,9 +1011,24 @@ try {
   results.push({ backend: BACKEND_PROFILES.legacy.id, soakTicks: SOAK_TICK_TARGET, heapBefore: heapBefore.usedSize, heapAfter: heapAfter.usedSize, heapGrowth });
 
   await clearFixturePage(cdp);
-  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, soak: false, run: "ui-regressions", ui: true };
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, soak: false, run: "traffic-summary", ui: true, trafficSummary: true };
   await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await cdp.call("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
+  await waitUntil(cdp, `document.querySelector('[data-home-overview-trigger="traffic"] strong')?.textContent.startsWith('≈')`, 6_000);
+  failGate(await cdp.value(`document.querySelector('[data-home-overview-trigger="traffic"]').getAttribute('aria-label').includes('2/3')`), 'partial fleet total did not expose its coverage');
+  await cdp.value(`document.querySelector('[data-home-overview-trigger="traffic"]').click()`);
+  await waitUntil(cdp, `document.querySelectorAll('.home-overview-panel.show .home-overview-row').length===3`, 2_000);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.home-overview-panel.show .home-overview-row-value strong')).filter(el=>el.textContent!=='—').length===2`), 'traffic total and ranking disagreed about available nodes');
+  await cdp.value(`document.querySelector('.home-overview-panel.show .home-overview-close').click()`);
+  for (const [field, label] of [['trafficEmpty', '待计算'], ['trafficFailure', '读取失败']]) {
+    await clearFixturePage(cdp);
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, trafficSummary: true, [field]: true, run: field };
+    await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
+    await waitUntil(cdp, `document.querySelector('[data-home-overview-trigger="traffic"] strong')?.textContent===${JSON.stringify(label)}`, 8_000);
+  }
+  await clearFixturePage(cdp);
+  activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, soak: false, run: "ui-regressions", ui: true };
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/?fixture=3&backend=${BACKEND_PROFILES.official.id}` });
   await waitUntil(cdp, `document.querySelector('.home-ops-panel .home-ops-item') !== null`, 6_000);
   const compactOperations = await cdp.value(`(() => ({ compact: document.querySelector('.home-ops-panel')?.dataset.compact, href: document.querySelector('.home-ops-panel .home-ops-item')?.getAttribute('href'), text: document.querySelector('.home-ops-panel .home-ops-item')?.textContent }))()`);

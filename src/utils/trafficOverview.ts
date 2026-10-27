@@ -35,6 +35,17 @@ export interface HomeTrafficOverviewRow extends HomeOverviewNode {
   total: HomeTrafficUsage;
 }
 
+export function summarizeHomeTodayTraffic(rows: HomeTrafficOverviewRow[]) {
+  let total = 0, available = 0, partial = 0;
+  for (const row of rows) {
+    if (row.today.quality === "unavailable") continue;
+    available++;
+    total += row.today.total;
+    if (row.today.quality === "partial") partial++;
+  }
+  return { total, available, partial, unavailable: rows.length - available };
+}
+
 function safeCounter(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }
@@ -116,9 +127,9 @@ function resolvePeriodCounter(
   }
 
   const firstInPeriod = inPeriod[0];
-  const usableBoundary = beforePeriod && start - beforePeriod.time <= 15 * 60_000
-    ? beforePeriod
-    : null;
+  const usableBoundary = firstInPeriod.time === start
+    ? firstInPeriod
+    : beforePeriod && start - beforePeriod.time <= 15 * 60_000 ? beforePeriod : null;
   const baseline = usableBoundary ?? firstInPeriod;
   const latest = inPeriod.at(-1)!;
   const currentValue = safeCounter(current);

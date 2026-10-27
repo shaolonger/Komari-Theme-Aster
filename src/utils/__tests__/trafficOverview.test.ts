@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficPeriodStart, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange } from "@/utils/trafficOverview";
+import { buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficPeriodStart, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic } from "@/utils/trafficOverview";
 
 const NOW = new Date(2026, 5, 28, 12, 0, 0, 0).getTime();
 
@@ -145,5 +145,26 @@ describe("home traffic overview", () => {
     expect(rows[0]?.today.total).toBe(45);
     expect(rows[0]?.today.quality).toBe("partial");
     expect(rows[0]?.today.coverageStart).toBe(todayStart + 30 * 60_000);
+  });
+
+  it("accepts an actual sample exactly at midnight as a complete period boundary", () => {
+    const start = getHomeTrafficPeriodStart("today", NOW);
+    const node = { uuid: "node-a", name: "A", group: "", region: "", online: true, updatedAt: NOW, netUp: 0, netDown: 0, trafficUp: 1500, trafficDown: 2000, expiredAt: "" };
+    const [row] = buildHomeTrafficOverview([node], { "node-a": [
+      { time: start, net_total_up: 1000, net_total_down: 1500 } as never,
+      { time: NOW - 1000, net_total_up: 1400, net_total_down: 1900 } as never,
+    ] }, NOW);
+    expect(row?.today).toEqual({ up: 500, down: 500, total: 1000, quality: "measured", coverageStart: start });
+  });
+
+  it("sums every usable ranking value and reports partial and missing node counts", () => {
+    const node = { uuid: "a", name: "A", group: "", region: "", online: true, updatedAt: NOW, netUp: 0, netDown: 0, trafficUp: 0, trafficDown: 0, expiredAt: "" };
+    const rows = buildHomeTrafficOverview([node, { ...node, uuid: "b" }, { ...node, uuid: "c" }], {}, NOW);
+    rows[0]!.today = { up: 30, down: 70, total: 100, quality: "measured", coverageStart: NOW };
+    rows[1]!.today = { up: 20, down: 30, total: 50, quality: "partial", coverageStart: NOW };
+    expect(summarizeHomeTodayTraffic(rows)).toEqual({ total: 150, available: 2, partial: 1, unavailable: 1 });
+    rows[1]!.today = { up: 0, down: 0, total: 0, quality: "measured", coverageStart: NOW };
+    rows[2]!.today = { up: 0, down: 0, total: 0, quality: "measured", coverageStart: NOW };
+    expect(summarizeHomeTodayTraffic(rows)).toEqual({ total: 100, available: 3, partial: 0, unavailable: 0 });
   });
 });
