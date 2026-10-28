@@ -68,8 +68,23 @@ function FullTcpQualityReport({ round }: { round: ReportRound }) {
       <p>IPv4：{{available: "可用", unavailable: "不可用", unknown: "未知"}[data.coverage.ipv4]} · IPv6：{{available: "可用", unavailable: "不可用", unknown: "未知"}[data.coverage.ipv6]}</p>
       {data.coverage.sections.length > 0 && <details><summary>各检测项目覆盖</summary>{data.coverage.sections.map(section => <p key={section.name}>{section.name}：成功 {section.ok} / 失败 {section.failed} / 跳过 {section.skipped} / 未知 {section.unknown}</p>)}</details>}
     </div>}
+    {reportUrl && <section className="report-upstream-preview" aria-label="TcpQuality 在线报告预览">
+      <div className="report-upstream-heading">
+        <div><strong>在线报告预览</strong><p>在此查看上游报告及其分类切换。</p></div>
+        <a href={reportUrl} target="_blank" rel="noreferrer">无法预览？打开原报告</a>
+      </div>
+      <iframe
+        key={round.id + reportUrl}
+        title="TcpQuality 在线报告"
+        src={reportUrl}
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin allow-downloads allow-popups"
+        allow="clipboard-write"
+        referrerPolicy="no-referrer"
+      />
+      <p className="report-caption">报告由上游网站提供，小屏幕可在预览区域横向滑动；若显示空白或被拦截，请使用上方链接。原始记录仍可在下方查看。</p>
+    </section>}
     <div className="report-actions">
-      {reportUrl && <a href={reportUrl} target="_blank" rel="noreferrer">打开上游报告</a>}
       {data.csv && <button type="button" onClick={downloadCsv}>下载 CSV{data.csvTruncated ? "（已截断）" : ""}</button>}
     </div>
     {(data.logTruncated || data.csvTruncated) && <p role="status">报告超过保存上限，展示或下载的内容已截断；请查看探测器上的原始文件。</p>}

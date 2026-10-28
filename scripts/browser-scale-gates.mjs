@@ -1413,7 +1413,11 @@ try {
     await waitUntil(cdp,`document.querySelectorAll('.report-latency-card').length===9`,2000);
     await waitUntil(cdp,`document.querySelector('.report-full-tcp pre')?.textContent.includes('TcpQuality 测试报告示例')`,2000);
     failGate(await cdp.value(`document.querySelector('.report-full-tcp').textContent.includes('上游报告已补传') && document.querySelector('.report-full-tcp a')?.href==='https://tcpquality.ibsgss.uk/r/fixture' && document.querySelector('.report-full-tcp button')?.textContent.includes('CSV')`), 'full TcpQuality report or recovered URL missing');
+    failGate(await cdp.value(`(()=>{const f=document.querySelector('.report-upstream-preview iframe');return f?.getAttribute('src')==='https://tcpquality.ibsgss.uk/r/fixture' && f.title==='TcpQuality 在线报告' && f.referrerPolicy==='no-referrer' && f.sandbox.contains('allow-scripts') && !f.sandbox.contains('allow-top-navigation')})()`), 'full TcpQuality inline preview missing or unsafe');
     failGate(await cdp.value(`document.querySelector('.report-full-coverage').textContent.includes('失败 1') && document.querySelector('.report-full-coverage').textContent.includes('IPv6：不可用')`), 'full TcpQuality coverage was misreported');
+    await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('.report-upstream-preview iframe').getBoundingClientRect().width<=innerWidth`), 'TcpQuality preview overflows mobile viewport');
+    await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     if(process.env.BROWSER_GATE_SCREENSHOT){
       await cdp.value(`document.querySelector('.report-latency-grid').scrollIntoView({block:'start'})`);
       await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-tcp-${appearance}.png`);

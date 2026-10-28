@@ -358,6 +358,12 @@
 .report-full-tcp p { margin: 0; }
 .report-full-coverage { display: grid; gap: 0.35rem; color: var(--text-secondary); font-size: 0.8rem; }
 .report-full-coverage details p { padding-top: 0.35rem; }
+.report-upstream-preview { min-width: 0; overflow: hidden; border: 1px solid var(--border-subtle, #dde3ea); border-radius: 0.7rem; }
+.report-upstream-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.8rem; font-size: 0.84rem; }
+.report-upstream-heading p { margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.75rem; }
+.report-upstream-heading a { font-size: 0.75rem; }
+.report-upstream-preview iframe { display: block; width: 100%; height: clamp(520px, 75vh, 920px); border: 0; background: #101019; }
+.report-upstream-preview > .report-caption { padding: 0.7rem 0.8rem; }
 .report-full-tcp .report-actions { margin: 0; flex-wrap: wrap; }
 .report-full-tcp details {
   min-width: 0;
