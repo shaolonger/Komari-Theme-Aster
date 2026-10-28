@@ -4,7 +4,7 @@ const fs = require("fs"), path = require("path");
 const { UUID } = require("./model.js");
 const DAY = 86400000, HOUR = 3600000;
 const DATE = /^\d{4}-\d\d-\d\d$/, INDEX = /^\d{4}-\d\d-\d\d\.json$/;
-function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing, clock, invalidateRound }) {
+function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing, clock, invalidateRound, recoverOneFullDeletion }) {
   const stateFile = path.join(base, "maintenance.json"), metas = new Map();
   let saved = null, cycleCache = null, treeCache = new Map(), indexCache = null;
   const receiptDirectories = new Set();
@@ -42,7 +42,7 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
   function due(rows) {
     let next = Infinity;
     for (const row of rows) {
-      if (!row.completedAt) continue;
+      if (!row.completedAt || row.module === "tcpquality-full") continue;
       const at = Date.parse(row.completedAt);
       if (Number.isFinite(at)) next = Math.min(next, at + (row.detailAvailable ? 7 : 90) * DAY + 1);
     }
@@ -130,6 +130,7 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
   }
   function stepIndex(work, isRoundActive) {
     if (!UUID.test(work.node || "") || !modules.includes(work.module) || !INDEX.test(work.name)) throw new Error("保留期扫描游标无效");
+    if (work.module === "tcpquality-full") { note(work.node, work.module, work.name, currentRows(work)); indexCache = null; return true; }
     if (work.deleting) {
       // A queued lease can outlive an already-committed manifest after a
       // process/save failure. Check the queue on every resumed deletion step,
@@ -193,6 +194,10 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
     return path.join(base, "receipts", bucket(at), id + ".json");
   }
   function writeReceipt(id, value) { write(receiptPath(id, value.at), value); }
+  function deleteReceipt(id, at) {
+    const file = receiptPath(id, at);
+    try { fs.unlinkSync(file); } catch (error) { if (!missing(error, file)) throw error; }
+  }
   function receipt(id) {
     const now = clock();
     for (let day = 0; day < 8; day++) {
@@ -260,14 +265,16 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
     const started = Date.now(), maxSteps = Math.max(1, Math.min(512, Number(options.maxSteps) || 32)), maxMs = Math.max(1, Math.min(100, Number(options.maxMs) || 10));
     const current = state();
     if (!current.cycle && current.nextAt > clock()) return { pending: false, steps: 0, nextAt: current.nextAt };
-    if (!current.cycle) current.cycle = { nodes: [...new Set(nodeUuids)].filter(id => UUID.test(id)), nodeIndex: 0, moduleIndex: 0, files: null, fileIndex: 0, work: null, phase: "nodes", legacyAfter: "", receiptAfter: "" };
+    if (!current.cycle) current.cycle = { nodes: [...new Set(nodeUuids)].filter(id => UUID.test(id)), nodeIndex: 0, moduleIndex: 0, files: null, fileIndex: 0, work: null, phase: "deletes", legacyAfter: "", receiptAfter: "" };
     const isRoundActive = typeof options.isRoundActive === "function" ? options.isRoundActive : null;
     let steps = 0;
     try {
       while (current.cycle && steps < maxSteps && Date.now() - started < maxMs) {
         steps++;
         const cycle = current.cycle;
-        if (cycle.phase === "nodes") {
+        if (cycle.phase === "deletes") {
+          if (!recoverOneFullDeletion || !recoverOneFullDeletion()) cycle.phase = "nodes";
+        } else if (cycle.phase === "nodes") {
           const node = cycle.nodes[cycle.nodeIndex];
           if (!node) { cycle.phase = "receipts"; continue; }
           const module = modules[cycle.moduleIndex];
@@ -302,6 +309,6 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
     }
     return { pending: !!current.cycle, steps, nextAt: current.nextAt, elapsedMs: Date.now() - started };
   }
-  return { beforeIndex, noteIndex, maintenanceStep, receipt, writeReceipt };
+  return { beforeIndex, noteIndex, maintenanceStep, receipt, writeReceipt, deleteReceipt };
 }
 module.exports = { retentionStore };

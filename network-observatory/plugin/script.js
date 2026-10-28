@@ -47,8 +47,9 @@ function authorized(req, res) {
   return false;
 }
 function readBody(req) {
-  if (!req.body || req.body.length > 131072)
-    throw new Error("请求内容为空或超过 128 KiB");
+  const workerResult = /^\/api\/aster-network-observatory\/v2\/workers\/(?:node|probe)\/[^/]+\/result(?:\?|$)/.test(String(req.url || ""));
+  if (!req.body || req.body.length > (workerResult ? 1000000 : 131072))
+    throw new Error(workerResult ? "结果请求为空或超过 1 MB" : "请求内容为空或超过 128 KiB");
   return JSON.parse(req.body);
 }
 function load() {

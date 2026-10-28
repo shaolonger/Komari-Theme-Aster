@@ -5,14 +5,14 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=aster-netobs
 Group=aster-netobs
+ExecStartPre=+/usr/bin/python3 /usr/local/libexec/aster-network-observatory/agent.py prepare --config /etc/aster-network-observatory/probe-%i.json
 ExecStart=/usr/bin/python3 /usr/local/libexec/aster-network-observatory/agent.py run --config /etc/aster-network-observatory/probe-%i.json
 Restart=always
 RestartSec=10s
 UMask=0077
-StateDirectory=aster-network-observatory
-StateDirectoryMode=0700
+ReadWritePaths=/var/lib/aster-network-observatory
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

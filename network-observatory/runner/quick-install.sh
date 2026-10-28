@@ -8,6 +8,7 @@ SERVER_URL=''
 NODE_UUID=''
 PROBE_ID=''
 UPGRADE=0
+ENABLE_TCPQUALITY=0
 
 fail() {
   printf 'Aster 网络观测安装失败：%s\n' "$1" >&2
@@ -73,6 +74,7 @@ resource_preflight() {
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --upgrade) UPGRADE=1; shift ;;
+    --enable-tcpquality-full) ENABLE_TCPQUALITY=1; shift ;;
     --profile|--server-url|--node-uuid|--probe-id)
       [ "$#" -ge 2 ] || fail "$1 缺少参数。"
       case "$1" in
@@ -83,7 +85,7 @@ while [ "$#" -gt 0 ]; do
       esac
       shift 2 ;;
     --help|-h)
-      printf '%s\n' '用法：sh install.sh [--upgrade] [--profile auto|lite|full|preserve] [--server-url URL] [--node-uuid UUID | --probe-id UUID]' \
+      printf '%s\n' '用法：sh install.sh [--upgrade] [--enable-tcpquality-full] [--profile auto|lite|full|preserve] [--server-url URL] [--node-uuid UUID | --probe-id UUID]' \
         'auto 在内存不超过 192 MiB 或根分区可用空间少于 192 MiB 时选 lite。' \
         'lite：Python、HTTPS 环境、MTR 和 traceroute；full 另含 NextTrace、iperf3、openssl 和 nping。'
       exit 0 ;;
@@ -111,6 +113,14 @@ else
   fail '需要使用 systemd 或 OpenRC 的 Linux VPS；Alpine 请确认已安装并启用 OpenRC。'
 fi
 command -v curl >/dev/null 2>&1 || fail '缺少 curl；请先安装 curl 后重新运行一键命令。'
+if [ "$ENABLE_TCPQUALITY" -eq 1 ] && [ "$UPGRADE" -ne 1 ]; then
+  if [ -f /etc/aster-network-observatory/agent.json ]; then
+    fail '检测到现有探测器；请使用 --upgrade --enable-tcpquality-full 安全迁移并保留凭证。'
+  fi
+  for config in /etc/aster-network-observatory/probe-*.json; do
+    [ ! -f "$config" ] || fail '检测到现有测量点；请使用 --upgrade --enable-tcpquality-full 安全迁移并保留凭证。'
+  done
+fi
 if [ "$UPGRADE" -eq 1 ]; then
   case "$PROFILE" in auto|preserve) ;; *) fail '--upgrade 会保留原模式；调整工具请使用不带 --upgrade 的安装命令。' ;; esac
   command -v python3 >/dev/null 2>&1 || fail '未找到已有 Python 环境，请先执行普通安装命令。'
@@ -121,12 +131,8 @@ upgrade_existing() {
   [ -z "$SERVER_URL" ] || set -- "$@" --server-url "$SERVER_URL"
   [ -z "$NODE_UUID" ] || set -- "$@" --node-uuid "$NODE_UUID"
   [ -z "$PROBE_ID" ] || set -- "$@" --probe-id "$PROBE_ID"
-  python3 "$updater" "$@"
+  ASTER_ENABLE_TCPQUALITY_FULL="$ENABLE_TCPQUALITY" python3 "$updater" "$@"
 }
-if [ "$UPGRADE" -eq 1 ] && [ -f /usr/local/libexec/aster-network-observatory/updater.py ]; then
-  upgrade_existing /usr/local/libexec/aster-network-observatory/updater.py
-  exit
-fi
 
 package_manager() {
   if command -v apk >/dev/null 2>&1; then printf apk;
@@ -147,6 +153,21 @@ install_packages() {
     zypper) zypper --non-interactive install "$@" || fail 'zypper 安装网络检测依赖失败。' ;;
   esac
 }
+
+if [ "$ENABLE_TCPQUALITY" -eq 1 ]; then
+  # Full TcpQuality runs in a private mount namespace. A lite installation
+  # normally has neither bash nor unshare; install only the missing tools.
+  packages=''
+  command -v bash >/dev/null 2>&1 || packages="$packages bash"
+  if ! command -v unshare >/dev/null 2>&1 || ! unshare --help 2>&1 | grep -q -- --propagation; then
+    packages="$packages util-linux"
+  fi
+  [ -z "$packages" ] || install_packages $packages
+  command -v bash >/dev/null 2>&1 && command -v unshare >/dev/null 2>&1 || fail '完整 TcpQuality 需要 bash 和 util-linux 的 unshare；请检查软件源后重试。'
+  if ! unshare --help 2>&1 | grep -q -- --propagation; then
+    fail 'unshare 不支持 --propagation；请安装 util-linux 版本后重试。'
+  fi
+fi
 
 if [ "$PROFILE" = preserve ]; then PROFILE=auto; fi
 if [ "$PROFILE" = auto ]; then
@@ -233,6 +254,10 @@ expected = {
     "runner/native.py",
     "runner/public_speed.py",
     "runner/tcp_quality.py",
+    "runner/tcpquality_full.py",
+    "runner/tcpquality_helper.py",
+    "runner/aster-network-observatory-tcpquality.service",
+    "runner/aster-network-observatory-tcpquality.openrc",
     "runner/http_receiver.py",
     "runner/aster-network-observatory-http.service",
     "runner/aster-network-observatory-agent.service",
@@ -322,7 +347,7 @@ install_nexttrace() {
 install_probe_dependencies
 [ "$PROFILE" != full ] || install_nexttrace
 
-ASTER_INSTALL_PROFILE="$PROFILE" sh "$TEMP_DIR/runner/install.sh"
+ASTER_ENABLE_TCPQUALITY_FULL="$ENABLE_TCPQUALITY" ASTER_INSTALL_PROFILE="$PROFILE" sh "$TEMP_DIR/runner/install.sh"
 set --
 [ -z "$SERVER_URL" ] || set -- "$@" --server-url "$SERVER_URL"
 [ -z "$NODE_UUID" ] || set -- "$@" --node-uuid "$NODE_UUID"

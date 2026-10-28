@@ -104,13 +104,18 @@ class PublicSpeedTests(unittest.TestCase):
 
     def test_syn_response_failure_is_not_business_packet_loss(self):
         output = "Max rtt: 30.0ms | Min rtt: 10.0ms | Avg rtt: 20.0ms\nRaw packets sent: 5 (200B) | Rcvd: 3 (120B) | Lost: 2 (40%)"
-        with patch.object(tcp_quality.shutil, "which", return_value="nping"), patch.object(native, "execute", return_value=(0, output, "")):
+        with patch.object(tcp_quality.shutil, "which", return_value="nping"), patch.object(native, "execute", return_value=(0, output, "")) as run:
             result = tcp_quality.syn_probe("8.8.8.8", 443, 5, 1200, native)
+            self.assertIn("--privileged", run.call_args.args[0])
         self.assertEqual(result["unansweredPercent"], 40)
         self.assertEqual(result["avgMs"], 20)
         self.assertNotIn("lossPercent", result)
         with patch.object(tcp_quality.shutil, "which", return_value=None):
             self.assertEqual(tcp_quality.syn_probe("8.8.8.8", 443, 5, 0, native)["state"], "unavailable")
+        with patch.object(tcp_quality.shutil, "which", return_value="nping"), patch.object(native, "execute", return_value=(1, "", "Couldn't acquire raw socket")):
+            unavailable = tcp_quality.syn_probe("8.8.8.8", 443, 5, 0, native)
+            self.assertEqual(unavailable["state"], "unavailable")
+            self.assertIn("raw socket", unavailable["diagnostic"])
 
     def test_upload_rejection_after_buffered_writes_is_never_valid_bandwidth(self):
         class Handler(http.server.BaseHTTPRequestHandler):

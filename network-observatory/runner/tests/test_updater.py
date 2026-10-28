@@ -112,6 +112,50 @@ class UpdaterTests(unittest.TestCase):
     def test_failed_preflight_does_not_stop_existing_service(self):
         self.exercise(preflight_fail=True)
 
+    def test_interrupted_upgrade_disables_helper_before_restoring_old_worker(self):
+        import base64
+        with tempfile.TemporaryDirectory() as temp:
+            state, root = Path(temp) / 'state', Path(temp) / 'runner'
+            state.mkdir(); root.mkdir()
+            worker = root / 'agent.py'
+            worker.write_text('new')
+            saved = {'files': {str(worker): {'data': base64.b64encode(b'old').decode(), 'mode': 0o644}},
+                     'services': ['aster-network-observatory'], 'configs': [], 'disableTcpQuality': True}
+            (state / U.JOURNAL).write_text(json.dumps(saved))
+            operations = []
+            with patch.object(U, 'STATE', state), patch.object(U, 'journal_files', return_value={str(worker)}), patch.object(U, 'manager', return_value='openrc'), patch.object(U, 'disable_tcpquality_helper', side_effect=lambda: operations.append('disable-helper')), patch.object(U, 'service', side_effect=lambda name, action, check=True: operations.append(action + ':' + name)):
+                self.assertTrue(U.recover())
+            self.assertEqual(worker.read_text(), 'old')
+            self.assertEqual(operations, ['disable-helper', 'stop:aster-network-observatory', 'start:aster-network-observatory'])
+            self.assertFalse((state / U.JOURNAL).exists())
+
+    def test_failed_helper_disable_never_restores_unprotected_worker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp)
+            (state / U.JOURNAL).write_text(json.dumps({'files': {}, 'services': ['aster-network-observatory'], 'configs': [], 'disableTcpQuality': True}))
+            with patch.object(U, 'STATE', state), patch.object(U, 'disable_tcpquality_helper', side_effect=RuntimeError('refused')), patch.object(U, 'service') as service:
+                with self.assertRaisesRegex(RuntimeError, 'refused'): U.recover()
+                service.assert_not_called()
+            self.assertTrue((state / U.JOURNAL).exists())
+
+    def test_helper_boot_disable_precedes_stop_on_both_init_systems(self):
+        for system in ['openrc', 'systemd']:
+            operations = []
+            def command(args, **kwargs):
+                operations.append(' '.join(args))
+                return SimpleNamespace(returncode=1 if 'is-enabled' in args or 'is-active' in args else 0, stdout=b'', stderr=b'')
+            def service(name, action, check=True):
+                operations.append(action + ':' + name)
+                if action == 'stop': raise TimeoutError('simulated stuck helper')
+                return SimpleNamespace(returncode=1)
+            with self.subTest(system=system), patch.object(U, 'manager', return_value=system), patch.object(U.subprocess, 'run', side_effect=command), patch.object(U, 'service', side_effect=service):
+                if system == 'openrc':
+                    with self.assertRaises(TimeoutError): U.disable_tcpquality_helper()
+                    self.assertLess(operations.index('rc-update del aster-network-observatory-tcpquality default'), operations.index('stop:aster-network-observatory-tcpquality'))
+                else:
+                    U.disable_tcpquality_helper()
+                    self.assertLess(operations.index('systemctl disable aster-network-observatory-tcpquality.service'), operations.index('systemctl stop aster-network-observatory-tcpquality.service'))
+
 
 if __name__ == "__main__":
     unittest.main()

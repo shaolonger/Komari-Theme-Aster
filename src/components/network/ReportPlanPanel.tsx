@@ -68,6 +68,7 @@ export function ReportPlanPanel({
       seconds: 10,
       warmupSeconds: 2,
       streams: [1], samples: 10, packetSizes: [], maxTrafficMiB: 1024,
+      ...(preset.module === "tcpquality-full" ? { profile: "AUTO" as const, timeoutMinutes: 120 } : {}),
       enabled: true,
       timing: preset.timing,
       nextAt: 0,
@@ -189,7 +190,7 @@ export function ReportPlanPanel({
                     {selected?.preset === preset.id && <Check size={14} />}
                   </strong>
                   <small>
-                    {preset.traffic
+                    {preset.module === "tcpquality-full" ? "完整 TcpQuality · 长时任务" : preset.traffic
                       ? "全速 · 需要授权资源"
                       : `${preset.endpoints.length} 个预设目标`}
                   </small>
@@ -225,7 +226,7 @@ export function ReportPlanPanel({
                   移除模块
                 </button>
               </div>
-              <div className="network-inline-fields">
+              {mod.module !== "tcpquality-full" && <div className="network-inline-fields">
                 <label>
                   地址族
                   <select
@@ -261,7 +262,21 @@ export function ReportPlanPanel({
                     </select>
                   </label>
                 )}
-              </div>
+              </div>}
+              {mod.module === "tcpquality-full" && <>
+                <div className="network-inline-fields">
+                  <label>执行档位<select value={mod.profile || "AUTO"} onChange={e => moduleChange(mod.module, { profile: e.target.value as "AUTO" | "FULL" | "LOWMEM" })}>
+                    <option value="AUTO">自动 · 根据内存选择</option><option value="FULL">标准</option><option value="LOWMEM">低内存 · 单并发</option>
+                  </select></label>
+                  <label>超时上限<select value={mod.timeoutMinutes || 120} onChange={e => moduleChange(mod.module, { timeoutMinutes: Number(e.target.value) })}>
+                    {[30, 60, 90, 120, 150].map(n => <option key={n} value={n}>{n} 分钟</option>)}
+                  </select></label>
+                </div>
+                <p className="report-caption">执行完整 TcpQuality --all，低内存模式保持检测项目并降低并发。测试会下载并以 root 权限运行上游脚本，可能持续数小时，同一 VPS 的其他检测将在此期间排队；执行器保守要求临时目录至少 700 MiB 可用空间及挂载权限，受限容器可能无法运行。请避免与旧版定时脚本同时运行。报告长期保存，请关注面板磁盘空间。</p>
+                <p className="report-caption">先升级面板的网络观测插件，再在已安装探测器的 VPS 上启用完整检测执行器；以下命令保留已有凭证。需要 bash、curl 和 util-linux 的 unshare。</p>
+                <p className="report-caption">预览中执行器在线只表示服务可连接；实际执行还取决于容器权限、可用空间和上游服务。</p>
+                <pre className="report-json">curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full</pre>
+              </>}
               {mod.module === "tcp-quality" && <div className="network-inline-fields">
                 <label>完整 TCP 建连样本<select value={mod.samples || 10} onChange={e => moduleChange(mod.module, { samples: Number(e.target.value) })}>
                   {[3, 5, 10].map(n => <option key={n} value={n}>{n} 次</option>)}
@@ -272,7 +287,7 @@ export function ReportPlanPanel({
                 <p className="report-caption">SYN 比较需要探测器安装 nping 及 CAP_NET_RAW；未响应率不等同于业务丢包，包长结果不认证 MTU。不可用时注明原因。</p>
               </div>}
               {mod.module === "routes" && <p className="report-caption">目标名称表示目的网络，不强制选路。默认京沪广三网 9 点；增加 CN2/9929/CMIN2 可比较不同目的网络。公共去程仅按实际国家与 ASN 匹配，不承诺京沪广对称覆盖。</p>}
-              {mod.module === "bgp" ? (
+              {mod.module === "tcpquality-full" ? null : mod.module === "bgp" ? (
                 <p className="report-caption">
                   使用此 VPS 登记的公网 IPv4/IPv6 自动查询实际宣告前缀。公开 BGP
                   数据按来源保存；同前缀共享 55 分钟缓存。
@@ -507,7 +522,7 @@ export function ReportPlanPanel({
                             }
                           : {
                               type: "interval",
-                              minutes: mod.module.endsWith("speed")
+                              minutes: mod.module === "tcpquality-full" ? 1440 : mod.module.endsWith("speed")
                                 ? 1440
                                 : mod.module === "routes" ||
                                     mod.module === "bgp"
@@ -535,7 +550,7 @@ export function ReportPlanPanel({
                       })
                     }
                   >
-                    {(mod.module.endsWith("speed")
+                    {(mod.module === "tcpquality-full" ? [60, 120, 180, 240, 360, 480, 720, 1440] : mod.module.endsWith("speed")
                       ? [1440]
                       : mod.module === "bgp"
                         ? [60, 360, 720, 1440]
@@ -604,6 +619,7 @@ export function ReportPlanPanel({
                   </p>
                 </>
               )}
+              {mod.module === "tcpquality-full" && <p className="report-caption">如果上一轮仍在运行，重叠的定时轮次会记录为跳过；建议间隔大于单次检测的超时时间。</p>}
             </section>
           ))}
         </>

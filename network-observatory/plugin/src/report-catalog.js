@@ -223,6 +223,8 @@ const publicSpeed = ["北京", "上海", "广州"].flatMap(city => ["电信", "�
 })));
 const ENDPOINTS = [...aws, ...sites, ...dcs, ...routes, ...leaseweb, ...xtom, ...publicSpeed];
 const PRESETS = [
+  { id: "tcpquality-full", name: "TcpQuality 完整检测", module: "tcpquality-full", endpoints: [],
+    timing: { type: "daily", times: ["03:00"], timezone: "Asia/Shanghai" } },
   { id: "tcp-quality", name: "大陆 TCP 质量", module: "tcp-quality",
     endpoints: routes.filter(e => e.family === "4" && /(?:pek|sha|can)_ipv4_(?:4134|4837|9808)$/.test(e.id)).map(e => e.id),
     timing: { type: "interval", minutes: 60 } },

@@ -17,6 +17,42 @@ function drain(store, nodes = [NODE], options = { maxSteps: 3, maxMs: 100 }) {
   do { result = store.maintenanceStep(nodes, options); assert.ok(++calls < 20000, "maintenance did not finish"); } while (result.pending);
   return calls;
 }
+test("full report deletion survives crashes and bounded maintenance removes its remnants", () => {
+  for (const phase of ["rename", "index", "receipt", "directory", "intent"]) {
+    const f = fixture(), store = f.make(), unlink = fs.unlinkSync, remove = fs.rmSync, rename = fs.renameSync;
+    try {
+      const round = create(store, 1, { module: "tcpquality-full" });
+      const fullJob = { ...job(round), operation: "tcpquality-full" };
+      store.complete(fullJob, { kind: "tcpquality-full", state: "failed", deadlineExpired: true });
+      fs.unlinkSync = function(file, ...args) {
+        const name = String(file);
+        if ((phase === "index" && name.includes("/indexes/tcpquality-full/")) ||
+            (phase === "receipt" && name.includes("/full-receipts/")) ||
+            (phase === "intent" && name.includes("/full-delete-intents/"))) throw new Error("simulated deletion crash");
+        return unlink(file, ...args);
+      };
+      fs.renameSync = function(from, to) {
+        if (phase === "rename" && String(to).includes("/.deleting-")) throw new Error("simulated deletion crash");
+        return rename(from, to);
+      };
+      fs.rmSync = function(file, ...args) {
+        if (phase === "directory" && String(file).includes("/.deleting-")) throw new Error("simulated deletion crash");
+        return remove(file, ...args);
+      };
+      assert.throws(() => store.deleteFullRound(NODE, round.id), /simulated deletion crash/);
+      fs.unlinkSync = unlink; fs.rmSync = remove; fs.renameSync = rename;
+      const restarted = f.make();
+      assert.equal(restarted.get(NODE, round.id), null);
+      assert.equal(restarted.acceptLateFull(fullJob.id, fullJob.executor, { kind: "tcpquality-full", state: "ok" }), false);
+      assert.equal(restarted.rebuild(NODE), 0);
+      drain(restarted);
+      assert.deepEqual(restarted.list(NODE, "tcpquality-full").rounds, []);
+      assert.equal(restarted.receipt(fullJob.id, fullJob.executor), false);
+      assert.equal(fs.existsSync(path.join(f.root, "report-v3", "nodes", NODE, "rounds", ".deleting-" + round.id)), false);
+      assert.equal(fs.existsSync(path.join(f.root, "report-v3", "full-delete-intents", NODE + "_" + round.id + ".json")), false);
+    } finally { fs.unlinkSync = unlink; fs.rmSync = remove; fs.renameSync = rename; f.close(); }
+  }
+});
 test("250-result batch keeps write-ahead results and coalesces manifest, index and active commits", () => {
   const f = fixture(), store = f.make(), originalWrite = fs.writeFileSync, originalAccess = fs.accessSync;
   let manifests = 0, indexes = 0, active = 0, measurements = 0, uncommittedProbes = 0;
@@ -308,4 +344,23 @@ test("a failed index rename after the partial manifest commit is repaired during
     assert.equal(restarted.get(NODE, round.id, false).counts.completed, 1);
     assert.equal(restarted.list(NODE, "international").rounds[0].counts.completed, 1);
   } finally { fs.renameSync = originalRename; f.close(); }
+});
+test('full TcpQuality history survives retention and remains paginated after years', () => {
+  const f=fixture(), store=f.make(), start=f.now();
+  try {
+    const ids=[];
+    for(let i=0;i<52;i++) {
+      f.set(start+i*DAY);
+      const round=create(store,1,{module:'tcpquality-full'}); ids.push(round.id);
+      store.complete({...job(round),operation:'tcpquality-full'},{kind:'tcpquality-full',state:'ok',cleanLog:'报告 '+i,csv:'x,y'});
+    }
+    f.set(start+3*365*DAY); drain(store);
+    store.cleanup(NODE);
+    const restarted=f.make(), first=restarted.list(NODE,'tcpquality-full',{limit:50});
+    assert.equal(first.rounds.length,50); assert.ok(first.nextCursor);
+    const next=restarted.list(NODE,'tcpquality-full',{limit:50,cursor:first.nextCursor});
+    assert.equal(next.rounds.length,2); assert.equal(next.nextCursor,null);
+    assert.equal(restarted.get(NODE,ids[0]).measurements[0].data.cleanLog,'报告 0');
+    assert.equal(restarted.get(NODE,ids[51]).measurements[0].data.cleanLog,'报告 51');
+  } finally {f.close();}
 });

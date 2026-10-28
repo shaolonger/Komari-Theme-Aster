@@ -68,7 +68,7 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed", "tcp-quality", "public-speed",
+      "http-speed", "tcp-quality", "public-speed", "tcpquality-full",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
@@ -207,12 +207,12 @@ function registerReportController(ctx, native) {
     if (job.executor === "globalping")
       return previewOnly ? native.coverage(s, job) : ""; // Discovery at execution occurs outside the state lock.
     if (
-      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality"].includes(
+      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality", "tcpquality-full"].includes(
         job.operation,
       )
     )
       return "当前采集器未提供此测量操作";
-    const required = ["tcp-quality", "public-speed"].includes(job.operation) ? job.operation :
+    const required = ["tcp-quality", "public-speed", "tcpquality-full"].includes(job.operation) ? job.operation :
       job.operation === "latency"
         ? "latency-samples"
         : job.operation === "route"
@@ -285,6 +285,7 @@ function registerReportController(ctx, native) {
               plan.jobs.filter((j) => !readiness(s, j)).length *
               (mod.module.endsWith("speed")
                 ? 2 * (mod.seconds + mod.warmupSeconds)
+                : mod.module === "tcpquality-full" ? mod.timeoutMinutes * 60
                 : mod.module === "tcp-quality" ? 18 + 15 * (mod.packetSizes || []).length
                 : ["international", "idc"].includes(mod.module)
                   ? 18 / 4
@@ -309,7 +310,10 @@ function registerReportController(ctx, native) {
           j.policyId === suite.id &&
           j.reportModule === mod.module,
       );
-    if (pending.length) return scheduled && pending.some(j => j.expiresAt <= Date.now()) ? false : null;
+    const competing = mod.module === "tcpquality-full" && s.jobs.some(j => j.nodeUuid === nodeUuid && j.reportModule === mod.module);
+    if (pending.length && pending.some(j => j.roundId === stableId)) return stableId;
+    if (pending.length && mod.module !== "tcpquality-full") return scheduled && pending.some(j => j.expiresAt <= Date.now()) ? false : null;
+    if (competing && !scheduled) return null;
     const roundId = stableId || crypto.randomUUID();
     const existing = stableId && store.get(nodeUuid, roundId, false);
     if (existing) {
@@ -328,6 +332,13 @@ function registerReportController(ctx, native) {
       return existing.id;
     }
     const plan = R.planSlots(s, suite, mod, nodeUuid, roundId);
+    if (competing) {
+      // Record the scheduled occurrence rather than silently losing it or
+      // running a second intrusive benchmark concurrently on the same VPS.
+      const reason = "同一 VPS 的 TcpQuality 检测仍在运行或排队，本次计划已跳过";
+      for (const job of plan.jobs) job.missingReason = reason;
+      for (const slot of plan.slots) slot.missingReason = reason;
+    }
     const active = plan.jobs.filter((j) => !readiness(s, j));
     if (s.jobs.length + active.length > MAX_QUEUE) {
       if (scheduled) return false;
@@ -912,6 +923,13 @@ function registerReportController(ctx, native) {
       result || { error: "轮次不存在或已超过保留期" },
     );
   });
+  route("DELETE", "/nodes/:uuid/rounds/:id", (req, res, s) => {
+    const node = part(req, 2), id = part(req, 4);
+    if (!UUID.test(node || "") || !UUID.test(id || "")) throw new Error("报告标识无效");
+    if (native.isRoundActive(s, node, id)) throw new Error("检测仍在进行，请先取消");
+    if (!store.deleteFullRound(node, id)) { ctx.respond(res, 404, { error: "报告不存在" }); return; }
+    ctx.respond(res, 200, { ok: true });
+  });
   route("POST", "/nodes/:uuid/rounds/:id/share", (req, res, s) => {
     const nodeUuid = part(req, 2),
       roundId = part(req, 4),
@@ -1189,6 +1207,8 @@ function registerReportController(ctx, native) {
     },
     progress: (job) => store.progress(job),
     receipt: store.receipt,
+    acceptLateFull: store.acceptLateFull,
+    updateFullReportUrl: store.updateFullReportUrl,
     capabilities,
   };
 }

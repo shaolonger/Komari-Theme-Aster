@@ -32,6 +32,13 @@ async function runRoundScenario() {
   store.cleanup(node);
   if (store.get(node, round.id) !== null || store.rebuild(node) !== 0) throw new Error("expired round revived");
   console.log("Official Komari runtime: first round, manifest, per-target files, index, replay, recovery and catalogue passed");
+  const fullSuite = model.normalizeSuite({clients: [node], modules: [{module: "tcpquality-full"}]});
+  const fullId = crypto.randomUUID(), fullPlan = model.planSlots({endpoints: {}, probes: {}}, fullSuite, fullSuite.modules[0], node, fullId);
+  const fullRound = store.create({id: fullId, nodeUuid: node, suiteId: fullSuite.id, module: "tcpquality-full", slots: fullPlan.slots, _jobs: fullPlan.jobs});
+  store.complete(fullPlan.jobs[0], {kind: "tcpquality-full", state: "failed", deadlineExpired: true});
+  if (!store.deleteFullRound(node, fullRound.id) || store.get(node, fullRound.id) !== null || store.list(node, "tcpquality-full").rounds.length || store.receipt(fullPlan.jobs[0].id, "node:" + node)) throw new Error("full report deletion failed");
+  if (store.acceptLateFull(fullPlan.jobs[0].id, "node:" + node, {kind:"tcpquality-full",state:"ok"})) throw new Error("deleted full report accepted a late result");
+  console.log("Official Komari runtime: full report atomic directory rename, deletion and receipt cleanup passed");
   const speedFixture = await require("./tests/carrier-speed-fixture.cjs").speedFixture(__storageDir__, true, isMissingFile);
   const speed = (await speedFixture.invoke("GET", "/home-speeds")).body.nodes[node];
   if (speed.cities[0].rows[0].download.bitsPerSecond !== 200e6 || speed.cities[0].rows[0].upload.basis !== "tcp-acked") throw new Error("Homepage speed P1 projection mismatch");

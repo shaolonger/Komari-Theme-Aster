@@ -6,9 +6,11 @@ import getpass
 import grp
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
+import socket
 import threading
 import stat
 import subprocess
@@ -30,14 +32,17 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.12.0"
+RUNNER_VERSION = "1.13.0"
 RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
 STATE_DIR = Path("/var/lib/aster-network-observatory")
+TCPQUALITY_SOCKET = Path("/run/aster-network-observatory/tcpquality.sock")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 _outbox_scans = OrderedDict()
 _outbox_scan_lock = threading.Lock()
+_helper_allowed = None
+_helper_allowed_lock = threading.Lock()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -113,13 +118,69 @@ def load_config(path):
     return validate_config(config)
 
 
+class TcpQualityNotConnected(OSError):
+    """The helper socket failed before any request bytes could be sent."""
+
+
+def tcpquality_request(action, **values):
+    """Talk only to the locally installed, fixed-purpose privileged service."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(3)
+        try:
+            connection.connect(str(TCPQUALITY_SOCKET))
+        except OSError as error:
+            raise TcpQualityNotConnected(str(error)) from error
+        connection.sendall((json.dumps({"action": action, **values}, separators=(",", ":")) + "\n").encode())
+        data = bytearray()
+        while b"\n" not in data:
+            chunk = connection.recv(65536)
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > 1100000:
+                raise ValueError("TcpQuality 服务响应过大")
+    response = json.loads(bytes(data).split(b"\n", 1)[0].decode("utf-8"))
+    if not isinstance(response, dict) or response.get("error"):
+        raise ValueError(str(response.get("error", "TcpQuality 服务响应无效")) if isinstance(response, dict) else "TcpQuality 服务响应无效")
+    return response
+
+
+def tcpquality_tasks(config):
+    if config.get("role", "node") != "node":
+        return None
+    try:
+        result = tcpquality_request("list")
+        tasks = result.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        return [task for task in tasks if isinstance(task, dict) and task.get("nodeUuid") == config["nodeUuid"]
+                and UUID_RE.fullmatch(task.get("id", "")) and task.get("state") in ("running", "complete")]
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def heartbeat(config, stop):
     # A long route/throughput test must not make a healthy worker appear offline.
     while not stop.is_set():
         try:
-            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"], "activeJobIds": native.active_tasks()})
+            helper_tasks = tcpquality_tasks(config)
+            features = ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"]
+            if helper_tasks is not None:
+                features.append("tcpquality-full")
+            active = native.active_tasks() + [t["id"] for t in (helper_tasks or [])]
+            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": features, "activeJobIds": list(dict.fromkeys(active))})
             if "activeJobIds" in response:
-                native.reconcile_tasks(set(response["activeJobIds"]))
+                allowed = set(response["activeJobIds"])
+                global _helper_allowed
+                with _helper_allowed_lock:
+                    _helper_allowed = allowed
+                native.reconcile_tasks(allowed)
+                for task in helper_tasks or []:
+                    if task["state"] == "running" and task["id"] not in allowed:
+                        try:
+                            tcpquality_request("cancel", id=task["id"], nodeUuid=config["nodeUuid"])
+                        except (OSError, ValueError):
+                            pass
         except (urllib.error.URLError, OSError, ValueError):
             pass  # Polling reports connectivity errors; older plugins lack heartbeat.
         stop.wait(30)
@@ -207,30 +268,102 @@ def outbox_dir(config):
     folder = STATE_DIR / (config.get("role", "node") + "-" + config["nodeUuid"])
     if not UUID_RE.fullmatch(config["nodeUuid"]) or config.get("role", "node") not in {"node", "probe"}:
         raise ValueError("结果缓存身份无效")
-    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    folder.mkdir(parents=True, exist_ok=True, mode=0o770)
     if folder.is_symlink():
         raise ValueError("拒绝使用符号链接结果缓存")
     return folder
 
 
-def persist_result(config, task_id, data):
+def prepare_outbox(config):
+    """Prepare one worker's existing outbox for both old and unprivileged runners.
+
+    Called as root before starting that worker. Never follow a link when
+    adjusting ownership or permissions; do not touch other workers' data.
+    """
+    if os.geteuid() != 0:
+        raise PermissionError("准备探测器工作目录需要 root")
+    account = pwd.getpwnam("aster-netobs")
+    group = grp.getgrnam("aster-netobs").gr_gid
+    if account.pw_uid == 0 or group == 0 or account.pw_gid != group:
+        raise ValueError("aster-netobs 必须使用非 root UID 和独立主组；请检查系统账户配置")
+    role, identity = config.get("role", "node"), config["nodeUuid"]
+    if role not in {"node", "probe"} or not UUID_RE.fullmatch(identity):
+        raise ValueError("工作目录身份无效")
+    root_fd = os.open(STATE_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fchown(root_fd, 0, group)
+        os.fchmod(root_fd, 0o750)
+        name = role + "-" + identity
+        try:
+            os.mkdir(name, 0o770, dir_fd=root_fd)
+        except FileExistsError:
+            pass
+        folder_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        try:
+            os.fchown(folder_fd, 0, group)
+            os.fchmod(folder_fd, 0o770)
+            for entry in os.listdir(folder_fd):
+                stem = entry.split('.', 1)[0]
+                if not UUID_RE.fullmatch(stem) or entry[len(stem):] not in {'.json', '.tmp', '.start.json', '.start.tmp', '.orphan.json'}:
+                    continue
+                fd = os.open(entry, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder_fd)
+                try:
+                    info = os.fstat(fd)
+                    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                        raise ValueError("拒绝迁移非普通文件或硬链接结果缓存")
+                    os.fchown(fd, 0, group)
+                    os.fchmod(fd, 0o660 if entry.endswith('.tmp') else 0o640)
+                finally:
+                    os.close(fd)
+        finally:
+            os.close(folder_fd)
+    finally:
+        os.close(root_fd)
+
+
+def atomic_outbox_write(output, payload):
+    """Use a unique exclusive temporary name so links and old runners cannot collide."""
+    fd, name = tempfile.mkstemp(prefix=output.name + '.', suffix='.tmp', dir=output.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf8') as file:
+            json.dump(payload, file, separators=(',', ':'))
+            file.flush()
+            os.fsync(file.fileno())
+            os.fchmod(file.fileno(), 0o640)
+        os.replace(name, output)
+    except BaseException:
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def persist_result(config, task_id, data, revision=None):
     if not UUID_RE.fullmatch(task_id):
         raise ValueError("结果缓存任务 ID 无效")
     folder = outbox_dir(config)
     output = folder / (task_id + ".json")
-    temporary = output.with_suffix(".tmp")
-    with open(temporary, "w", encoding="utf8") as file:
-        os.chmod(temporary, 0o600)
-        json.dump({"id": task_id, "data": data, "createdAt": time.time()}, file, separators=(",", ":"))
-        file.flush()
-        os.fsync(file.fileno())
-    os.replace(temporary, output)
+    payload = {"id": task_id, "data": data, "createdAt": time.time()}
+    if revision is not None:
+        payload["helperRevision"] = revision
+    atomic_outbox_write(output, payload)
     return output
 
 
 def remove_result(file):
     try:
         file.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def retain_orphan(file):
+    """An expired full report remains recoverable instead of being silently deleted."""
+    destination = file.with_name(file.stem + ".orphan.json")
+    try:
+        os.replace(file, destination)
+        print(f"TcpQuality 结果未被面板接收，已保留：{destination}", file=sys.stderr, flush=True)
     except FileNotFoundError:
         pass
 
@@ -287,17 +420,93 @@ def flush_results(config):
             continue  # The sending worker won the delivery race.
         if payload.get("id") != file.stem:
             raise ValueError("结果缓存 ID 不一致")
-        if time.time() - payload.get("createdAt", 0) > 7 * 86400:
+        full = payload.get("data", {}).get("kind") == "tcpquality-full"
+        if not full and time.time() - payload.get("createdAt", 0) > 7 * 86400:
             remove_result(file)
             continue
         try:
             api_request(config, "result", method="POST", body={"id": payload["id"], "data": payload["data"]})
         except urllib.error.HTTPError as error:
             if error.code == 409:
-                remove_result(file)
+                retain_orphan(file) if full else remove_result(file)
                 continue
             raise
         remove_result(file)
+        if full:
+            try:
+                tcpquality_request("ack", id=payload["id"], nodeUuid=config["nodeUuid"], revision=payload.get("helperRevision"))
+            except (OSError, ValueError):
+                pass  # A helper replay is safe and acknowledged on the next pass.
+
+
+def persist_helper_start(config, task):
+    task_id = task.get("id", "")
+    if not UUID_RE.fullmatch(task_id):
+        raise ValueError("TcpQuality 任务 ID 无效")
+    folder = outbox_dir(config)
+    output = folder / (task_id + ".start.json")
+    atomic_outbox_write(output, {"id": task_id, "options": task.get("options") or {}})
+    with _helper_allowed_lock:
+        if _helper_allowed is not None:
+            _helper_allowed.add(task_id)
+
+
+def flush_helper_starts(config):
+    folder = outbox_dir(config)
+    with _helper_allowed_lock:
+        allowed = None if _helper_allowed is None else set(_helper_allowed)
+    if allowed is None:
+        return
+    for file in folder.glob("*.start.json"):
+        task_id = file.name[:-len(".start.json")]
+        if not UUID_RE.fullmatch(task_id) or file.is_symlink():
+            continue
+        # A previous attempt may have saved a terminal failure immediately
+        # before a crash. Never start it after that result has been saved.
+        if (folder / (task_id + ".json")).exists():
+            remove_result(file)
+            continue
+        if task_id not in allowed:
+            # A heartbeat can have been taken before this task was claimed.
+            # Retain the intent until a later heartbeat confirms the lease.
+            continue
+        payload = json.loads(file.read_text(encoding="utf8"))
+        if payload.get("id") != task_id:
+            raise ValueError("TcpQuality 启动缓存 ID 不一致")
+        # Persist uncertainty before contacting the helper. If the process
+        # crashes or loses the response, retries remain idempotent and never
+        # report failure while the real measurement might be running.
+        first_attempt = not payload.get("attempted", False)
+        if first_attempt:
+            payload["attempted"] = True
+            atomic_outbox_write(file, payload)
+        try:
+            tcpquality_request("start", id=task_id, nodeUuid=config["nodeUuid"], options=payload.get("options", {}))
+        except TcpQualityNotConnected:
+            if not first_attempt:
+                raise  # A prior request may have started the measurement.
+            persist_result(config, task_id, {"kind": "tcpquality-full", "state": "failed",
+                "diagnostic": "完整 TcpQuality 执行器未连接；请检查服务后重新检测"})
+            remove_result(file)
+            continue
+        remove_result(file)
+
+
+def collect_helper_results(config):
+    """Reattach after agent restart without launching the test again."""
+    for task in tcpquality_tasks(config) or []:
+        if task["state"] != "complete":
+            continue
+        folder = outbox_dir(config)
+        if (folder / (task["id"] + ".orphan.json")).exists():
+            continue
+        result = tcpquality_request("status", id=task["id"], nodeUuid=config["nodeUuid"])
+        data = result.get("data")
+        revision = result.get("revision")
+        if result.get("state") == "complete" and isinstance(data, dict) and data.get("kind") == "tcpquality-full" and type(revision) is int and revision > 0:
+            target = folder / (task["id"] + ".json")
+            if not target.exists():
+                persist_result(config, task["id"], data, revision=revision)
 
 
 def _native_task(config, task, listeners):
@@ -327,7 +536,7 @@ def _native_task(config, task, listeners):
         except urllib.error.HTTPError as error:
             if error.code in {401, 409}:
                 if cached and error.code == 409:
-                    remove_result(cached)
+                    retain_orphan(cached) if data.get("kind") == "tcpquality-full" else remove_result(cached)
                 return
             if attempt == 2:
                 raise
@@ -339,6 +548,9 @@ def _native_task(config, task, listeners):
 
 def run_daemon(config_path, stop=None):
     config = load_config(config_path)
+    global _helper_allowed
+    with _helper_allowed_lock:
+        _helper_allowed = None
     stop = stop if stop is not None else threading.Event()
     worker = threading.Thread(target=heartbeat, args=(config, stop), daemon=True)
     worker.start()
@@ -367,6 +579,8 @@ def run_daemon(config_path, stop=None):
                 if len(pending) >= capacity:
                     stop.wait(0.5)
                     continue
+                flush_helper_starts(config)
+                collect_helper_results(config)
                 flush_results(config)
                 native_response = None
                 try:
@@ -382,7 +596,14 @@ def run_daemon(config_path, stop=None):
                             del listeners[key]
                     if native_response.get("task"):
                         task = native_response["task"]
-                        if task.get("operation") == "latency" and task.get("options", {}).get("reportVersion") == 3:
+                        if task.get("operation") == "tcpquality-full":
+                            persist_helper_start(config, task)
+                            # A claimed task is authorized even before the next heartbeat.
+                            with _helper_allowed_lock:
+                                if _helper_allowed is None:
+                                    _helper_allowed = {task["id"]}
+                            flush_helper_starts(config)
+                        elif task.get("operation") == "latency" and task.get("options", {}).get("reportVersion") == 3:
                             pending[task["id"]] = pool.submit(native_task, config, task, listeners)
                         else:
                             native_task(config, task, listeners)
@@ -416,12 +637,16 @@ def main():
     run_parser.add_argument("--config", default=str(CONFIG_PATH))
     check_parser = subparsers.add_parser("check", help="检查配置、运行环境和面板凭证，不启动服务")
     check_parser.add_argument("--config", default=str(CONFIG_PATH))
+    prepare_parser = subparsers.add_parser("prepare", help="为降权服务安全准备本工作身份的缓存目录")
+    prepare_parser.add_argument("--config", default=str(CONFIG_PATH))
     args = parser.parse_args()
     try:
         if args.command == "configure":
             configure(args.server_url, args.node_uuid, args.probe_id)
         elif args.command == "check":
             api_request(load_config(args.config), "verify", method="POST", body={})
+        elif args.command == "prepare":
+            prepare_outbox(load_config(args.config))
         else:
             stop = threading.Event()
             previous = signal.signal(signal.SIGTERM, lambda *_: stop.set())

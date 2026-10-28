@@ -98,9 +98,13 @@ function normalizeSuite(input, resources = []) {
       )
     )
       throw new Error("HTTP 端点只支持 P1；请对 iperf3 单独设置多连接方案");
+    const profile = value.profile || "AUTO";
+    const timeoutMinutes = value.timeoutMinutes === undefined ? 120 : value.timeoutMinutes;
+    if (value.module === "tcpquality-full" && (! ["AUTO", "FULL", "LOWMEM"].includes(profile) || !Number.isInteger(timeoutMinutes) || timeoutMinutes < 30 || timeoutMinutes > 150))
+      throw new Error("TcpQuality 模式或超时时间无效（30–150 分钟）");
     const timing = M.timing(
       value.timing || preset.timing,
-      speed ? "speed" : value.module === "routes" ? "routes" : "websites",
+      speed ? "speed" : value.module === "routes" ? "routes" : value.module === "tcpquality-full" ? "tcpquality-full" : "websites",
     );
     if (
       value.module === "bgp" &&
@@ -119,6 +123,7 @@ function normalizeSuite(input, resources = []) {
       seconds,
       warmupSeconds,
       streams, samples, packetSizes, maxTrafficMiB,
+      ...(value.module === "tcpquality-full" ? { profile, timeoutMinutes } : {}),
       timing,
       enabled: value.enabled !== false,
       nextAt: M.next(timing),
@@ -205,6 +210,9 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
   }
   const common = { family: module.family, reportVersion: 3 };
   const source = { provider: "runner", name: "当前 VPS" };
+  if (module.module === "tcpquality-full")
+    add("tcpquality-full", "localhost", source, "VPS→TcpQuality 测点", "tcpquality-full", "node:" + nodeUuid,
+      { ...common, profile: module.profile, timeoutMinutes: module.timeoutMinutes }, null, "");
   if (["international", "idc", "tcp-quality"].includes(module.module)) {
     for (const id of module.endpoints) {
       const e = all.find((r) => r.id === id);

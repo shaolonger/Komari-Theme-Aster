@@ -21,8 +21,8 @@ ROOT = Path("/usr/local/libexec/aster-network-observatory")
 CONFIG = Path("/etc/aster-network-observatory")
 STATE = Path("/var/lib/aster-network-observatory")
 RELEASE_BASE = "https://github.com/shaolonger/Komari-Theme-Aster/releases/download/"
-PY_FILES = ["agent.py", "native.py", "public_speed.py", "tcp_quality.py", "http_receiver.py", "updater.py"]
-SERVICE_FILES = ["aster-network-observatory-agent.service", "aster-network-observatory-probe@.service", "aster-network-observatory-http.service", "aster-network-observatory.openrc", "aster-network-observatory-http.openrc", "aster-network-observatory-update.service", "aster-network-observatory-update.timer", "aster-network-observatory-update.openrc"]
+PY_FILES = ["agent.py", "native.py", "public_speed.py", "tcp_quality.py", "tcpquality_full.py", "tcpquality_helper.py", "http_receiver.py", "updater.py"]
+SERVICE_FILES = ["aster-network-observatory-agent.service", "aster-network-observatory-probe@.service", "aster-network-observatory-http.service", "aster-network-observatory.openrc", "aster-network-observatory-http.openrc", "aster-network-observatory-update.service", "aster-network-observatory-update.timer", "aster-network-observatory-update.openrc", "aster-network-observatory-tcpquality.service", "aster-network-observatory-tcpquality.openrc"]
 JOURNAL = "upgrade-transaction.json"
 HEALTH_SECONDS = 45
 
@@ -55,11 +55,41 @@ def service(name, action, check=True):
     return subprocess.run(args, check=check, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=50)
 
 
+def disable_tcpquality_helper():
+    """Keep the privileged helper off until all workers are safely upgraded.
+
+    This is persistent across reboot. A failed rollback never restarts it with
+    old root-UID workers.
+    """
+    if manager() == "openrc":
+        name = "aster-network-observatory-tcpquality"
+        # Prevent a reboot during an unexpectedly slow stop from restarting
+        # the root helper alongside workers restored from the old version.
+        subprocess.run(["rc-update", "del", name, "default"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        enabled = subprocess.run(["rc-update", "show", "default"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if any(line.strip().split()[0:1] == [name] for line in enabled.stdout.decode().splitlines()):
+            raise RuntimeError("无法安全停用完整 TcpQuality 执行器的开机启动")
+        service(name, "stop", check=False)
+        active = service(name, "status", check=False)
+        if active.returncode == 0:
+            raise RuntimeError("无法安全停用完整 TcpQuality 执行器")
+    else:
+        name = "aster-network-observatory-tcpquality.service"
+        subprocess.run(["systemctl", "disable", name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        enabled = subprocess.run(["systemctl", "is-enabled", "--quiet", name], check=False)
+        if enabled.returncode == 0:
+            raise RuntimeError("无法安全停用完整 TcpQuality 执行器的开机启动")
+        subprocess.run(["systemctl", "stop", name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        active = subprocess.run(["systemctl", "is-active", "--quiet", name], check=False)
+        if active.returncode == 0:
+            raise RuntimeError("无法安全停用完整 TcpQuality 执行器")
+
+
 def journal_files(configs):
     files = {str(ROOT / name) for name in [*PY_FILES, *SERVICE_FILES, "release.json"]}
     if manager() == "openrc":
         files.update(str(Path("/etc/init.d") / service_name(c)) for c in configs)
-        files.update(str(Path("/etc/init.d") / n) for n in ["aster-network-observatory-http", "aster-network-observatory-update"])
+        files.update(str(Path("/etc/init.d") / n) for n in ["aster-network-observatory-http", "aster-network-observatory-update", "aster-network-observatory-tcpquality"])
     else:
         files.update(str(Path("/etc/systemd/system") / n) for n in SERVICE_FILES if n.endswith((".service", ".timer")))
     return files
@@ -70,6 +100,9 @@ def recover():
     if not file.exists():
         return False
     data = json.loads(file.read_text())
+    if data.get("disableTcpQuality") or any("aster-network-observatory-tcpquality" in name for name in data.get("services", [])):
+        disable_tcpquality_helper()
+        print("为保护旧探测器，完整 TcpQuality 执行器已停用；恢复完成后如需重新启用，请执行一键安装器 --upgrade --enable-tcpquality-full。", file=sys.stderr)
     # The journal is root-only. Still reject paths outside our own service files.
     allowed = journal_files(data["configs"])
     for name in data["services"]:
@@ -87,6 +120,8 @@ def recover():
         for name in data["services"]:
             subprocess.run(["systemctl", "reset-failed", name], check=True)
     for name in data["services"]:
+        if "aster-network-observatory-tcpquality" in name:
+            continue
         service(name, "start")
     file.unlink()
     return True
@@ -162,7 +197,7 @@ def install_services(files, configs):
     if manager() == "openrc":
         for config in configs:
             atomic_write(Path("/etc/init.d") / service_name(config), files["runner/aster-network-observatory.openrc"], 0o755)
-        for name in ["aster-network-observatory-http", "aster-network-observatory-update"]:
+        for name in ["aster-network-observatory-http", "aster-network-observatory-update", "aster-network-observatory-tcpquality"]:
             atomic_write(Path("/etc/init.d") / name, files["runner/" + name + ".openrc"], 0o755)
     else:
         for name in SERVICE_FILES:
@@ -237,11 +272,15 @@ def perform(args):
             return
         raise ValueError("测量尚未结束，等待下一次检查或空闲后重试")
     services = [service_name(c) for c in configs if service(service_name(c), "status", check=False).returncode == 0]
+    helper_name = "aster-network-observatory-tcpquality" if manager() == "openrc" else "aster-network-observatory-tcpquality.service"
+    helper_installed = (Path("/etc/init.d") / helper_name).exists() if manager() == "openrc" else (Path("/etc/systemd/system") / helper_name).exists()
     if args.command == "auto" and len(services) != len(configs):
         report("存在管理员停止的探测器，等待其恢复后更新")
         return  # Never restart a worker the administrator intentionally stopped.
     if args.command == "manual" and service_name(selected) not in services:
         services.append(service_name(selected))
+    helper_running = helper_installed and service(helper_name, "status", check=False).returncode == 0
+    helper_requested = helper_running or os.environ.get("ASTER_ENABLE_TCPQUALITY_FULL") == "1"
     leases = []
     try:
         with tempfile.TemporaryDirectory(prefix="aster-upgrade-") as temporary:
@@ -261,8 +300,10 @@ def perform(args):
                 leases.append((config, lease["lease"]))
             targets = journal_files(configs)
             snapshot = {name: {"data": base64.b64encode(Path(name).read_bytes()).decode(), "mode": Path(name).stat().st_mode & 0o777} if Path(name).exists() else None for name in targets}
-            atomic_write(STATE / JOURNAL, json.dumps({"files": snapshot, "services": services, "configs": configs_without_tokens(configs)}).encode(), 0o600)
+            atomic_write(STATE / JOURNAL, json.dumps({"files": snapshot, "services": services, "configs": configs_without_tokens(configs), "disableTcpQuality": bool(helper_installed or helper_requested)}).encode(), 0o600)
             try:
+                if helper_installed:
+                    disable_tcpquality_helper()
                 for name in services:
                     service(name, "stop")
                 previous_instances = {service_name(c): agent.api_request(c, "update-policy").get("instanceId", "") for c in configs}
@@ -283,6 +324,12 @@ def perform(args):
                         raise RuntimeError("新版探测器启动 / 心跳检查未通过")
                     time.sleep(1)
                 enable_scheduler()
+                if helper_requested:
+                    if manager() == "openrc":
+                        subprocess.run(["rc-update", "add", helper_name, "default"], check=True)
+                        service(helper_name, "start")
+                    else:
+                        subprocess.run(["systemctl", "enable", "--now", helper_name], check=True)
                 (STATE / JOURNAL).unlink()
             except BaseException:
                 for name in services:
@@ -294,6 +341,9 @@ def perform(args):
         state = "ok"
     except BaseException:
         message, state = "升级未完成；已保留原凭证并恢复原探测器（若已进入替换阶段）", "failed"
+        if helper_installed or helper_requested:
+            message += "；若完整 TcpQuality 执行器已停用，请执行一键安装器 --upgrade --enable-tcpquality-full 重新启用"
+            print(message, file=sys.stderr)
         raise
     finally:
         for config, lease in leases:

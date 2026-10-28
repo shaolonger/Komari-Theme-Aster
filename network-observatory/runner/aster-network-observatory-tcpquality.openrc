@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+
+description="Aster isolated TcpQuality execution helper"
+supervisor="supervise-daemon"
+command="/usr/bin/python3"
+command_args="-B /usr/local/libexec/aster-network-observatory/tcpquality_helper.py"
+command_user="root:root"
+umask=0077
+respawn_delay=10
+respawn_max=0
+retry="TERM/45/KILL/5"
+output_logger="logger -t ${RC_SVCNAME}"
+error_logger="$output_logger"
+depend() { need net; }

@@ -40,7 +40,7 @@ function timing(input, kind) {
     input?.minutes || (kind === "speed" ? 1440 : kind === "routes" ? 60 : 15),
   );
   if (
-    ![5, 15, 30, 60, 360, 720, 1440].includes(minutes) ||
+    !(kind === "tcpquality-full" ? [60, 120, 180, 240, 360, 480, 720, 1440] : [5, 15, 30, 60, 360, 720, 1440]).includes(minutes) ||
     (kind === "speed" && minutes < 1440)
   )
     throw new Error("检测间隔无效；全速测速至少每天一次");
@@ -89,11 +89,18 @@ function validateResult(data, kind) {
     !data ||
     data.kind !== kind ||
     !["ok", "partial", "failed", "application"].includes(data.state) ||
-    JSON.stringify(data).length > 48000 ||
+    JSON.stringify(data).length > (kind === "tcpquality-full" ? 1000000 : 48000) ||
     (data.diagnostic !== undefined && typeof data.diagnostic !== "string")
   )
     bad();
   if (data.state === "application" && kind !== "website") bad();
+  if (kind === "tcpquality-full") {
+    if (data.deadlineExpired !== undefined || data.lateAfterDeadline !== undefined) bad();
+    if (data.reportUrl && !/^https:\/\/tcpquality\.ibsgss\.uk\/r\/[A-Za-z0-9_-]{1,128}$/.test(data.reportUrl)) bad();
+    if (["cleanLog", "csv"].some(k => data[k] !== undefined && (typeof data[k] !== "string" || data[k].length > 400000)) ||
+        ["profile", "startedAt", "completedAt", "reportUrl"].some(k => data[k] !== undefined && (typeof data[k] !== "string" || data[k].length > 2048)) ||
+        (data.exitCode !== undefined && data.exitCode !== null && !Number.isInteger(data.exitCode))) bad();
+  }
   if (kind === "speed") {
     if (["trafficBytesObserved", "remainingTrafficBytes"].some(k => data[k] !== undefined && !number(data[k])) ||
         (data.retryable !== undefined && typeof data.retryable !== "boolean") ||

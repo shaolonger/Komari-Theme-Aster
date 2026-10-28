@@ -13,6 +13,7 @@ import {
   shareReportRound,
   revokeReportShares,
   cancelReportRound,
+  deleteFullReportRound,
   getReportRound,
   listReportRounds,
   reportCatalog,
@@ -42,12 +43,39 @@ import "@/styles/network-reports.css";
 const moduleTitles: Record<ReportModule, string> = {
   routes: "大陆路由",
   "tcp-quality": "大陆 TCP 质量",
+  "tcpquality-full": "TcpQuality 完整检测",
   "china-speed": "大陆单连接测速",
   international: "国际延迟",
   idc: "常见 IDC 延迟",
   "international-speed": "国际单连接测速",
   bgp: "全球 BGP 路径快照",
 };
+function FullTcpQualityReport({ round }: { round: ReportRound }) {
+  const result = round.measurements[0];
+  if (!result) return <p className="report-caption">{round.state === "running" ? "检测正在进行，完整测试可能持续数小时。" : round.slots[0]?.missingReason || "本轮尚无报告。"}</p>;
+  const data = result.data;
+  let reportUrl = "";
+  try { const url = new URL(data.reportUrl || ""); if (url.origin === "https://tcpquality.ibsgss.uk" && /^\/r\/[A-Za-z0-9_-]+$/.test(url.pathname) && !url.search && !url.hash && !url.username && !url.password) reportUrl = url.href; } catch { /* Invalid or absent URL. */ }
+  function downloadCsv() {
+    const url = URL.createObjectURL(new Blob([data.csv || ""], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = `TcpQuality-${round.id}.csv`; link.click(); URL.revokeObjectURL(url);
+  }
+  return <div className="report-full-tcp">
+    <p><NetworkBadge state={data.state}>{reportLabels[data.state] || data.state}</NetworkBadge> · 档位 {data.profile || "自动"} · {formatNetworkTime(result.completedAt)}</p>
+    {data.diagnostic && <p role="status">{reportUrl && data.diagnostic === "在线报告上传失败；已保留 CSV" ? "上游报告已补传；检测完成时的原始状态保留在 JSON 中。" : data.diagnostic}</p>}
+    {data.coverage && <div className="report-full-coverage">
+      <p>测量覆盖：{data.coverage.state === "complete" ? "已确认" : data.coverage.state === "partial" ? "部分覆盖" : "无法确认"} · 成功 {data.coverage.ok} · 失败 {data.coverage.failed} · 跳过 {data.coverage.skipped} · 未知 {data.coverage.unknown}</p>
+      <p>IPv4：{{available: "可用", unavailable: "不可用", unknown: "未知"}[data.coverage.ipv4]} · IPv6：{{available: "可用", unavailable: "不可用", unknown: "未知"}[data.coverage.ipv6]}</p>
+      {data.coverage.sections.length > 0 && <details><summary>各检测项目覆盖</summary>{data.coverage.sections.map(section => <p key={section.name}>{section.name}：成功 {section.ok} / 失败 {section.failed} / 跳过 {section.skipped} / 未知 {section.unknown}</p>)}</details>}
+    </div>}
+    <div className="report-actions">
+      {reportUrl && <a href={reportUrl} target="_blank" rel="noreferrer">打开上游报告</a>}
+      {data.csv && <button type="button" onClick={downloadCsv}>下载 CSV{data.csvTruncated ? "（已截断）" : ""}</button>}
+    </div>
+    {(data.logTruncated || data.csvTruncated) && <p role="status">报告超过保存上限，展示或下载的内容已截断；请查看探测器上的原始文件。</p>}
+    {data.cleanLog && <details open><summary>检测报告</summary><pre className="report-json">{data.cleanLog}</pre></details>}
+  </div>;
+}
 const sourceText = (slot: ReportSlot) =>
   [
     slot.source.provider,
@@ -503,6 +531,7 @@ function RoundModule({
   ];
   const picked =
     rounds.find((r) => r.id === selection) ||
+    (module === "tcpquality-full" ? rounds[0] : undefined) ||
     rounds.find((r) => r.state === "complete" && r.detailAvailable) ||
     rounds[0];
   const pickedId = selection || picked?.id;
@@ -583,9 +612,13 @@ function RoundModule({
                     <Download size={15} />
                     完整 JSON
                   </button>
-                  <button onClick={() => exportReportPng(round)}>
+                  {module !== "tcpquality-full" && <button onClick={() => exportReportPng(round)}>
                     汇总 PNG
-                  </button>
+                  </button>}
+                  {module === "tcpquality-full" && round.state !== "running" && <button onClick={() => {
+                    if (!window.confirm("删除本轮 TcpQuality 报告？此操作不可撤销。")) return;
+                    void deleteFullReportRound(uuid, round.id).then(() => { setSelection(null); return history.refetch(); }).catch(e => setError(String(e.message)));
+                  }}>删除本轮报告</button>}
                   {round?.detailAvailable && round.state !== "running" && (
                     <button
                       title="创建七天以内的公开链接，包含目标和路由 IP"
@@ -748,7 +781,7 @@ function RoundModule({
         </div>
       )}
       {round?.detailAvailable &&
-        (["international", "idc", "tcp-quality"].includes(module) ? (
+        (module === "tcpquality-full" ? <FullTcpQualityReport round={round} /> : ["international", "idc", "tcp-quality"].includes(module) ? (
           <LatencyMatrix
             key={round.id}
             round={round}
@@ -777,7 +810,7 @@ function RoundModule({
             ))}
           </div>
         ))}
-      {round && module !== "routes" && module !== "bgp" && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
+      {round && module !== "routes" && module !== "bgp" && module !== "tcpquality-full" && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
       {inspected && (
         <NetworkDrawer
           title={
@@ -860,7 +893,7 @@ export function NetworkReportWorkspace({
   );
   const tabs = {
     routes: ["routes", "bgp"],
-    "tcp-quality": ["tcp-quality"],
+    "tcp-quality": ["tcpquality-full", "tcp-quality"],
     speed: ["china-speed"],
     international: ["international", "idc", "international-speed"],
   } as const;

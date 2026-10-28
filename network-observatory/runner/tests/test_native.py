@@ -165,6 +165,14 @@ class NativeMeasurements(unittest.TestCase):
             self.assertEqual(execute.call_args.args[0][-1], "8.8.8.8")
             self.assertIn("--tcp", execute.call_args.args[0])
             self.assertEqual(execute.call_count, 1)  # no unrelated traceroute joined by TTL
+    def test_mtr_nonroot_can_complete_maximum_sample_count(self):
+        # Real mtr refuses non-root intervals below one second. Its timeout
+        # must also cover the selected number of report cycles.
+        with patch.object(native.os, "geteuid", return_value=1001), patch.object(native, "resolve_ip", return_value="8.8.8.8"), patch.object(native, "execute", return_value=(0, '{"report":{"hubs":[]}}', "")) as execute:
+            native.mtr_route("example.net", {"family": "4", "packets": 50})
+        command, timeout = execute.call_args.args
+        self.assertEqual(float(command[command.index("--interval") + 1]), 1.0)
+        self.assertGreaterEqual(timeout, 50)
     def test_latency_dns_failure_never_fabricates_ten_network_samples(self):
         with patch.object(native, "resolve_ip", side_effect=ValueError("DNS timeout")):
             data = native.latency("example.net", {"family": "6"})

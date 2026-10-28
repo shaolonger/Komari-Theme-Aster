@@ -70,7 +70,13 @@ func checkPluginLoad(base string) {
 			panic(err)
 		}
 		for reload := 0; reload < 3; reload++ {
-			rt, err := jsruntime.New(string(entry)+"\nfunction runLoadRegression() { load(); return true; }", jsruntime.Options{
+			rt, err := jsruntime.New(string(entry)+`
+function runLoadRegression() { load(); return true; }
+function runBodyRegression() {
+  const body = JSON.stringify({id:"x",data:{kind:"tcpquality-full",state:"ok",cleanLog:"测".repeat(140000)}});
+  if (readBody({url:"/api/aster-network-observatory/v2/workers/node/c388e74d-a922-4ae1-bd10-1fb30e2e53de/result",body}).data.cleanLog.length !== 140000) throw Error("large worker result rejected");
+  try { readBody({url:"/api/aster-network-observatory/v3/suites",body}); throw Error("admin body limit bypassed"); } catch (e) { if (String(e).includes("bypassed")) throw e; }
+}`, jsruntime.Options{
 				BaseDir: base, StorageDir: storage, NodeJS: true, Timeout: 10 * time.Second, Console: os.Stdout,
 				ConfigureRequire: func(registry *require.Registry) {
 					registry.RegisterNativeModule("server", func(vm *goja.Runtime, module *goja.Object) {

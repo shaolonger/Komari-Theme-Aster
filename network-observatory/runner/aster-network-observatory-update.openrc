@@ -15,7 +15,9 @@ depend() {
 
 start_pre() {
   checkpath --directory --mode 0700 --owner root:root /etc/aster-network-observatory/cron || return 1
-  checkpath --directory --mode 0700 --owner root:root /var/lib/aster-network-observatory || return 1
+  # The worker is unprivileged and needs to traverse this directory to reach
+  # its own protected outbox. Do not undo its permissions when cron restarts.
+  checkpath --directory --mode 0750 --owner root:aster-netobs /var/lib/aster-network-observatory || return 1
   # One persisted minute per host, including before first credential setup.
   # Keep every local identity on the same scheduler and avoid a fleet-wide :17
   # burst. BusyBox already provides od; unavailable randomness falls back to :17.

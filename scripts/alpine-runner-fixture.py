@@ -149,6 +149,25 @@ assert caps == 1 << 13, f"Expected CAP_NET_RAW only, got {caps:x}"
 assert "NoNewPrivs:\t1" in status
 print("Worker started with CAP_NET_RAW only; " + next(line for line in status.splitlines() if line.startswith("VmRSS:")))
 
+# Restarting the independent OpenRC maintenance service must not make the
+# live unprivileged worker lose access to its durable result outbox.
+if shutil.which("rc-service") and not Path("/run/systemd/system").exists():
+    import grp
+    import pwd
+    subprocess.run(["rc-service", "aster-network-observatory-update", "restart"], check=True)
+    child = os.fork()
+    if child == 0:
+        try:
+            os.setgid(grp.getgrnam("aster-netobs").gr_gid)
+            os.setuid(pwd.getpwnam("aster-netobs").pw_uid)
+            path = Path("/var/lib/aster-network-observatory") / ("node-" + NODE)
+            os.listdir(path)
+            os._exit(0)
+        except OSError:
+            os._exit(1)
+    _, exit_status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(exit_status) == 0, "maintenance restart denied outbox access"
+
 # Reinstallation leaves credentials intact, then configure verifies and reuses them.
 original = (CONFIG / "agent.json").read_bytes()
 subprocess.run(["sh", "/fixture/network-observatory/runner/quick-install.sh", "--profile", "lite"], check=True)
@@ -221,6 +240,16 @@ assert not leases
 for path, content in creds_before.items():
     assert path.read_bytes() == content
 
+# An enabled privileged helper must be stopped and disabled even when the
+# replacement agent cannot start and the old worker services are restored.
+helper = "aster-network-observatory-tcpquality" if OPENRC else "aster-network-observatory-tcpquality.service"
+if OPENRC:
+    subprocess.run(["rc-update", "add", helper, "default"], check=True)
+    subprocess.run(["rc-service", helper, "start"], check=True)
+else:
+    subprocess.run(["systemctl", "enable", "--now", helper], check=True)
+assert subprocess.run(service_command(helper, "status"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
 with tempfile.TemporaryDirectory() as temporary:
     broken = Path(temporary) / "broken.zip"
     with zipfile.ZipFile(archive) as original_zip, zipfile.ZipFile(broken, "w") as result:
@@ -244,6 +273,11 @@ with tempfile.TemporaryDirectory() as temporary:
     for path, content in creds_before.items():
         assert path.read_bytes() == content
     wait_for(lambda: len(worker_pids()) == 2)
+    assert subprocess.run(service_command(helper, "status"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0
+    if OPENRC:
+        assert not (Path("/etc/runlevels/default") / helper).exists()
+    else:
+        assert subprocess.run(["systemctl", "is-enabled", "--quiet", helper]).returncode != 0
 if OPENRC:
     assert (Path("/etc/runlevels/default") / "aster-network-observatory-update").is_symlink()
 else:

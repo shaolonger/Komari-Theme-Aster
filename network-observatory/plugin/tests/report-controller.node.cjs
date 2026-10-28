@@ -933,3 +933,136 @@ test("history summary exposes retained per-target metrics only to admins without
     assert.equal(JSON.stringify(response.body).includes('SECRET'), false);
   } finally { fs.readFileSync = originalRead; f.close(); }
 });
+
+test("full TcpQuality is separately scheduled, leased for a long run, retained and replay-safe", async () => {
+ const f=await fixture(), originalNow=Date.now; let now=originalNow(); Date.now=()=>now;
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.13.0',tools:[],features:['report-v3','tcpquality-full']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'tcpquality-full',profile:'LOWMEM',timeoutMinutes:120,timing:{type:'daily',times:['03:00','18:00'],timezone:'Asia/Shanghai'}}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.suite.modules[0].timing.times,['03:00','18:00']);
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  assert.equal(started.body.rounds.length,1);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal(task.operation,'tcpquality-full'); assert.equal(task.options.profile,'LOWMEM'); assert.equal(task.options.timeoutMinutes,120);
+  assert.ok(task.deadlineAt-now>=135*60000); assert.equal(task.expiresAt, task.deadlineAt);
+  const other=await f.invoke('POST',v3+'/suites',{revision:1,clients:[A],modules:[{module:'tcpquality-full'}]});
+  assert.equal(other.status,200);
+  const duplicate=await f.invoke('POST',`${v3}/suites/${other.body.suite.id}/run`);
+  assert.equal(duplicate.body.rounds.length,0);
+  const live=f.c.read(), otherSuite=live.reportSuites.find(p=>p.id===other.body.suite.id);
+  const skipped=f.c.roundController.enqueue(live,otherSuite,otherSuite.modules[0],A,crypto.randomUUID(),now,true,crypto.randomUUID());
+  assert.ok(skipped); const skippedRound=f.c.roundController.store.get(A,skipped);
+  assert.equal(skippedRound.state,'missing'); assert.match(skippedRound.measurements[0].data.diagnostic,/已跳过/);
+  now+=20*60000;
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.13.0',tools:[],features:['report-v3','tcpquality-full'],activeJobIds:[task.id]},false,true);
+  const restarted=await fixture(f.root);
+  const data={kind:'tcpquality-full',state:'ok',profile:'LOWMEM',cleanLog:'结果 '.repeat(40000),csv:'header,value\n',exitCode:0};
+  assert.ok(Buffer.byteLength(JSON.stringify({id:task.id,data}))>131072);
+  assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).status,200);
+  assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).body.replay,true);
+  const history=(await restarted.invoke('GET',`${v3}/nodes/${A}/rounds?module=tcpquality-full`)).body;
+  assert.equal(history.rounds.find(r=>r.id===started.body.rounds[0]).counts.ok,1); assert.deepEqual(history.retention,{detailDays:null,summaryDays:null});
+  const savedRound=restarted.c.roundController.store.get(A,started.body.rounds[0]);
+  assert.equal(savedRound.measurements[0].data.cleanLog,data.cleanLog);
+  const again=await restarted.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  assert.equal(again.body.rounds.length,1);
+  const nextTask=(await restarted.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal(nextTask.operation,'tcpquality-full');
+  assert.equal((await restarted.invoke('POST',`${v3}/nodes/${A}/rounds/${again.body.rounds[0]}/cancel`)).status,200);
+  const late=await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:nextTask.id,data},false,true);
+  assert.equal(late.status,200); assert.equal(late.body.replay,true); // cancellation receipt never replaces the cancelled measurement
+  assert.equal(restarted.c.roundController.store.get(A,again.body.rounds[0]).state,'cancelled');
+  const afterCancel=await restarted.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  assert.equal(afterCancel.body.rounds.length,1);
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${afterCancel.body.rounds[0]}`)).status,400);
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`,{},false)).status,403);
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`)).status,200);
+  assert.equal(restarted.c.roundController.store.get(A,started.body.rounds[0]),null);
+  assert.equal((await restarted.invoke('GET',`${v3}/nodes/${A}/rounds?module=tcpquality-full`)).body.rounds.some(r=>r.id===started.body.rounds[0]),false);
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`)).status,404);
+  assert.equal((await f.invoke('POST',v3+'/suites',{revision:2,clients:[A],modules:[{module:'tcpquality-full',timeoutMinutes:151}]})).status,400);
+ } finally { Date.now=originalNow; f.close(); }
+});
+
+test('full TcpQuality interval options accept two to eight hours without changing other modules', () => {
+ const timing = require('../src/native-model.js').timing;
+ for (const minutes of [60, 120, 180, 240, 360, 480, 720, 1440])
+  assert.deepEqual(timing({type:'interval', minutes}, 'tcpquality-full'), {type:'interval', minutes});
+ assert.throws(() => timing({type:'interval', minutes:120}, 'websites'));
+ assert.throws(() => timing({type:'interval', minutes:30}, 'tcpquality-full'));
+});
+
+test('a queued full test closes as missing if the worker loses helper capability before claiming it', async () => {
+ const f = await fixture();
+ try {
+  await f.invoke('POST', `${v2}/workers/node/${A}/heartbeat`, {version:'1.13.0',features:['report-v3','tcpquality-full'],tools:[]}, false, true);
+  const saved = await f.invoke('POST', `${v3}/suites`, {revision:0,clients:[A],modules:[{module:'tcpquality-full'}]});
+  assert.equal(saved.status, 200);
+  const started = await f.invoke('POST', `${v3}/suites/${saved.body.suite.id}/run`);
+  assert.equal(started.body.rounds.length, 1);
+  await f.invoke('POST', `${v2}/workers/node/${A}/heartbeat`, {version:'1.13.0',features:['report-v3'],tools:[]}, false, true);
+  const polled = await f.invoke('GET', `${v2}/workers/node/${A}/poll`, {}, false, true);
+  assert.equal(polled.body.task, null);
+  const round = f.c.roundController.store.get(A, started.body.rounds[0]);
+  assert.equal(round.state, 'missing');
+  assert.match(round.measurements[0].data.diagnostic, /执行器未就绪/);
+  assert.equal(f.c.read().jobs.some(job => job.roundId === round.id), false);
+ } finally { f.close(); }
+});
+
+test('late full benchmark recovers its expired round, rejects another worker, survives an interrupted manifest and years of retention', async () => {
+ const f=await fixture(undefined,[A,B]), originalNow=Date.now, rename=fs.renameSync; let now=originalNow(); Date.now=()=>now;
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.13.0',tools:[],features:['report-v3','tcpquality-full']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'tcpquality-full',timeoutMinutes:30}]});
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  now+=46*60000; await f.c.tick();
+  assert.equal(f.c.roundController.store.get(A,started.body.rounds[0]).state,'failed');
+  const data={kind:'tcpquality-full',state:'ok',profile:'AUTO',cleanLog:'迟到结果',csv:'a,b'};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${B}/result`,{id:task.id,data},false,true)).status,409);
+  // Force a crash after the result file is committed but before its manifest.
+  fs.renameSync=function(from,to){if(String(to).endsWith('/manifest.json')) throw Error('simulated crash'); return rename(from,to)};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).status,400);
+  fs.renameSync=rename;
+  now+=10*86400000; const restarted=await fixture(f.root,[A,B]);
+  const late=await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true);
+  assert.equal(late.status,200); assert.equal(late.body.replay,true);
+  const recovered=restarted.c.roundController.store.get(A,started.body.rounds[0]);
+  assert.equal(recovered.state,'complete'); assert.equal(recovered.counts.ok,1);
+  assert.equal(recovered.measurements[0].data.cleanLog,'迟到结果'); assert.equal(recovered.measurements[0].data.lateAfterDeadline,true);
+  const index=(await restarted.invoke('GET',`${v3}/nodes/${A}/rounds?module=tcpquality-full`)).body.rounds.find(r=>r.id===started.body.rounds[0]);
+  assert.equal(index.state,'complete'); assert.equal(index.counts.ok,1);
+ } finally {fs.renameSync=rename;Date.now=originalNow;f.close();}
+});
+
+test('full report upload recovery adds only a validated URL to the same partial task and is replay-safe', async () => {
+ const f=await fixture(undefined,[A,B]), rename=fs.renameSync;
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.13.0',tools:[],features:['report-v3','tcpquality-full']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'tcpquality-full'}]});
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  const partial={kind:'tcpquality-full',state:'partial',reportUrl:'',diagnostic:'上传失败',csv:'header\n',cleanLog:'日志',exitCode:0};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:partial},false,true)).status,200);
+  const improved={...partial,reportUrl:'https://tcpquality.ibsgss.uk/r/test_ID'};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${B}/result`,{id:task.id,data:improved},false,true)).status,409);
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{...improved,csv:'altered'}},false,true)).status,409);
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{...improved,reportUrl:'https://evil.example/r/a'}},false,true)).status,400);
+  fs.renameSync=function(from,to){if(String(to).includes('/measurements/')) throw Error('simulated crash'); return rename(from,to)};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:improved},false,true)).status,400);
+  fs.renameSync=rename;
+  assert.equal(f.c.roundController.store.get(A,started.body.rounds[0]).measurements[0].data.reportUrl,'');
+  let response=await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:improved},false,true);
+  assert.equal(response.status,200); assert.equal(response.body.reportUpdated,true);
+  const restarted=await fixture(f.root,[A,B]);
+  response=await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:improved},false,true);
+  assert.equal(response.status,200); assert.equal(response.body.replay,true);
+  const round=restarted.c.roundController.store.get(A,started.body.rounds[0]);
+  assert.deepEqual(round.measurements[0].data,improved); assert.equal(round.state,'partial');
+  assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{...improved,reportUrl:'https://tcpquality.ibsgss.uk/r/another'}},false,true)).status,409);
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`)).status,200);
+  assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:improved},false,true)).status,409);
+ } finally {fs.renameSync=rename;f.close();}
+});

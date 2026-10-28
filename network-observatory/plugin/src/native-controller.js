@@ -276,6 +276,7 @@ function registerNativeController(ctx) {
       if (!j || (j.expiresAt >= now && j.target)) continue;
       entries.push({ position, job: j, data: {
         kind: require("./report-model.js").kindFor(j.operation),
+        ...(j.operation === "tcpquality-full" && j.phase === "running" ? { deadlineExpired: true } : {}),
         state: !j.target || j.phase === "queued" ? "missing" : "failed",
         diagnostic: !j.target
           ? j.direction === "VPS→大陆"
@@ -495,7 +496,7 @@ function registerNativeController(ctx) {
                   "latency-samples",
                   "full-mtr",
                   "speed-intervals",
-                  "http-speed", "public-speed", "tcp-quality",
+                  "http-speed", "public-speed", "tcp-quality", "tcpquality-full",
                 ].includes(f),
               )
             : [],
@@ -510,7 +511,7 @@ function registerNativeController(ctx) {
             j.phase === "running" &&
             active.includes(j.id)
           ) {
-            j.expiresAt = Math.min(Date.now() + 90000, j.deadlineAt || j.expiresAt);
+            if (j.operation !== "tcpquality-full") j.expiresAt = Math.min(Date.now() + 90000, j.deadlineAt || j.expiresAt);
             touchJob(j);
           }
         save(s, true);
@@ -580,7 +581,12 @@ function registerNativeController(ctx) {
             ).length >= 4
           )
         ) {
-          const problem = coverage(s, j);
+          // A worker may have lost its optional helper after this round was
+          // queued. Do not reserve an hours-long job for a worker whose last
+          // heartbeat already says that the helper is unavailable.
+          const problem = j.operation === "tcpquality-full" && !s.workers[w.key]?.features?.includes("tcpquality-full")
+            ? "完整 TcpQuality 执行器未就绪；请检查服务并重新执行"
+            : coverage(s, j);
           changed = true;
           if (problem) {
             finish(s, j, {
@@ -596,7 +602,12 @@ function registerNativeController(ctx) {
           }
           j.phase = "running";
           j.expiresAt = Date.now() + 180000;
-          if (j.roundId) j.deadlineAt = Date.now() + 300000;
+          if (j.roundId) {
+            j.deadlineAt = Date.now() + (j.operation === "tcpquality-full" ? ((j.options?.timeoutMinutes || 120) + 15) * 60000 : 300000);
+            // Reserve the long run until its hard deadline even during a
+            // worker outage; replaying a benchmark can be intrusive.
+            if (j.operation === "tcpquality-full") j.expiresAt = j.deadlineAt;
+          }
           j.startedAt = new Date().toISOString();
           task = { ...j };
           if (
@@ -702,6 +713,15 @@ function registerNativeController(ctx) {
         const b = prepared || readBody(req),
           j = jobIndex(s).byId.get(b.id);
         if (!j) {
+          if (b.data?.kind === "tcpquality-full") {
+            M.validateResult(b.data, "tcpquality-full");
+            if (roundController.acceptLateFull(b.id, w.key, b.data)) { respond(res, 200, { ok: true, late: true }); return; }
+            if (b.data.reportUrl) {
+              const update = roundController.updateFullReportUrl(b.id, w.key, b.data);
+              if (update !== "invalid") { respond(res, 200, { ok: true, reportUpdated: update === "updated", replay: update === "unchanged" }); return; }
+              respond(res, 409, { error: "报告链接或原任务不匹配" }); return;
+            }
+          }
           if (roundController.receipt(b.id, w.key)) {
             respond(res, 200, { ok: true, replay: true });
             return;

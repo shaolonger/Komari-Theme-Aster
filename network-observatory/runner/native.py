@@ -198,10 +198,14 @@ def mtr_route(target, options):
     if protocol not in {"tcp", "icmp"}:
         raise ValueError("路径协议无效")
     port = integer(options.get("port", 443), 1, 65535, "端口")
-    command = ["mtr", *family_args(options), "--json", "--no-dns", "--report-cycles", str(cycles), "--interval", "0.2", "--max-ttl", "32"]
+    # mtr refuses intervals below one second for non-root users even when
+    # CAP_NET_RAW is available. Keep its real MTR observations after the
+    # worker is deliberately dropped to the unprivileged service account.
+    interval = 0.2 if os.geteuid() == 0 else 1.0
+    command = ["mtr", *family_args(options), "--json", "--no-dns", "--report-cycles", str(cycles), "--interval", str(interval), "--max-ttl", "32"]
     if protocol == "tcp":
         command += ["--tcp", "--port", str(port)]
-    code, output, error = execute([*command, address], 45)
+    code, output, error = execute([*command, address], max(45, int(cycles * interval) + 15))
     try:
         hops = mtr_hops(json.loads(output))
     except (ValueError, TypeError):
@@ -427,10 +431,11 @@ def route(target, options):
             pass
     quality = None
     if options.get("quality", True) and shutil.which("mtr"):
-        command = ["mtr", *family_args(options), "--json", "--no-dns", "--report-cycles", "20", "--interval", "0.2"]
+        interval = 0.2 if os.geteuid() == 0 else 1.0
+        command = ["mtr", *family_args(options), "--json", "--no-dns", "--report-cycles", "20", "--interval", str(interval)]
         if protocol == "tcp":
             command += ["--tcp", "--port", str(port)]
-        mtr_code, mtr_output, mtr_error = execute([*command, target], 25)
+        mtr_code, mtr_output, mtr_error = execute([*command, target], max(25, int(20 * interval) + 15))
         try:
             hubs = json.loads(mtr_output).get("report", {}).get("hubs", [])
             if hubs:

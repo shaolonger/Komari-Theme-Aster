@@ -14,7 +14,7 @@ case "$RC_SVCNAME" in
   *) exit 1 ;;
 esac
 command_args="-B /usr/local/libexec/aster-network-observatory/agent.py run --config ${config}"
-command_user="root:aster-netobs"
+command_user="aster-netobs:aster-netobs"
 umask=0077
 # OpenRC uses libcap's IAB syntax, not the setcap '=ep' format.
 # Retain RAW across exec and remove every other capability from the bound.
@@ -38,5 +38,6 @@ depend() {
 
 start_pre() {
   [ -f "$config" ] || { eerror "Missing worker credentials: $config; run agent.py configure first"; return 1; }
-  checkpath --directory --mode 0700 --owner root:root /var/lib/aster-network-observatory
+  checkpath --directory --mode 0750 --owner root:aster-netobs /var/lib/aster-network-observatory
+  /usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/agent.py prepare --config "$config"
 }

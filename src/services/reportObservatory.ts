@@ -3,6 +3,7 @@ import { z } from "zod";
 export const reportModules = [
   "routes",
   "tcp-quality",
+  "tcpquality-full",
   "china-speed",
   "international",
   "idc",
@@ -74,6 +75,8 @@ export const moduleSchema = z.object({
   publicSources: z.boolean(),
   samples: z.number().optional(),
   packetSizes: z.array(z.number()).optional(),
+  profile: z.enum(["AUTO", "FULL", "LOWMEM"]).optional(),
+  timeoutMinutes: z.number().optional(),
   maxTrafficMiB: z.number().optional(),
   seconds: z.number(),
   warmupSeconds: z.number(),
@@ -205,6 +208,20 @@ const measurementDataSchema = z
     method: z.string().optional(),
     diagnostic: z.string().default(""),
     rawOutput: z.string().optional(),
+    profile: z.string().optional(),
+    reportUrl: z.string().optional(),
+    cleanLog: z.string().optional(),
+    csv: z.string().optional(),
+    exitCode: z.number().nullable().optional(),
+    logTruncated: z.boolean().optional(),
+    csvTruncated: z.boolean().optional(),
+    coverage: z.object({
+      state: z.enum(["complete", "partial", "unknown"]),
+      ok: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+      skipped: z.number().int().nonnegative(), unknown: z.number().int().nonnegative(), total: z.number().int().nonnegative(),
+      ipv4: z.enum(["available", "unavailable", "unknown"]), ipv6: z.enum(["available", "unavailable", "unknown"]),
+      sections: z.array(z.object({name: z.string(), ok: z.number(), failed: z.number(), skipped: z.number(), unknown: z.number(), total: z.number()})),
+    }).optional(),
     complete: z.boolean().optional(),
     resolvedIp: z.string().optional(),
     protocol: z.string().optional(),
@@ -476,6 +493,8 @@ export const cancelReportRound = (uuid: string, id: string) =>
     "POST",
     {},
   );
+export const deleteFullReportRound = (uuid: string, id: string) =>
+  request(`/nodes/${encodeURIComponent(uuid)}/rounds/${encodeURIComponent(id)}`, "DELETE");
 export const saveReportSuite = (draft: ReportDraft) =>
   request("/suites", "POST", draft);
 export const previewReportSuite = async (draft: ReportDraft) =>

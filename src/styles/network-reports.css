@@ -349,6 +349,24 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.report-full-tcp {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+  min-width: 0;
+}
+.report-full-tcp p { margin: 0; }
+.report-full-coverage { display: grid; gap: 0.35rem; color: var(--text-secondary); font-size: 0.8rem; }
+.report-full-coverage details p { padding-top: 0.35rem; }
+.report-full-tcp .report-actions { margin: 0; flex-wrap: wrap; }
+.report-full-tcp details {
+  min-width: 0;
+  border: 1px solid var(--border-subtle, #dde3ea);
+  border-radius: 0.6rem;
+  padding: 0.65rem;
+}
+.report-full-tcp summary { cursor: pointer; font-size: 0.85rem; }
+.report-full-tcp .report-json { max-height: 38rem; margin-bottom: 0; }
 .report-bgp-summary {
   display: flex;
   flex-wrap: wrap;

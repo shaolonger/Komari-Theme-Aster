@@ -4,9 +4,9 @@
     "en": "Aster Network Observatory"
   },
   "short": "aster-network-observatory",
-  "description": "为 Aster 提供无需 Agent 远程执行权限的计划式网络观测。",
+  "description": "为 Aster 提供计划式网络观测；完整 TcpQuality 检测需要显式启用本机特权执行器。",
   "author": "shaolonger",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "url": "https://github.com/shaolonger/Komari-Theme-Aster",
   "entry": "script.js",
   "komari": ">=1.4.3",

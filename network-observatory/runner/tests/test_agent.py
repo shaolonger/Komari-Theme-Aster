@@ -25,6 +25,13 @@ class AgentValidationTests(unittest.TestCase):
     def tearDown(self):
         AGENT.close_outbox_scans()
 
+    def test_prepare_rejects_root_or_mismatched_service_identity_before_filesystem_changes(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        for uid, gid, expected in [(0, 123, 123), (123, 0, 0), (123, 123, 456)]:
+            with self.subTest(uid=uid, gid=gid, expected=expected), patch.object(AGENT.os, "geteuid", return_value=0), patch.object(AGENT.pwd, "getpwnam", return_value=SimpleNamespace(pw_uid=uid, pw_gid=gid)), patch.object(AGENT.grp, "getgrnam", return_value=SimpleNamespace(gr_gid=expected)), patch.object(AGENT.os, "open") as opened:
+                with self.assertRaises(ValueError): AGENT.prepare_outbox(config)
+                opened.assert_not_called()
+
     def test_openrc_registers_separate_probe_service_and_restarts_existing_node(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
@@ -85,7 +92,9 @@ class AgentValidationTests(unittest.TestCase):
             cached = list((Path(temp) / ("node-" + TASK["taskId"])).glob("*.json"))
             self.assertEqual(len(cached), 1)
             self.assertNotIn("token", cached[0].read_text())
-            self.assertEqual(cached[0].stat().st_mode & 0o777, 0o600)
+            # The service group must read it for rollback to the legacy worker;
+            # the file and its directory remain inaccessible to other users.
+            self.assertEqual(cached[0].stat().st_mode & 0o777, 0o640)
             with patch.object(AGENT, "api_request", return_value={"ok": True}) as request:
                 AGENT.flush_results(config)
                 self.assertEqual(request.call_args.kwargs["body"]["id"], task["id"])
@@ -93,6 +102,146 @@ class AgentValidationTests(unittest.TestCase):
             measure.assert_called_once()
         with self.assertRaises(ValueError):
             AGENT.persist_result(config, "../../state", {})
+
+    def test_long_task_restart_reconnects_without_restarting_measurement(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task_id = TASK["taskId"]
+        result = {"kind": "tcpquality-full", "state": "ok", "cleanLog": "result"}
+        calls = []
+        def helper(action, **kwargs):
+            calls.append((action, kwargs))
+            if action == "list": return {"tasks": [{"id": task_id, "nodeUuid": task_id, "state": "complete"}]}
+            if action == "status": return {"state": "complete", "data": result, "revision": 1}
+            if action == "ack": return {"ok": True}
+            raise AssertionError("must not start the task again")
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "tcpquality_request", side_effect=helper), patch.object(AGENT, "api_request", return_value={"ok": True}) as request:
+            AGENT.collect_helper_results(config)
+            AGENT.flush_results(config)
+            self.assertEqual(request.call_args.kwargs["body"], {"id": task_id, "data": result})
+            self.assertEqual([name for name, _ in calls], ["list", "status", "ack"])
+            self.assertEqual(calls[-1][1]["revision"], 1)
+            self.assertEqual(list(Path(temp).rglob("*.json")), [])
+
+    def test_long_task_pending_start_is_idempotent_and_requires_confirmed_lease(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "options": {"profile": "LOWMEM", "timeoutMinutes": 120}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "tcpquality_request", side_effect=[OSError("response lost"), {"state": "running"}]) as helper:
+            AGENT._helper_allowed = None
+            AGENT.persist_helper_start(config, task)
+            AGENT.flush_helper_starts(config)
+            helper.assert_not_called()
+            AGENT._helper_allowed = {task["id"]}
+            with self.assertRaises(OSError): AGENT.flush_helper_starts(config)
+            self.assertEqual(len(list(Path(temp).rglob("*.start.json"))), 1)
+            AGENT.flush_helper_starts(config)
+            self.assertEqual(helper.call_count, 2)
+            self.assertEqual(helper.call_args_list[0], helper.call_args_list[1])
+            self.assertFalse(list(Path(temp).rglob("*.start.json")))
+
+    def test_unreachable_helper_before_first_send_records_terminal_failure(self):
+        import json
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "options": {"profile": "AUTO", "timeoutMinutes": 120}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "tcpquality_request", side_effect=AGENT.TcpQualityNotConnected("socket absent")):
+            AGENT.persist_helper_start(config, task)
+            AGENT._helper_allowed = {task["id"]}
+            AGENT.flush_helper_starts(config)
+            folder = Path(temp) / ("node-" + task["id"])
+            data = json.loads((folder / (task["id"] + ".json")).read_text())["data"]
+            self.assertEqual(data["kind"], "tcpquality-full")
+            self.assertEqual(data["state"], "failed")
+            self.assertIn("执行器未连接", data["diagnostic"])
+            self.assertFalse((folder / (task["id"] + ".start.json")).exists())
+
+    def test_missing_unix_socket_is_distinguished_from_an_ambiguous_response(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "TCPQUALITY_SOCKET", Path(temp) / "missing.sock"):
+            with self.assertRaises(AGENT.TcpQualityNotConnected):
+                AGENT.tcpquality_request("start", id=TASK["taskId"])
+
+    def test_ambiguous_helper_start_never_records_false_failure(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "options": {"profile": "AUTO", "timeoutMinutes": 120}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "tcpquality_request", side_effect=[OSError("response lost"), AGENT.TcpQualityNotConnected("restarting"), {"state": "running"}]) as helper:
+            AGENT.persist_helper_start(config, task)
+            AGENT._helper_allowed = {task["id"]}
+            with self.assertRaises(OSError): AGENT.flush_helper_starts(config)
+            with self.assertRaises(AGENT.TcpQualityNotConnected): AGENT.flush_helper_starts(config)
+            self.assertFalse(list(Path(temp).rglob(task["id"] + ".json")))
+            AGENT.flush_helper_starts(config)
+            self.assertEqual(helper.call_count, 3)
+            self.assertFalse(list(Path(temp).rglob("*.start.json")))
+
+    def test_saved_terminal_result_wins_over_unremoved_start_intent(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "options": {}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "tcpquality_request") as helper:
+            AGENT.persist_helper_start(config, task)
+            AGENT.persist_result(config, task["id"], {"kind": "tcpquality-full", "state": "failed"})
+            AGENT._helper_allowed = {task["id"]}
+            AGENT.flush_helper_starts(config)
+            helper.assert_not_called()
+            self.assertFalse(list(Path(temp).rglob("*.start.json")))
+            self.assertTrue(list(Path(temp).rglob(task["id"] + ".json")))
+
+    def test_long_task_conflict_retains_orphan_instead_of_deleting_it(self):
+        import urllib.error
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        data = {"kind": "tcpquality-full", "state": "partial", "cleanLog": "report"}
+        conflict = urllib.error.HTTPError("https://panel", 409, "expired", {}, None)
+        with tempfile.TemporaryDirectory() as temp, patch.object(AGENT, "STATE_DIR", Path(temp)), patch.object(AGENT, "api_request", side_effect=conflict), patch.object(AGENT, "tcpquality_request") as helper:
+            AGENT.persist_result(config, TASK["taskId"], data)
+            AGENT.flush_results(config)
+            orphan = list(Path(temp).rglob("*.orphan.json"))
+            self.assertEqual(len(orphan), 1)
+            self.assertIn("report", orphan[0].read_text())
+            helper.assert_not_called()
+
+    def test_old_outbox_ack_cannot_ack_newer_helper_report(self):
+        import json
+        import tcpquality_helper
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task_id = TASK["taskId"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            directory = root / "helper" / task_id
+            artifacts = directory / "artifacts"
+            artifacts.mkdir(parents=True)
+            for path in (root / "helper", directory, artifacts):
+                path.chmod(0o700)
+            (artifacts / "zstatic_nping_test.csv").write_text("csv")
+            data = {"kind": "tcpquality-full", "state": "partial", "csv": "csv", "cleanLog": "log", "reportUrl": ""}
+            (directory / "task.json").write_text(json.dumps({"id": task_id, "nodeUuid": task_id, "state": "complete", "revision": 1, "reportPending": True, "acknowledged": False, "data": data}))
+            manager = tcpquality_helper.Manager(root / "helper")
+            def helper(action, **values): return manager.request({"action": action, **values})
+            sent = []
+            def send(*args, **kwargs):
+                sent.append(kwargs["body"]["data"].copy())
+                if len(sent) == 1:
+                    with patch.object(tcpquality_helper.tcpquality_full, "recover_report", return_value="https://tcpquality.ibsgss.uk/r/new"):
+                        manager.retry_pending()
+                return {"ok": True}
+            with patch.object(AGENT, "STATE_DIR", root / "agent"), patch.object(AGENT, "tcpquality_request", side_effect=helper), patch.object(AGENT, "api_request", side_effect=send):
+                AGENT.collect_helper_results(config)
+                AGENT.flush_results(config)
+                self.assertTrue(artifacts.exists())
+                self.assertEqual(len(manager.request({"action": "list"})["tasks"]), 1)
+                AGENT.collect_helper_results(config)
+                AGENT.flush_results(config)
+                self.assertEqual(sent[0]["reportUrl"], "")
+                self.assertEqual(sent[1]["reportUrl"], "https://tcpquality.ibsgss.uk/r/new")
+                self.assertFalse(artifacts.exists())
+                self.assertEqual(manager.request({"action": "list"})["tasks"], [])
+
+    def test_long_task_heartbeat_cancels_only_after_authoritative_removal(self):
+        config = {"nodeUuid": TASK["taskId"], "role": "node"}
+        task = {"id": TASK["taskId"], "nodeUuid": TASK["taskId"], "state": "running"}
+        stop = SimpleNamespace(is_set=lambda: False, wait=lambda _: None)
+        for response, expected in [({"activeJobIds": []}, True), (OSError("offline"), False)]:
+            stop.is_set = unittest.mock.Mock(side_effect=[False, True])
+            with patch.object(AGENT, "tcpquality_tasks", return_value=[task]), patch.object(AGENT, "tcpquality_request") as helper, patch.object(AGENT, "api_request", side_effect=response if isinstance(response, Exception) else None, return_value=response), patch.object(AGENT.native, "active_tasks", return_value=[]), patch.object(AGENT.native, "reconcile_tasks"):
+                AGENT.heartbeat(config, stop)
+                self.assertEqual(helper.called, expected)
+                if expected: self.assertEqual(helper.call_args.args[0], "cancel")
     def test_rejects_insecure_credential_transport(self):
         with self.assertRaises(ValueError):
             AGENT.validate_base_url("http://komari.example.com")

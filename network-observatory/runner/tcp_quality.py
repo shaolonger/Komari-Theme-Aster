@@ -11,7 +11,10 @@ def syn_probe(address, port, count, payload, native):
     if not shutil.which("nping"):
         result["diagnostic"] = "未安装 nping；未执行原始 SYN 探测。完整 TCP 建连结果独立保留"
         return result
-    command = ["nping", "--tcp", "--flags", "syn", "--dest-port", str(port), "--count", str(count),
+    # Nping otherwise refuses raw mode based only on UID, despite the worker
+    # retaining CAP_NET_RAW. This flag does not grant a capability; without
+    # the necessary socket permission nping still returns a real failure.
+    command = ["nping", "--privileged", "--tcp", "--flags", "syn", "--dest-port", str(port), "--count", str(count),
                "--delay", "200ms", "--data-length", str(payload)]
     if ipaddress.ip_address(address).version == 6:
         command.append("-6")

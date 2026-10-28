@@ -21,6 +21,7 @@ const files = [
   ["runner/aster-network-observatory-http.service", resolve(root, "network-observatory/runner/aster-network-observatory-http.service")],
   ["runner/http_receiver.py", resolve(root, "network-observatory/runner/http_receiver.py")],
   ["runner/public_speed.py", resolve(root, "network-observatory/runner/public_speed.py")],
+  ...["tcpquality_full.py", "tcpquality_helper.py", "aster-network-observatory-tcpquality.service", "aster-network-observatory-tcpquality.openrc"].map((name) => [`runner/${name}`, resolve(root, `network-observatory/runner/${name}`)]),
   ["runner/tcp_quality.py", resolve(root, "network-observatory/runner/tcp_quality.py")],
   ["runner/native.py", resolve(root, "network-observatory/runner/native.py")],
   ["runner/agent.py", resolve(root, "network-observatory/runner/agent.py")],
