@@ -54,6 +54,8 @@ class HelperTests(unittest.TestCase):
 
     def test_idempotency_and_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             manager = helper.Manager(tmp)
             with patch.object(helper.tcpquality_full, 'run', return_value={'state': 'partial', 'csv': 'x'}) as run:
                 self.assertEqual(manager.request({'action': 'start', 'id': TASK, 'nodeUuid': NODE})['state'], 'running')
@@ -74,6 +76,8 @@ class HelperTests(unittest.TestCase):
 
     def test_restart_interrupted_not_repeated(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             directory = Path(tmp) / TASK
             directory.mkdir()
             (directory / 'task.json').write_text(json.dumps({'id': TASK, 'nodeUuid': NODE, 'options': {'profile': 'AUTO', 'timeoutMinutes': 120}, 'state': 'running'}))
@@ -85,6 +89,8 @@ class HelperTests(unittest.TestCase):
 
     def test_pending_report_survives_restart_and_resubmits_after_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             directory = Path(tmp) / TASK
             artifacts = directory / 'artifacts'
             artifacts.mkdir(parents=True)
@@ -104,6 +110,8 @@ class HelperTests(unittest.TestCase):
 
     def test_pending_or_truncated_originals_are_never_deleted_on_ack(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             directory = Path(tmp) / TASK
             artifacts = directory / 'artifacts'
             artifacts.mkdir(parents=True)
@@ -116,6 +124,8 @@ class HelperTests(unittest.TestCase):
 
     def test_stale_ack_does_not_delete_newly_recovered_report(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             directory = Path(tmp) / TASK
             artifacts = directory / 'artifacts'
             artifacts.mkdir(parents=True)
@@ -137,6 +147,8 @@ class HelperTests(unittest.TestCase):
 
     def test_rejects_untrusted_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp) / 'state')
+            Path(tmp).mkdir(mode=0o700)
             manager = helper.Manager(tmp)
             with self.assertRaises(ValueError):
                 manager.request({'action': 'start', 'id': '../../etc', 'nodeUuid': NODE})
