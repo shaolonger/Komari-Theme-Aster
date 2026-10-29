@@ -876,3 +876,14 @@
 .home-speeds-publish-nodes label > span { display: grid; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
 .home-speeds-publish-nodes small { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
 .home-speeds-publish-nodes a { font-size: 12px; color: var(--accent-500); }
+
+.report-schedule-rules { display: grid; gap: 0.75rem; margin-top: 0.7rem; }
+.report-schedule-rule { display: grid; gap: 0.75rem; padding: 0.9rem; background: color-mix(in srgb, var(--accent-500) 3%, var(--surface-a)); }
+.report-schedule-rule legend { padding: 0 0.3rem; color: var(--text-secondary); font-size: 0.78rem; font-weight: 600; }
+.report-schedule-rule .report-plan-module-heading { align-items: end; }
+.report-schedule-rule .report-plan-module-heading label { flex: 1 1 12rem; }
+.report-schedule-date-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem; }
+.report-schedule-weekdays { display: flex; flex-wrap: wrap; gap: 0.45rem 0.9rem; }
+.report-schedule-rules > button { justify-self: start; }
+.report-schedule-rules > .report-caption { margin: 0; }
+@media (max-width: 600px) { .report-schedule-date-fields { grid-template-columns: 1fr; } }

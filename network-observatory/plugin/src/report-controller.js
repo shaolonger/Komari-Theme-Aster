@@ -243,10 +243,9 @@ function registerReportController(ctx, native) {
         });
         for (const mod of p.modules.filter((m) => m.enabled)) {
           const plan = R.planSlots(s, p, mod, node.uuid, crypto.randomUUID());
-          const times =
-            mod.timing.type === "daily"
-              ? mod.timing.times.length
-              : 1440 / mod.timing.minutes;
+          const frequency = timing => timing.type === "rules" ? timing.rules.reduce((sum, rule) => sum + frequency(rule), 0) :
+            timing.type === "daily" ? timing.times.length : timing.type === "every-days" ? 1 / timing.days : timing.type === "weekly" ? timing.weekdays.length / 7 : 1440 / timing.minutes;
+          const times = frequency(mod.timing);
           usage.measurementsPerDay += times * plan.jobs.length;
           if (["international", "idc", "tcp-quality"].includes(mod.module)) {
             usage.samplesPerDay += times * plan.jobs.length * (mod.samples || 10) * (mod.module === "tcp-quality" ? 1 + (mod.packetSizes || []).length : 1);
@@ -1087,7 +1086,7 @@ function registerReportController(ctx, native) {
       for (const mod of suite.modules.filter(
         (m) => m.enabled && m.nextAt <= now,
       )) {
-        if (!s.reportDispatch.some(work => work.suiteId === suite.id && work.module === mod.module)) {
+        if (!s.reportDispatch.some(work => work.suiteId === suite.id && work.module === mod.module && work.plannedAt === mod.nextAt)) {
           s.reportDispatch.push({ suiteId: suite.id, module: mod.module, batchId: crypto.randomUUID(),
             plannedAt: mod.nextAt, nodes: members(suite, s).map(node => node.uuid), cursor: 0 });
         }

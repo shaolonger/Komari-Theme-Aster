@@ -14,17 +14,15 @@ export const reportModules = [
 export type ReportModule = (typeof reportModules)[number];
 const moduleName = z.enum(reportModules);
 const nullableNumber = z.number().finite().nonnegative().nullable();
-export const timingSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("interval"),
-    minutes: z.number().int().positive(),
-  }),
-  z.object({
-    type: z.literal("daily"),
-    times: z.array(z.string()),
-    timezone: z.string(),
-  }),
+const intervalTimingSchema = z.object({ type: z.literal("interval"), minutes: z.number().int().positive(), anchor: z.number().int().optional() });
+const dailyTimingSchema = z.object({ type: z.literal("daily"), times: z.array(z.string()), timezone: z.string() });
+const everyDaysTimingSchema = z.object({ type: z.literal("every-days"), days: z.number().int().min(1).max(365), time: z.string(), timezone: z.string(), startDate: z.string() });
+const weeklyTimingSchema = z.object({ type: z.literal("weekly"), weekdays: z.array(z.number().int().min(1).max(7)), time: z.string(), timezone: z.string() });
+export const timingSchema = z.discriminatedUnion("type", [intervalTimingSchema, dailyTimingSchema, everyDaysTimingSchema, weeklyTimingSchema,
+  z.object({ type: z.literal("rules"), rules: z.array(z.discriminatedUnion("type", [intervalTimingSchema, dailyTimingSchema, everyDaysTimingSchema, weeklyTimingSchema])).min(1).max(8) }),
 ]);
+export type ReportTiming = z.infer<typeof timingSchema>;
+export type ReportTimingRule = z.infer<typeof intervalTimingSchema> | z.infer<typeof dailyTimingSchema> | z.infer<typeof everyDaysTimingSchema> | z.infer<typeof weeklyTimingSchema>;
 const sourceSchema = z
   .object({
     provider: z.string().default(""),

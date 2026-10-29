@@ -13,6 +13,7 @@ import {
   type ReportSuite,
 } from "@/services/reportObservatory";
 import { NetworkSectionHeading } from "./NetworkUi";
+import { FullScheduleEditor } from "./FullScheduleEditor";
 import { reportLabels } from "./reportMetrics";
 import { formatNetworkTime } from "./shared";
 import "@/styles/network-reports.css";
@@ -522,6 +523,7 @@ export function ReportPlanPanel({
                 }
                 description="各模块独立调度；测速不会随延迟测试的频率触发。"
               />
+              {["tcpquality-full", "nodequality-full"].includes(mod.module) ? <FullScheduleEditor key={mod.module} timing={mod.timing} timezones={catalog.timezones} onChange={timing => moduleChange(mod.module, { timing })} /> : <>
               <label>
                 执行方式
                 <select
@@ -577,7 +579,7 @@ export function ReportPlanPanel({
                     ))}
                   </select>
                 </label>
-              ) : (
+              ) : mod.timing.type === "daily" ? (
                 <>
                   <label>
                     时区
@@ -633,8 +635,8 @@ export function ReportPlanPanel({
                     时区的实际日期与夏令时规则；同一时刻的重复输入会去重。
                   </p>
                 </>
-              )}
-              {["tcpquality-full", "nodequality-full"].includes(mod.module) && <p className="report-caption">如果上一轮仍在运行，重叠的定时轮次会记录为跳过；建议间隔大于单次检测的超时时间。</p>}
+              ) : null}
+              </>}
             </section>
           ))}
         </>

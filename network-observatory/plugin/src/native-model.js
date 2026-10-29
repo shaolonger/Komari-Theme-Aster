@@ -21,7 +21,30 @@ function offset(zone, now) {
   }
   return value;
 }
-function timing(input, kind) {
+const FULL_KINDS = ["tcpquality-full", "nodequality-full"];
+function timing(input, kind, inRules = false) {
+  if (input?.type === "rules") {
+    if (inRules || !FULL_KINDS.includes(kind) || !Array.isArray(input.rules) || input.rules.length < 1 || input.rules.length > 8)
+      throw new Error("完整检测支持 1–8 个定时规则");
+    return { type: "rules", rules: input.rules.map(rule => timing(rule, kind, true)) };
+  }
+  if (input?.type === "weekly") {
+    if (!inRules || !FULL_KINDS.includes(kind) || !Array.isArray(input.weekdays) || !input.weekdays.length || input.weekdays.length > 7 ||
+        input.weekdays.some(day => !Number.isInteger(day) || day < 1 || day > 7) ||
+        !TIMEZONES.includes(input.timezone) || typeof input.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time))
+      throw new Error("每周规则需要至少一个星期、有效时刻和时区");
+    return { type: "weekly", weekdays: [...new Set(input.weekdays)].sort((a,b) => a-b), time: input.time, timezone: input.timezone };
+  }
+  if (input?.type === "every-days") {
+    if (!inRules || !FULL_KINDS.includes(kind) || !Number.isInteger(input.days) || input.days < 1 || input.days > 365 ||
+        !TIMEZONES.includes(input.timezone) || typeof input.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time) ||
+        typeof input.startDate !== "string" || !/^20\d\d-\d\d-\d\d$/.test(input.startDate))
+      throw new Error("每 N 天规则需要 1–365 天、有效的起始日期、时刻和时区");
+    const anchor = Date.parse(input.startDate + "T00:00:00Z");
+    if (!Number.isFinite(anchor) || new Date(anchor).toISOString().slice(0, 10) !== input.startDate || anchor < tz.from || anchor >= tz.until)
+      throw new Error("起始日期无效或超出支持范围（2020–2040）");
+    return { type: "every-days", days: input.days, time: input.time, timezone: input.timezone, startDate: input.startDate };
+  }
   if (input?.type === "daily") {
     const times = [...new Set(input.times || [])].sort();
     if (
@@ -36,6 +59,7 @@ function timing(input, kind) {
       throw new Error("请选择支持的 IANA 时区");
     return { type: "daily", times, timezone: input.timezone };
   }
+  if (input?.type && input.type !== "interval") throw new Error("无效的执行方式");
   const minutes = Number(
     input?.minutes || (kind === "speed" ? 1440 : kind === "routes" ? 60 : 15),
   );
@@ -44,19 +68,59 @@ function timing(input, kind) {
     (kind === "speed" && minutes < 1440)
   )
     throw new Error("检测间隔无效；全速测速至少每天一次");
+  if (inRules) {
+    const anchor = input.anchor === undefined ? Date.now() : input.anchor;
+    if (!Number.isSafeInteger(anchor) || anchor < tz.from || anchor >= tz.until) throw new Error("固定间隔起点无效");
+    return { type: "interval", minutes, anchor };
+  }
   return { type: "interval", minutes };
 }
 function next(t, now = Date.now()) {
-  if (t.type === "interval") return now + t.minutes * 60000;
-  // Minute scan covers DST gaps/repeated hours without requiring Intl in Goja.
-  for (
-    let at = Math.floor(now / 60000) * 60000 + 60000, end = now + 49 * 3600000;
-    at < end;
-    at += 60000
-  ) {
-    const date = new Date(at + offset(t.timezone, at) * 60000);
-    const clock = `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
-    if (t.times.includes(clock)) return at;
+  if (t.type === "rules") return Math.min(...t.rules.map(rule => next(rule, now)));
+  if (t.type === "interval") {
+    const period = t.minutes * 60000;
+    return t.anchor === undefined ? now + period : t.anchor > now ? t.anchor : t.anchor + (Math.floor((now - t.anchor) / period) + 1) * period;
+  }
+  if (t.type === "weekly") {
+    const dayMs = 86400000, localDay = Math.floor((now + offset(t.timezone, now) * 60000) / dayMs);
+    const [hours, minutes] = t.time.split(":").map(Number), offsets = [...new Set(tz.zones[t.timezone].map(row => row[1]))];
+    for (let day = localDay; day <= localDay + 14; day++) {
+      const weekday = ((day + 3) % 7 + 7) % 7 + 1;
+      if (!t.weekdays.includes(weekday)) continue;
+      const wall = day * dayMs + (hours * 60 + minutes) * 60000;
+      const candidates = offsets.map(value => wall - value * 60000).filter(at => at > now && at >= tz.from && at < tz.until && at + offset(t.timezone, at) * 60000 === wall).sort((a,b) => a-b);
+      if (candidates.length) return candidates[0];
+    }
+    throw new Error("无法计算下一次每周检测时间");
+  }
+  if (t.type === "every-days") {
+    const dayMs = 86400000, anchorDay = Math.floor(Date.parse(t.startDate + "T00:00:00Z") / dayMs);
+    const localDay = Math.floor((now + offset(t.timezone, now) * 60000) / dayMs);
+    let day = anchorDay + Math.max(0, Math.ceil((localDay - anchorDay) / t.days)) * t.days;
+    const [hours, minutes] = t.time.split(":").map(Number);
+    const offsets = [...new Set(tz.zones[t.timezone].map(row => row[1]))];
+    // Resolve wall time against the timezone table. Missing DST times are
+    // skipped; both instants of an ambiguous repeated time remain eligible.
+    for (let attempts = 0; attempts < 4; attempts++, day += t.days) {
+      const wall = day * dayMs + (hours * 60 + minutes) * 60000;
+      const candidates = offsets.map(value => wall - value * 60000).filter(at => at > now && at >= tz.from && at < tz.until && at + offset(t.timezone, at) * 60000 === wall).sort((a, b) => a - b);
+      if (candidates.length) return candidates[0];
+    }
+    throw new Error("无法计算下一次检测时间（时区日期超出范围或夏令时缺失）");
+  }
+  // Resolve a few local calendar days instead of scanning thousands of minutes.
+  const dayMs = 86400000, localDay = Math.floor((now + offset(t.timezone, now) * 60000) / dayMs);
+  const offsets = [...new Set(tz.zones[t.timezone].map(row => row[1]))];
+  for (let day = localDay; day <= localDay + 2; day++) {
+    const candidates = [];
+    for (const clock of t.times) {
+      const [hours, minutes] = clock.split(":").map(Number), wall = day * dayMs + (hours * 60 + minutes) * 60000;
+      for (const value of offsets) {
+        const at = wall - value * 60000;
+        if (at > now && at >= tz.from && at < tz.until && at + offset(t.timezone, at) * 60000 === wall) candidates.push(at);
+      }
+    }
+    if (candidates.length) return Math.min(...candidates);
   }
   throw new Error("无法计算下一次检测时间");
 }

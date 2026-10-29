@@ -1,4 +1,7 @@
 async function runControllerScenario() {
+  var scheduleModel = require("./src/native-model.js");
+  var schedule = scheduleModel.timing({type:"rules",rules:[{type:"interval",minutes:120,anchor:Date.parse("2026-10-28T00:00:00Z")},{type:"every-days",days:2,startDate:"2026-10-28",time:"09:00",timezone:"Asia/Shanghai"},{type:"weekly",weekdays:[1,5],time:"21:00",timezone:"Asia/Shanghai"}]},"nodequality-full");
+  if (scheduleModel.next(schedule, Date.parse("2026-10-28T00:00:00Z")) !== Date.parse("2026-10-28T01:00:00Z") || scheduleModel.next(schedule, Date.parse("2026-10-28T01:00:00Z")) !== Date.parse("2026-10-28T02:00:00Z")) throw new Error("Runtime combined schedule calculation failed");
   var A = "c388e74d-a922-4ae1-bd10-1fb30e2e53de",
     token = "a".repeat(64),
     routes = new Map();

@@ -1455,6 +1455,14 @@ try {
     await waitUntil(cdp,`document.querySelector('.report-plan-panel input[placeholder="04:00, 21:00"]')!==null`,2000);
     await cdp.value(`document.querySelector('.report-plan-panel input[placeholder="04:00, 21:00"]').focus();document.querySelector('.report-plan-panel input[placeholder="04:00, 21:00"]').select()`);
     await cdp.call('Input.insertText',{text:'04:00, 21:00'});
+    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-module')).find(x=>x.querySelector('h3')?.textContent.includes('TcpQuality 完整检测')).querySelector('.report-schedule-rules > button').click()`);
+    failGate(await cdp.value(`(()=>{const p=Array.from(document.querySelectorAll('.report-plan-module')).find(x=>x.querySelector('h3')?.textContent.includes('TcpQuality 完整检测'));const rules=p.querySelectorAll('.report-schedule-rule');return rules.length===2 && rules[1].querySelector('select').value==='every-days' && !!rules[1].querySelector('input[type=date]') && !!rules[1].querySelector('input[type=time]')})()`), 'N-day schedule rule missing');
+    await cdp.value(`(()=>{const p=Array.from(document.querySelectorAll('.report-plan-module')).find(x=>x.querySelector('h3')?.textContent.includes('TcpQuality 完整检测')); const n=p.querySelectorAll('.report-schedule-rule')[1].querySelector('input[type=number]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,'3');n.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-module')).find(x=>x.querySelector('h3')?.textContent.includes('TcpQuality 完整检测')).querySelector('.report-schedule-rules > button').click()`);
+    await cdp.value(`(()=>{const p=Array.from(document.querySelectorAll('.report-plan-module')).find(x=>x.querySelector('h3')?.textContent.includes('TcpQuality 完整检测')); const s=p.querySelectorAll('.report-schedule-rule')[2].querySelector('select'); s.value='weekly';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await waitUntil(cdp,`document.querySelector('.report-schedule-weekdays')!==null`,2000);
+    failGate(await cdp.value(`document.querySelectorAll('.report-schedule-weekdays input').length===7 && document.documentElement.scrollWidth<=innerWidth+1`),'weekly schedule or mobile layout broken');
+    if(process.env.BROWSER_GATE_SCREENSHOT){ await cdp.value(`document.querySelector('.report-schedule-weekdays').scrollIntoView({block:'center'})`); await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.full-schedule-${appearance}.png`); }
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-steps button')).find(b=>b.textContent.includes('VPS 与覆盖')).click()`);
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);

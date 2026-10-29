@@ -1088,3 +1088,21 @@ test('NodeQuality plans, validates, persists and replays a complete report indep
   assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`)).status,200);
  } finally { f.close(); }
 });
+
+test('multiple complete-test schedule rules persist and preserve independently anchored next runs', async () => {
+ const originalNow=Date.now; let now=Date.parse('2026-10-28T00:00:00Z'); Date.now=()=>now;
+ const f=await fixture();
+ try {
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'nodequality-full',timing:{type:'rules',rules:[{type:'interval',minutes:120},{type:'every-days',days:2,startDate:'2026-10-28',time:'09:00',timezone:'Asia/Shanghai'}]}}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  assert.equal(saved.body.suite.modules[0].timing.rules[0].anchor,now);
+  assert.equal(saved.body.suite.modules[0].nextAt,Date.parse('2026-10-28T01:00:00Z'));
+  now=Date.parse('2026-10-28T01:00:00Z'); await f.c.tick();
+  assert.equal(f.c.read().reportSuites[0].modules[0].nextAt,Date.parse('2026-10-28T02:00:00Z'));
+  const restarted=await fixture(f.root);
+  assert.equal(restarted.c.read().reportSuites[0].modules[0].timing.rules[0].anchor,Date.parse('2026-10-28T00:00:00Z'));
+  now=Date.parse('2026-10-28T02:00:00Z'); await restarted.c.tick();
+  assert.equal(restarted.c.read().reportSuites[0].modules[0].nextAt,Date.parse('2026-10-28T04:00:00Z'));
+  assert.equal(restarted.c.read().reportDispatch.filter(w=>w.module==='nodequality-full').length,2);
+ } finally { Date.now=originalNow; f.close(); }
+});
