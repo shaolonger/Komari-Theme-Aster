@@ -47,6 +47,7 @@ export default function GlacierHome({
   onStatus,
   todayTraffic,
   costSummary,
+  costLoading,
   onOpenMetric,
   onOpenCost,
   showOverview,
@@ -63,6 +64,7 @@ export default function GlacierHome({
   onStatus: (value: GlacierStatus) => void;
   todayTraffic: { label: string; detail: string };
   costSummary: { remainingCny: number } | null;
+  costLoading: boolean;
   onOpenMetric: (metric: "status" | "bandwidth" | "traffic" | "expiry") => void;
   onOpenCost: () => void;
   showOverview: boolean;
@@ -189,7 +191,7 @@ export default function GlacierHome({
                       <strong>
                         {costSummary
                           ? formatCnyMoney(costSummary.remainingCny)
-                          : "计算中"}
+                          : costLoading ? "计算中" : "—"}
                       </strong>
                     </span>
                   </button>

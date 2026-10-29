@@ -1588,6 +1588,7 @@ export function NodeGrid() {
             onStatus={setGlacierStatus}
             todayTraffic={todayTraffic}
             costSummary={costSummary}
+            costLoading={costLoading}
             onOpenMetric={openOverviewMetric}
             onOpenCost={openCostSummary}
             showOverview={showHomeOverview}

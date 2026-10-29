@@ -238,8 +238,16 @@ export async function checkGlacier({
         "Glacier leaked into the original appearances",
       );
   }
+  // A failed rates request must settle to an unavailable amount, not a
+  // permanent loading label. Clear the persistent rate cache before reload.
+  await cdp.call("Network.enable");
+  await cdp.call("Network.setBlockedURLs", { urls: [`${origin}/api/docs-rates`] });
+  await cdp.value("localStorage.clear();sessionStorage.clear();localStorage.setItem('appearance',JSON.stringify('glacier'))");
+  await cdp.call("Page.reload");
+  await waitUntil(cdp, "document.querySelector('.glacier-mini-stats button:last-child strong')?.textContent === '—'", 20000);
+  await cdp.call("Network.setBlockedURLs", { urls: [] });
   return {
     glacier:
-      "independent/default appearance, Studio save and preview, four views with full card expansion, search/status, six performance metrics, Ping inspector, 320–1672px, original appearances",
+      "independent/default appearance, Studio save and preview, four views with full card expansion, search/status, failed-rate fallback, six performance metrics, Ping inspector, 320–1672px, original appearances",
   };
 }
