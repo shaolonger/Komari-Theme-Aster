@@ -256,8 +256,8 @@ function officialLatestStatus(index, sequence) {
     load15: 0.3,
     net_in: sequence * 120 + index,
     net_out: sequence * 100 + index,
-    net_total_up: (activeFixture.clearSky ? index === 7 ? 600_000_000_000 : 20_000_000_000 * (index + 1) : 0) + sequence * 1_000 + index,
-    net_total_down: (activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
+    net_total_up: (activeFixture.dailyVisual ? 200_000_000_000 : activeFixture.clearSky ? index === 7 ? 600_000_000_000 : 20_000_000_000 * (index + 1) : 0) + sequence * 1_000 + index,
+    net_total_down: (activeFixture.dailyVisual ? 300_000_000_000 : activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
     connections: 12,
     connections_udp: 2,
     uptime: activeFixture.slate ? 24 * 86400 : sequence,
@@ -309,7 +309,7 @@ function officialPingMetricSeries(params, fixture) {
               : metricKey === "gpu.usage" ? 45
               : metricKey === "cpu.usage" ? point === 120 ? 87 : 10 + point % 25
               : ["memory.used", "disk.used", "swap.used"].includes(metricKey) ? 500_000_000 + point * 1000
-              : metricKey.startsWith("net.total.") ? 1_000 + index + point * (metricKey === "net.total.up" ? 2 : 3)
+              : metricKey.startsWith("net.total.") ? 1_000 + index + (fixture.dailyVisual ? point * 4 + Math.sin(point / 8) * 24 : point * (metricKey === "net.total.up" ? 2 : 3))
               : metricKey.startsWith("net.") ? 10000 + point * 50 : 20 + point % 10,
           count,
           tags: { task_id: "1" },
@@ -1360,10 +1360,14 @@ try {
     const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
     writeFileSync(`${process.env.BROWSER_GATE_SCREENSHOT}.editor.png`, Buffer.from(screenshot.data, "base64"));
   }
+  activeFixture.dailyVisual = true;
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3 && document.querySelectorAll('.ping-task-lane').length === 9 && document.querySelectorAll('.ping-task-overflow').length === 3`, 6_000);
   failGate(await cdp.value(`Array.from(document.querySelectorAll('.ping-task-overflow')).every(button => button.getBoundingClientRect().height <= 30 && button.getAttribute('aria-label').includes('监控任务'))`), 'Ping overflow control is not compact or accessible');
   await waitUntil(cdp, `document.querySelectorAll('.daily-traffic-trend').length === 3`, 6_000);
+  await waitUntil(cdp, `document.querySelector('.compact-node-quota-pill .daily-traffic-line') !== null`, 6_000);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.daily-traffic-trend')).every(svg => svg.closest('.compact-node-quota-pill') && svg.parentElement.getBoundingClientRect().height <= 24 && svg.querySelector('title'))`), 'daily traffic trend must be contained in the existing quota pill');
+  failGate(await cdp.value(`!document.querySelector('.compact-node-live-traffic > .daily-traffic-trend') && document.querySelector('.compact-node-quota-content strong')?.textContent.includes('/')`), 'quota trend added a row or obscured the usage label');
   if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.daily-traffic.png`);
   await cdp.value(`document.querySelector('input[aria-label="搜索 VPS"]').focus()`);
   await cdp.call('Input.insertText',{text:'2 scale'});

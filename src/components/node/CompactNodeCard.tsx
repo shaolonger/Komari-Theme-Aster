@@ -307,14 +307,14 @@ function CompactLiveTraffic({
         <CompactTrafficLane direction="up" rate={upRate} samples={trafficTrend.up} />
         <CompactTrafficLane direction="down" rate={downRate} samples={trafficTrend.down} />
       </div>
-      {clearSky ? <TrafficQuotaDetails traffic={traffic} /> : <div className="compact-node-quota-pill" style={style}>
+      {clearSky ? <TrafficQuotaDetails traffic={traffic} uuid={node.uuid} /> : <div className="compact-node-quota-pill" style={style}>
         <span className="compact-node-quota-fill" aria-hidden />
+        <span className="compact-node-quota-trend" style={{ width: traffic.remainingLabel === "∞" ? "100%" : `${clamp01(traffic.fraction) * 100}%` }}><DailyTrafficTrend uuid={node.uuid} /></span>
         <span className="compact-node-quota-content">
           <Database size={10} />
           <strong className="tabular">{traffic.compactDetail}</strong>
         </span>
       </div>}
-      <DailyTrafficTrend uuid={node.uuid} />
     </div>
   );
 }
