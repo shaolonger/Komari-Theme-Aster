@@ -198,3 +198,5 @@
 .studio-network-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -8px 0 20px; font-size: 12px; color: var(--text-tertiary); }
 .studio-network-nav a { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-a); color: var(--text-secondary); }
 .studio-network-nav a:hover { border-color: var(--accent-500); color: var(--accent-500); }
+
+.studio-appearance-drawing[data-appearance="glacier"]{--mini-bg:#dcecff;--mini-surface:#ffffffdd;--mini-line:#c7dbfa;background:linear-gradient(130deg,#eff8ff,#cbdfff);color:#1766ff;border:1px solid #fff}.studio-appearance-drawing[data-appearance="glacier"] .studio-mini-sidebar{background:#ffffff60;border:1px solid #fff;border-radius:9px}

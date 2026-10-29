@@ -25,6 +25,7 @@ const APPEARANCE_OPTIONS = [
   { value: "slate", icon: Moon, label: "曜石" },
   { value: "slate-light", icon: Sun, label: "曜石·明" },
   { value: "clearsky", icon: Sparkles, label: "澄空" },
+  { value: "glacier", icon: Sparkles, label: "冰川" },
 ] as const;
 
 const VIEW_OPTIONS = [

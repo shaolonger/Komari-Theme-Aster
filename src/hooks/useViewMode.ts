@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
 import { isNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
@@ -156,10 +157,15 @@ function subscribe(listener: () => void) {
 export function useViewMode() {
   const themeSettings = useThemeSettings();
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const defaultMode =
-    state.device === "mobile"
-      ? themeSettings.mobileNodeViewMode
-      : themeSettings.desktopNodeViewMode;
+  const { appearance } = usePreferences();
+  // Visiting Glacier gives it the reference layout without overwriting either
+  // device's saved Studio layout or an explicit session override.
+  const defaultMode: NodeViewMode =
+    appearance === "glacier" && themeSettings.defaultAppearance !== "glacier"
+      ? state.device === "mobile" ? "compact" : "list"
+      : state.device === "mobile"
+        ? themeSettings.mobileNodeViewMode
+        : themeSettings.desktopNodeViewMode;
   const mode = state.override ?? defaultMode;
 
   const setMode = useCallback(

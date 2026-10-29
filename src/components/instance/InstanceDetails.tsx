@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { AlertCircle, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Flag } from "@/components/ui/Flag";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
@@ -91,9 +94,11 @@ function DecisionSummaryItem({
 export function InstanceDetails({
   uuid,
   onNodeReady,
+  onPingSummarySlot,
 }: {
   uuid: string;
   onNodeReady?: () => (() => void) | void;
+  onPingSummarySlot?: (node: HTMLDivElement | null) => void;
 }) {
   const meta = useNodeMeta(uuid);
   const metrics = useNodeMetrics(uuid);
@@ -142,6 +147,7 @@ export function InstanceDetails({
   const nodeMeta = overlayAdminClientMeta(meta, adminClient);
   const isOnline = metrics.online;
   const diagnosticAppearance = appearance === "diagnostic";
+  const glacier = appearance === "glacier";
   const hostStatus = getHostHealthStatus(metrics.online, metrics.updatedAt);
   const uptime = formatUptimeDays(metrics.uptime);
   // 按 traffic_limit_type (max/sum/up/down/min) 归并上下行，和卡片、后端保持一致——
@@ -226,8 +232,11 @@ export function InstanceDetails({
         isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
       }
     >
+      {glacier && <div className="glacier-identity glacier-panel"><span className="glacier-flag"><Flag region={nodeMeta.region} size={48} /></span><div><h2>{nodeMeta.name}</h2><p>{[nodeMeta.region, nodeMeta.os, nodeMeta.virtualization, nodeMeta.cpu_name].filter(Boolean).join(" · ")}</p></div><div className="glacier-ping-summary-slot" ref={onPingSummarySlot} /><Link className="glacier-identity-alert" title={workbenchNode.ping.detail} data-ok={workbenchNode.ping.state === "ok"} to={`/instance/${uuid}?focus=ping`}><AlertCircle size={22} /><span>{workbenchNode.ping.label}{ping.loss != null ? ` · 丢包 ${ping.loss.toFixed(2)}%` : ""}</span><ChevronRight size={16} /></Link></div>}
       {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
       <div className="instance-decision-grid">
+        {glacier && <><h2 className="glacier-asset-title">流量与续费</h2><div className="glacier-quota"><div className="glacier-quota-ring" style={{ "--quota": `${Math.min(100, Math.max(0, trafficUsage.fraction * 100))}%` } as CSSProperties}><strong>{trafficUsage.unlimited ? "∞" : `${(trafficUsage.used / trafficUsage.limit * 100).toFixed(2)}%`}</strong><span>{trafficUsage.unlimited ? "未设限" : "已使用"}</span></div><div><small>流量使用 · {trafficTypeLabel(nodeMeta.traffic_limit_type)}</small><strong>{formatBytes(trafficUsage.used)}</strong><p>/ {trafficLimitLabel}</p><p>剩余 {trafficUsage.unlimited ? "不限" : formatBytes(Math.max(0, trafficUsage.remaining))}</p><p>{workbenchNode.traffic.exhaustLabel}</p></div></div></>}
+
         {diagnosticAppearance && <>
           <DecisionSummaryItem
             label="主机状态"
@@ -249,6 +258,7 @@ export function InstanceDetails({
           />
         </>}
         <DecisionSummaryItem
+          id="instance-completeness"
           label="资料完整度"
           value={`${workbenchNode.completeness.complete}/${workbenchNode.completeness.total}`}
           detail={completenessDetail}
@@ -261,6 +271,7 @@ export function InstanceDetails({
           detail={`续费 ${renewalPrice}`}
           tone={decisionToneFromExpiry(workbenchNode.expiryBucket)}
         />
+        {!glacier && <>
         <DecisionSummaryItem
           id="instance-traffic"
           label="流量预估"
@@ -275,6 +286,7 @@ export function InstanceDetails({
           detail={workbenchNode.ping.detail}
           tone={decisionToneFromPing(workbenchNode.ping.state)}
         />
+        </>}
       </div>
       <div className="instance-info-groups">
         <div className="instance-info-group">

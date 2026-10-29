@@ -49,6 +49,7 @@ const CONNECTION_KEYS = ["connections", "udp"];
 const CONNECTION_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.cpu];
 const PROCESS_KEYS = ["process"];
 const PROCESS_COLORS = [CHART_PALETTE.warning];
+const GLACIER_COLORS = { cpu: ["#1768ff"], memory: ["#a044ff", "#ffb122"], disk: ["#ff9600"], network: ["#08b98c", "#1768ff"], connections: ["#1768ff", "#9b44ff"], process: ["#4a71a3"] };
 const SKY_COLORS = { cpu: ["#486bc2"], memory: ["#8a75bc", "#ae7746"], disk: ["#ae7746"], network: ["#2a899c", "#486bc2"], connections: ["#8a75bc", "#486bc2"], process: ["#486bc2"] };
 const SERIES_LABELS: Record<string, string> = {
   cpu: "CPU",
@@ -262,7 +263,11 @@ const ChartCard = memo(function ChartCard({
   spanGaps,
   axisKind,
   axisSize,
+  hidden = false,
+  glacier = false,
 }: {
+  hidden?: boolean;
+  glacier?: boolean;
   icon: ReactNode;
   title: string;
   value: ReactNode;
@@ -290,7 +295,7 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
-  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize("grid");
+  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize(glacier ? "workspace" : "grid");
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -351,12 +356,13 @@ const ChartCard = memo(function ChartCard({
 
   // resize 时只有这个 memo 变，uplot-react 走 setSize() 而非整个 chart 的拆建重建。
   const chartOptions = useMemo<uPlot.Options>(
-    () => ({ ...enhancedOptions, width: Math.min(width, measuredWidth), height }) as uPlot.Options,
-    [enhancedOptions, width, measuredWidth, height],
+    () => ({ ...enhancedOptions, width: glacier ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
+    [enhancedOptions, width, measuredWidth, height, glacier],
   );
 
   return (
     <div
+      hidden={hidden}
       className="instance-chart-card"
       style={{ "--chart-accent": colors[0] } as CSSProperties}
     >
@@ -416,7 +422,9 @@ export function LoadChart({
   const { resolvedAppearance, appearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
-  const { w, h } = useResponsiveChartSize("grid");
+  const glacier = appearance === "glacier";
+  const { w, h } = useResponsiveChartSize(glacier ? "workspace" : "grid");
+  const [selectedMetric, setSelectedMetric] = useState(0);
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
   const [connectNulls, setConnectNulls] = useState(false);
 
@@ -504,10 +512,7 @@ export function LoadChart({
     );
   }
 
-  return (
-    <InstancePanel
-      title="负载图表"
-      aside={
+  const chartMetadata = (
         <div className="instance-chart-headmeta">
           <div className="instance-chart-meta" aria-label="图表数据范围">
             <span>
@@ -538,11 +543,18 @@ export function LoadChart({
           </button>
           <span className="instance-chart-range-chip">{rangeSummary}</span>
         </div>
-      }
+  );
+
+  return (
+    <InstancePanel
+      title="负载图表"
+      aside={glacier ? <details className="glacier-load-settings"><summary>图表设置与采样范围</summary>{chartMetadata}</details> : chartMetadata}
       className="instance-chart-panel"
     >
       <div className="instance-chart-grid">
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 0}
           icon={<Cpu size={13} />}
           title="CPU"
           uuid={uuid}
@@ -554,9 +566,9 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
+          colors={glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -566,6 +578,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 1}
           icon={<MemoryStick size={13} />}
           title="内存"
           uuid={uuid}
@@ -587,9 +601,9 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
+          colors={glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -599,6 +613,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 2}
           icon={<HardDrive size={13} />}
           title="磁盘"
           uuid={uuid}
@@ -612,9 +628,9 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
+          colors={glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -624,6 +640,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 3}
           icon={<Network size={13} />}
           title="网络"
           uuid={uuid}
@@ -642,9 +660,9 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
+          colors={glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -654,6 +672,8 @@ export function LoadChart({
           axisSize={78}
         />
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 4}
           icon={<Workflow size={13} />}
           title="连接数"
           uuid={uuid}
@@ -667,9 +687,9 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
+          colors={glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -678,6 +698,8 @@ export function LoadChart({
           axisKind="count"
         />
         <ChartCard
+          glacier={glacier}
+          hidden={glacier && selectedMetric !== 5}
           icon={<Gauge size={13} />}
           title="进程"
           uuid={uuid}
@@ -697,9 +719,9 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
+          colors={glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
           width={w}
-          height={h}
+          height={glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -708,6 +730,14 @@ export function LoadChart({
           axisKind="count"
         />
       </div>
+      {glacier && <div className="glacier-metric-tabs" role="group" aria-label="性能指标">{[
+        { label: "CPU", icon: Cpu, value: formatMetricPercent(isRealtime && node ? node.cpuPct : points.at(-1)?.cpu ?? 0) },
+        { label: "内存", icon: MemoryStick, value: isRealtime && node ? `${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}` : `${formatMetricPercent(points.at(-1)?.ram ?? 0)}` },
+        { label: "磁盘", icon: HardDrive, value: isRealtime && node ? `${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}` : formatMetricPercent(points.at(-1)?.disk ?? 0) },
+        { label: "网络", icon: Network, value: isRealtime && node ? `↑ ${formatTrafficRateLabel(node.netUp)} · ↓ ${formatTrafficRateLabel(node.netDown)}` : `↓ ${formatTrafficRateLabel(points.at(-1)?.netIn ?? 0)}` },
+        { label: "连接数", icon: Workflow, value: isRealtime && node ? `TCP ${node.connectionsTcp} / UDP ${node.connectionsUdp}` : `${Math.round(points.at(-1)?.connections ?? 0)}` },
+        { label: "进程", icon: Gauge, value: `${Math.round(isRealtime && node ? node.process : points.at(-1)?.process ?? 0)}` },
+      ].map(({ label, icon: Icon, value }, index) => <button key={label} aria-pressed={selectedMetric === index} onClick={() => setSelectedMetric(index)}><span><Icon size={15} />{label}</span><strong>{value}</strong></button>)}</div>}
     </InstancePanel>
   );
 }

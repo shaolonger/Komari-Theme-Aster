@@ -1,3 +1,4 @@
+import { checkGlacier } from "./glacier-browser-gates.mjs";
 import { checkSlate } from "./slate-browser-gates.mjs";
 import { checkClearSky } from "./clear-sky-browser-gates.mjs";
 import { checkCardObservations } from "./card-observation-browser-gates.mjs";
@@ -260,9 +261,9 @@ function officialLatestStatus(index, sequence) {
     net_total_down: (activeFixture.dailyVisual ? 300_000_000_000 : activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
     connections: 12,
     connections_udp: 2,
-    uptime: activeFixture.slate ? 24 * 86400 : sequence,
+    uptime: (activeFixture.slate || activeFixture.glacier) ? 6 * 86400 : sequence,
     process: 20,
-    time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : activeFixture.slate ? Math.floor(Date.now() / 1000) : 1_700_000_000 + sequence,
+    time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : (activeFixture.slate || activeFixture.glacier) ? Math.floor(Date.now() / 1000) : 1_700_000_000 + sequence,
   };
 }
 
@@ -310,7 +311,7 @@ function officialPingMetricSeries(params, fixture) {
               : metricKey === "cpu.usage" ? point === 120 ? 87 : 10 + point % 25
               : ["memory.used", "disk.used", "swap.used"].includes(metricKey) ? 500_000_000 + point * 1000
               : metricKey.startsWith("net.total.") ? 1_000 + index + (fixture.dailyVisual ? point * 4 + Math.sin(point / 8) * 24 : point * (metricKey === "net.total.up" ? 2 : 3))
-              : metricKey.startsWith("net.") ? 10000 + point * 50 : 20 + point % 10,
+              : metricKey.startsWith("net.") ? fixture.glacier ? 70000 + Math.sin(point / 8) * 20000 + Math.sin(point / 3) * 12000 + Math.exp(-Math.pow((point-30)/8,2))*80000 + Math.exp(-Math.pow((point-65)/6,2))*55000 : 10000 + point * 50 : 20 + point % 10,
           count,
           tags: { task_id: "1" },
         };
@@ -330,7 +331,7 @@ function officialPingMetricSeries(params, fixture) {
   return {
     start: new Date(windowStart).toISOString(),
     end: new Date(end).toISOString(),
-    series: fixture.slate ? series.flatMap(s => [1,2,3,4].map(id => ({...s, tags:{task_id:String(id)}, points:s.points?.map(p=>({...p,tags:{task_id:String(id)},value:s.metric_key=== "ping.latency_ms" ? p.value * id : p.value}))}))) : series,
+    series: fixture.glacier ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : fixture.slate ? series.flatMap(s => [1,2,3,4].map(id => ({...s, tags:{task_id:String(id)}, points:s.points?.map(p=>({...p,tags:{task_id:String(id)},value:s.metric_key=== "ping.latency_ms" ? p.value * id : p.value}))}))) : series,
     count: fixture.slate ? series.length * 4 : series.length,
   };
 }
@@ -949,7 +950,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
+  if (!process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -1945,6 +1946,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
+  if (!process.env.BROWSER_GLACIER_ONLY) {
   await clearFixturePage(cdp);
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
   savedUiSettings = null;
@@ -1953,6 +1955,13 @@ try {
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "slate", ui: true, docs: true, clearSky: true, comprehensive: true, slate: true };
   savedUiSettings = null;
   results.push(await checkSlate({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
+  }
+  if (!process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "glacier", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+    savedUiSettings = null;
+    results.push(await checkGlacier({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
+  }
   console.log(JSON.stringify(results, null, 2));
 } finally {
   cdp?.close();

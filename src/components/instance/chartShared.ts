@@ -312,7 +312,7 @@ export function buildChartTooltipHooks({
 }
 
 function computeChartSize(
-  mode: "grid" | "wide",
+  mode: "grid" | "wide" | "workspace",
   viewportWidth: number,
   containerWidth?: number,
 ): { w: number; h: number } {
@@ -321,7 +321,7 @@ function computeChartSize(
   // 收敛成一个，于是大约每步才重建一次。
   const q = (value: number) => Math.floor(value / CHART_WIDTH_STEP) * CHART_WIDTH_STEP;
 
-  if (mode === "wide") {
+  if (mode !== "grid") {
     const height =
       viewportWidth < 720
         ? WIDE_CHART_MOBILE_HEIGHT
@@ -333,7 +333,7 @@ function computeChartSize(
         ? containerWidth
         : viewportWidth - WIDE_CHART_GUTTER;
     return {
-      w: Math.min(WIDE_CHART_MAX_WIDTH, Math.max(WIDE_CHART_MIN_WIDTH, q(measuredWidth))),
+      w: Math.min(WIDE_CHART_MAX_WIDTH, Math.max(mode === "workspace" ? 1 : WIDE_CHART_MIN_WIDTH, q(measuredWidth))),
       h: height,
     };
   }
@@ -362,7 +362,7 @@ function computeChartSize(
   };
 }
 
-export function useResponsiveChartSize(mode: "grid" | "wide") {
+export function useResponsiveChartSize(mode: "grid" | "wide" | "workspace") {
   const [size, setSize] = useState(
     mode === "grid"
       ? GRID_CHART_DEFAULT

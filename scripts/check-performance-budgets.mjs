@@ -48,7 +48,9 @@ const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
 // evidence drawer remain lazy. It does not add a request per card.
 // Shared, cached daily traffic history adds a small coordinator; the chart and
 // aggregation are lazy-loaded and do not add per-card network requests.
-const limits = { js: 167 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
+// Glacier keeps its workspace and stylesheet lazy. Shared appearance selection,
+// theme-aware view defaults and the new lazy boundaries add at most 3 KiB.
+const limits = { js: 170 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
 if (jsBytes > limits.js) failures.push(`Home JS Brotli ${jsBytes} > ${limits.js}`);
 if (cssBytes > limits.css) failures.push(`Home CSS Brotli ${cssBytes} > ${limits.css}`);

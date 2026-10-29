@@ -92,6 +92,9 @@ import { VpsListSortPanel } from "./VpsListSortPanel";
 import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
+const renderGlacierCard = (uuid: string) => <NodeCard uuid={uuid} density="expanded" />;
+const GlacierHome = lazy(() => import("@/components/glacier/GlacierHome"));
+const GlacierList = lazy(() => import("@/components/glacier/GlacierList"));
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
 const UUID_KEY_SEPARATOR = ",";
@@ -810,6 +813,9 @@ export function NodeGrid() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const diagnosticAppearance = appearance === "diagnostic";
+  const glacier = appearance === "glacier";
+  const [glacierTools, setGlacierTools] = useState(false);
+  const [glacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention">("all");
   const { mode } = useViewMode();
   const [selectedFacetDimension, setSelectedFacetDimension] = useState(HOME_FACET_LEGACY_GROUP);
   const [facetFilters, setFacetFilters] = useState<HomeFacetFilters>({});
@@ -1230,7 +1236,11 @@ export function NodeGrid() {
     [facetFilters, facetNodes, selectedNodeUuids],
   );
   const filteredNodes = useMemo(() => {
-    const facetFiltered = visibleNodes.filter((node) => facetFilteredUuidSet.has(node.uuid));
+    const facetFiltered = visibleNodes.filter((node) =>
+      facetFilteredUuidSet.has(node.uuid) &&
+      (!glacier || glacierStatus === "all" ||
+        (glacierStatus === "online" ? node.online === true : risksByUuid.has(node.uuid))),
+    );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
     const searchFiltered = normalizedSearch
       ? facetFiltered.filter((node) => {
@@ -1322,6 +1332,8 @@ export function NodeGrid() {
     ];
   }, [
     facetFilteredUuidSet,
+    glacier,
+    glacierStatus,
     facetSearchTextByUuid,
     visibleNodes,
     selectedRiskFilter,
@@ -1541,7 +1553,7 @@ export function NodeGrid() {
   }
 
   return (
-    <>
+    <div className="home-workspace" data-glacier-tools={glacierTools}>
       {shouldRenderCostSummary && (
         <CostSummary
           open={costSummaryOpen}
@@ -1562,7 +1574,27 @@ export function NodeGrid() {
           if (!open) setOverviewPanel(null);
         }}
       />
-      <HomeWorkbenchPanel
+      {glacier ? (
+        <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
+          <GlacierHome
+            nodes={workbenchNodes}
+            summaries={visibleNodes}
+            risks={operationRisks}
+            search={nodeSearch}
+            onSearch={setNodeSearch}
+            toolsOpen={glacierTools}
+            onToggleTools={() => setGlacierTools(v => !v)}
+            status={glacierStatus}
+            onStatus={setGlacierStatus}
+            todayTraffic={todayTraffic}
+            costSummary={costSummary}
+            onOpenMetric={openOverviewMetric}
+            onOpenCost={openCostSummary}
+            showOverview={showHomeOverview}
+            showCost={showCostDetailButton}
+          />
+        </Suspense>
+      ) : (<HomeWorkbenchPanel
         nodes={workbenchNodes}
         overview={overview}
         risks={operationRisks}
@@ -1575,7 +1607,7 @@ export function NodeGrid() {
         onOpenCostSummary={openCostSummary}
         onOpenMetric={openOverviewMetric}
         onToggle={() => setWorkbenchOpen((value) => !value)}
-      />
+      />)}
       <section className="home-command-area" aria-label="VPS 搜索与筛选" data-mobile-filters-open={mobileFiltersOpen ? "true" : "false"}>
         <div className="home-command-bar">
           <label className="home-workbench-search">
@@ -1773,12 +1805,25 @@ export function NodeGrid() {
       </section>
       {listUuids.length > 0 ? (
         mode === "list" ? (
-          <NodeList
+          glacier ? (
+            <Suspense fallback={<Spinner />}>
+              <DailyTrafficProvider records={trafficHistoryQuery.data} now={trafficClock} timeZone={themeSettings.displayTimeZone}>
+                <GlacierList
+                  renderCard={renderGlacierCard}
+                  uuids={listUuids}
+                  attentionUuids={new Set(risksByUuid.keys())}
+                  sorts={listSorts}
+                  onSort={handleListSort}
+                  onInteractionChange={handleListInteractionChange}
+                />
+              </DailyTrafficProvider>
+            </Suspense>
+          ) : (<NodeList
             uuids={listUuids}
             sorts={listSorts}
             onSort={handleListSort}
             onInteractionChange={handleListInteractionChange}
-          />
+          />)
         ) : (
           <div
             className={`home-node-results ${gridClassName}`}
@@ -1791,6 +1836,6 @@ export function NodeGrid() {
       ) : (
         <div className="home-filter-empty">当前筛选下没有匹配的 VPS</div>
       )}
-    </>
+    </div>
   );
 }
