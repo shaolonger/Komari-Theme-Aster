@@ -154,7 +154,7 @@ export interface NodeMetrics {
 }
 
 export interface ThemeSettings {
-  defaultAppearance?: "system" | "light" | "dark" | "diagnostic" | "clearsky" | "slate" | "slate-light" | "glacier";
+  defaultAppearance?: "system" | "light" | "dark" | "diagnostic" | "clearsky" | "slate" | "slate-light" | "glacier" | "orbital";
   displayTimeZone?: string;
   desktopNodeViewMode?: "large" | "standard" | "compact" | "list";
   mobileNodeViewMode?: "large" | "standard" | "compact" | "list";

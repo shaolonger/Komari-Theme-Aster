@@ -85,6 +85,8 @@ function CompactGauge({
 
   return (
     <div
+      data-metric={label}
+      data-critical={fraction >= .85}
       className="compact-node-gauge"
       style={style}
       title={detail ? `${label} ${value} · ${detail}` : `${label} ${value}`}
@@ -375,6 +377,7 @@ export const CompactNodeCard = memo(function CompactNodeCard({ uuid }: { uuid: s
       data-online={node.online === true ? "true" : node.online === false ? "false" : "pending"}
     >
       <CompactNodeHeader node={node} osName={osName} isOffline={isOffline} diagnostic={diagnostic} hostStatus={hostStatus} networkStatus={networkStatus} />
+      {appearance === "orbital" && <div className="orbital-node-meta"><span>{node.region || "未设置地区"} · {node.ipv4 || node.ipv6 || "IP 未公开"}</span><span className="orbital-host-badge" data-host={hostStatus}>{hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "待更新"}</span></div>}
       <CompactNodeMeta
         subtitle={subtitle}
         tags={footerTags}

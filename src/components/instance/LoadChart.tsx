@@ -49,6 +49,7 @@ const CONNECTION_KEYS = ["connections", "udp"];
 const CONNECTION_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.cpu];
 const PROCESS_KEYS = ["process"];
 const PROCESS_COLORS = [CHART_PALETTE.warning];
+const ORBITAL_COLORS = { cpu: ["#14d8ff"], memory: ["#a46aff", "#ffb24c"], disk: ["#ffb24c"], network: ["#14d8ff", "#a46aff"], connections: ["#14d8ff", "#a46aff"], process: ["#59dc9a"] };
 const GLACIER_COLORS = { cpu: ["#1768ff"], memory: ["#a044ff", "#ffb122"], disk: ["#ff9600"], network: ["#08b98c", "#1768ff"], connections: ["#1768ff", "#9b44ff"], process: ["#4a71a3"] };
 const SKY_COLORS = { cpu: ["#486bc2"], memory: ["#8a75bc", "#ae7746"], disk: ["#ae7746"], network: ["#2a899c", "#486bc2"], connections: ["#8a75bc", "#486bc2"], process: ["#486bc2"] };
 const SERIES_LABELS: Record<string, string> = {
@@ -264,10 +265,12 @@ const ChartCard = memo(function ChartCard({
   axisKind,
   axisSize,
   hidden = false,
-  glacier = false,
+  selected = false,
+  workspace = false,
 }: {
+  selected?: boolean;
   hidden?: boolean;
-  glacier?: boolean;
+  workspace?: boolean;
   icon: ReactNode;
   title: string;
   value: ReactNode;
@@ -295,7 +298,7 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
-  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize(glacier ? "workspace" : "grid");
+  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize(workspace ? "workspace" : "grid");
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -356,13 +359,15 @@ const ChartCard = memo(function ChartCard({
 
   // resize 时只有这个 memo 变，uplot-react 走 setSize() 而非整个 chart 的拆建重建。
   const chartOptions = useMemo<uPlot.Options>(
-    () => ({ ...enhancedOptions, width: glacier ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
-    [enhancedOptions, width, measuredWidth, height, glacier],
+    () => ({ ...enhancedOptions, width: workspace ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
+    [enhancedOptions, width, measuredWidth, height, workspace],
   );
 
   return (
     <div
       hidden={hidden}
+      data-selected={selected}
+      data-metric={title}
       className="instance-chart-card"
       style={{ "--chart-accent": colors[0] } as CSSProperties}
     >
@@ -423,7 +428,8 @@ export function LoadChart({
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const glacier = appearance === "glacier";
-  const { w, h } = useResponsiveChartSize(glacier ? "workspace" : "grid");
+  const orbital = appearance === "orbital";
+  const { w, h } = useResponsiveChartSize(glacier || orbital ? "workspace" : "grid");
   const [selectedMetric, setSelectedMetric] = useState(0);
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
   const [connectNulls, setConnectNulls] = useState(false);
@@ -553,7 +559,8 @@ export function LoadChart({
     >
       <div className="instance-chart-grid">
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 0}
           hidden={glacier && selectedMetric !== 0}
           icon={<Cpu size={13} />}
           title="CPU"
@@ -566,9 +573,9 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
+          colors={orbital ? ORBITAL_COLORS.cpu : glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 0 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -578,7 +585,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 1}
           hidden={glacier && selectedMetric !== 1}
           icon={<MemoryStick size={13} />}
           title="内存"
@@ -601,9 +609,9 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
+          colors={orbital ? ORBITAL_COLORS.memory : glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 1 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -613,7 +621,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 2}
           hidden={glacier && selectedMetric !== 2}
           icon={<HardDrive size={13} />}
           title="磁盘"
@@ -628,9 +637,9 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
+          colors={orbital ? ORBITAL_COLORS.disk : glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 2 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -640,7 +649,8 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 3}
           hidden={glacier && selectedMetric !== 3}
           icon={<Network size={13} />}
           title="网络"
@@ -660,9 +670,9 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
+          colors={orbital ? ORBITAL_COLORS.network : glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 3 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -672,7 +682,8 @@ export function LoadChart({
           axisSize={78}
         />
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 4}
           hidden={glacier && selectedMetric !== 4}
           icon={<Workflow size={13} />}
           title="连接数"
@@ -687,9 +698,9 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
+          colors={orbital ? ORBITAL_COLORS.connections : glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 4 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -698,7 +709,8 @@ export function LoadChart({
           axisKind="count"
         />
         <ChartCard
-          glacier={glacier}
+          workspace={glacier || orbital}
+          selected={orbital && selectedMetric === 5}
           hidden={glacier && selectedMetric !== 5}
           icon={<Gauge size={13} />}
           title="进程"
@@ -719,9 +731,9 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
+          colors={orbital ? ORBITAL_COLORS.process : glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
           width={w}
-          height={glacier ? 180 : h}
+          height={orbital ? selectedMetric === 5 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -730,7 +742,7 @@ export function LoadChart({
           axisKind="count"
         />
       </div>
-      {glacier && <div className="glacier-metric-tabs" role="group" aria-label="性能指标">{[
+      {(glacier || orbital) && <div className="glacier-metric-tabs" role="group" aria-label="性能指标">{[
         { label: "CPU", icon: Cpu, value: formatMetricPercent(isRealtime && node ? node.cpuPct : points.at(-1)?.cpu ?? 0) },
         { label: "内存", icon: MemoryStick, value: isRealtime && node ? `${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}` : `${formatMetricPercent(points.at(-1)?.ram ?? 0)}` },
         { label: "磁盘", icon: HardDrive, value: isRealtime && node ? `${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}` : formatMetricPercent(points.at(-1)?.disk ?? 0) },

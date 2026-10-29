@@ -1,9 +1,10 @@
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CLEAR_SKY_SERIES } from "./chartShared";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
-import { Eye, EyeOff, MapPin, RefreshCw, Star } from "lucide-react";
+import { Activity, AlertTriangle, Eye, EyeOff, Gauge, MapPin, Network, RefreshCw, Star } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
 import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
 import {
@@ -104,7 +105,7 @@ export function PingChart({
   const { resolvedAppearance, appearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
-  const { w, h, ref: chartSizeRef } = useResponsiveChartSize(appearance === "glacier" ? "workspace" : "wide");
+  const { w, h, ref: chartSizeRef } = useResponsiveChartSize(appearance === "glacier" || appearance === "orbital" ? "workspace" : "wide");
   const [hiddenTasks, setHiddenTasks] = useState<Set<number>>(new Set());
   const [glacierAdvanced, setGlacierAdvanced] = useState(false);
   const [connectNulls, setConnectNulls] = useState(false);
@@ -140,7 +141,7 @@ export function PingChart({
     );
   }, [tasks]);
   const taskColors = useMemo(
-    () => new Map(tasks.map((task, index) => [task.id, appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
+    () => new Map(tasks.map((task, index) => [task.id, appearance === "orbital" ? ["#ed35c8", "#ffa63f", "#9ce84c", "#12dcee", "#258dff", "#a46aff"][index % 6] : appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
     [tasks, appearance],
   );
   const taskKeySet = useMemo(() => new Set(tasks.map((task) => String(task.id))), [tasks]);
@@ -483,7 +484,8 @@ export function PingChart({
             taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
             hoveredTaskId == null ? 0.88 : hoveredTaskId === task.id ? 1 : 0.14,
           ),
-          width: hoveredTaskId === task.id ? 2.7 : diagnosticsById.get(task.id)?.severity !== "ok" ? 2.1 : 1.5,
+          width: hoveredTaskId === task.id ? 2.7 : diagnosticsById.get(task.id)?.severity !== "ok" ? 2.1 : appearance === "orbital" ? 1.8 : 1.5,
+          fill: appearance === "orbital" ? rgbaSeriesColor(taskColors.get(task.id) ?? colorForSeries(index, tasks.length), .045) : undefined,
           spanGaps: connectNulls,
           show: visibleTaskIds.has(task.id),
           points: { show: false },
@@ -507,6 +509,7 @@ export function PingChart({
       },
     };
   }, [
+    appearance,
     chartWindow,
     anomalyIntervals,
     connectNulls,
@@ -670,6 +673,14 @@ export function PingChart({
     );
   }
 
+  const summaryContent = (<div className="instance-ping-summary" aria-label="Ping 诊断摘要">
+        <div>{appearance === "orbital" && <Network className="orbital-ping-stat-icon"/>}<span>监控任务</span><strong>{tasks.length}</strong></div>
+        <div data-tone={anomalyCount > 0 ? "warning" : "ok"}>{appearance === "orbital" && <AlertTriangle className="orbital-ping-stat-icon"/>}<span>异常线路</span><strong>{anomalyCount}</strong></div>
+        <div><span>最差线路</span><strong title={worstTask ? taskLabels.get(worstTask.id) : undefined}>{worstTask ? `${taskLabels.get(worstTask.id)} · ${formatLatency(worstTask.latest)}` : "—"}</strong></div>
+        <div>{appearance === "orbital" && <Activity className="orbital-ping-stat-icon"/>}<span>平均 RTT</span><strong>{averageRtt == null ? "—" : formatLatency(averageRtt)}</strong></div>
+        <div>{appearance === "orbital" && <Gauge className="orbital-ping-stat-icon"/>}<span>平均丢包</span><strong>{averageLoss == null ? "—" : formatPacketLoss(averageLoss)}</strong></div>
+      </div>);
+
   return (
     <InstancePanel title="Ping 图表" className="instance-chart-panel instance-ping-panel">
       {error && <div role="alert" className="surface-inset p-3 text-sm">Ping 数据加载失败：{error.message}。请重试或调整查询范围。</div>}
@@ -684,19 +695,7 @@ export function PingChart({
           </span>
         </div>
       )}
-      {appearance === "glacier" && summaryTarget ? createPortal((<div className="instance-ping-summary" aria-label="Ping 诊断摘要">
-        <div><span>监控任务</span><strong>{tasks.length}</strong></div>
-        <div data-tone={anomalyCount > 0 ? "warning" : "ok"}><span>异常线路</span><strong>{anomalyCount}</strong></div>
-        <div><span>最差线路</span><strong title={worstTask ? taskLabels.get(worstTask.id) : undefined}>{worstTask ? `${taskLabels.get(worstTask.id)} · ${formatLatency(worstTask.latest)}` : "—"}</strong></div>
-        <div><span>平均 RTT</span><strong>{averageRtt == null ? "—" : formatLatency(averageRtt)}</strong></div>
-        <div><span>平均丢包</span><strong>{averageLoss == null ? "—" : formatPacketLoss(averageLoss)}</strong></div>
-      </div>), summaryTarget) : (<div className="instance-ping-summary" aria-label="Ping 诊断摘要">
-        <div><span>监控任务</span><strong>{tasks.length}</strong></div>
-        <div data-tone={anomalyCount > 0 ? "warning" : "ok"}><span>异常线路</span><strong>{anomalyCount}</strong></div>
-        <div><span>最差线路</span><strong title={worstTask ? taskLabels.get(worstTask.id) : undefined}>{worstTask ? `${taskLabels.get(worstTask.id)} · ${formatLatency(worstTask.latest)}` : "—"}</strong></div>
-        <div><span>平均 RTT</span><strong>{averageRtt == null ? "—" : formatLatency(averageRtt)}</strong></div>
-        <div><span>平均丢包</span><strong>{averageLoss == null ? "—" : formatPacketLoss(averageLoss)}</strong></div>
-      </div>)}
+      {appearance === "glacier" && summaryTarget ? createPortal(summaryContent, summaryTarget) : summaryContent}
 
 
       <div className="instance-ping-diagnostic-controls" data-advanced={glacierAdvanced}>
@@ -738,7 +737,7 @@ export function PingChart({
       </div>
 
       <div className="instance-ping-task-groups">
-        {appearance === "glacier" && <div className="glacier-inspector-title"><strong>线路检查器</strong><span>RTT · 丢包率</span></div>}
+        {(appearance === "glacier" || appearance === "orbital") && <div className="glacier-inspector-title"><strong>{appearance === "orbital" ? "线路健康" : "线路检查器"}</strong><span>RTT · 丢包率</span></div>}
         {groupedTaskStats.map(([group, groupTasks]) => (
           <section key={group} className="instance-ping-task-group" aria-label={group}>
             {groupingMode !== "none" && <h3><button type="button" aria-pressed={activeGroupFilter === group} data-active={activeGroupFilter === group ? "true" : "false"} onClick={() => setActiveGroupFilter((current) => current === group ? "" : group)}>{group}<span>{groupTasks.length}</span>{groupingMode === "latency" && <small>独立缩放</small>}</button></h3>}
@@ -763,10 +762,10 @@ export function PingChart({
                       <span className="instance-ping-task-dot" style={{ background: task.color }} aria-hidden />
                       <span className="instance-ping-task-name">{taskName}</span>
                       <span className={`instance-ping-severity is-${task.severity}`}>{task.severity === "critical" ? "严重" : task.severity === "warning" ? "波动" : "正常"}</span>
-                      <span className="instance-ping-task-primary" style={{ color: task.latest != null ? latencyHeatColor(task.latest) : "var(--text-tertiary)" }}>{metricMode === "rtt" ? formatLatency(appearance === "glacier" ? task.avg : task.latest) : task.loss == null ? "—" : formatPacketLoss(task.loss)}</span>
+                      <span className="instance-ping-task-primary" style={{ color: task.latest != null ? latencyHeatColor(task.latest) : "var(--text-tertiary)" }}>{metricMode === "rtt" ? formatLatency(appearance === "glacier" || appearance === "orbital" ? task.avg : task.latest) : task.loss == null ? "—" : formatPacketLoss(task.loss)}</span>
                       <span className="instance-ping-task-loss">{metricMode === "rtt" ? task.loss == null ? "无样本" : formatPacketLoss(task.loss) : formatLatency(task.avg)}</span>
                     </button>
-                    {appearance === "glacier" && <TaskTrend values={task.trend} color={task.color} />}
+                    {(appearance === "glacier" || appearance === "orbital") && <TaskTrend values={task.trend} color={task.color} />}
                     <button type="button" className="instance-ping-watch" data-active={watched ? "true" : "false"} aria-pressed={watched} aria-label={`${watched ? "取消关注" : "关注"} ${taskName}`} title={watched ? "取消关注线路" : "关注线路"} onClick={() => toggleWatched(task.id)}><Star size={14} fill={watched ? "currentColor" : "none"} /></button>
                       <button type="button" className="instance-ping-locate" aria-label={`快速定位 ${taskName}`} title="快速定位并高亮线路" onClick={() => { setHoveredTaskId(task.id); document.getElementById(`ping-chart-plot-${uuid}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><MapPin size={13} /></button>
                   </div>
@@ -816,7 +815,8 @@ export function PingChart({
           <div className="instance-empty">当前已隐藏全部线路，点击上方按钮可恢复显示</div>
         )}
       </div>
-      {appearance === "glacier" && <><div className="glacier-ping-legend" aria-label="图表线路">{taskStats.map(task => <button key={task.id} aria-pressed={visibleTaskIds.has(task.id)} onClick={() => toggleTask(task.id)}><i style={{ background: task.color }} />{taskLabels.get(task.id)}<span>{visibleTaskIds.has(task.id) ? "✓" : "—"}</span></button>)}</div><div className="glacier-anomaly-summary" data-clear={anomalyCount === 0}><span aria-hidden>{anomalyCount ? "!" : "✓"}</span><div><strong>异常摘要</strong><p>{anomalyCount ? `${anomalyCount} 条线路需要关注${worstTask ? ` · ${taskLabels.get(worstTask.id)}` : ""}，建议检查线路质量。` : "所选时间范围未检测到异常线路。"}</p></div></div></>}
+      {appearance === "orbital" && <section className="orbital-event-timeline orbital-panel"><h3>异常观测时间线</h3><div className="orbital-event-track">{anomalyIntervals.map(([start,end],i)=>{ const first=chartWindow?.[0]??start,last=chartWindow?.[1]??end;return <span key={i} style={{left:`${Math.max(0,(start-first)/Math.max(1,last-first)*100)}%`,width:`${Math.max(.3,Math.min(100,(end-start)/Math.max(1,last-first)*100))}%`}} title={`${formatChartCoverageTime(start,displayTimeZone)} – ${formatChartCoverageTime(end,displayTimeZone)}`}/>; })}</div>{chartWindow && <div className="orbital-event-axis"><span>{formatChartCoverageTime(chartWindow[0],displayTimeZone)}</span><span>{formatChartCoverageTime(chartWindow[1],displayTimeZone)}</span></div>}<p>{anomalyIntervals.length ? `${anomalyIntervals.length} 个异常观测时段 · 与图中标记一致` : "所选范围暂无异常观测时段"}</p></section>}
+      {(appearance === "glacier" || appearance === "orbital") && <><div className="glacier-ping-legend" aria-label="图表线路">{taskStats.map(task => <button key={task.id} aria-pressed={visibleTaskIds.has(task.id)} onClick={() => toggleTask(task.id)}><i style={{ background: task.color }} />{taskLabels.get(task.id)}<span>{visibleTaskIds.has(task.id) ? "✓" : "—"}</span></button>)}</div><div className="glacier-anomaly-summary" data-clear={anomalyCount === 0}><span aria-hidden>{anomalyCount ? "!" : "✓"}</span><div><strong>异常摘要</strong><p>{anomalyCount ? `${anomalyCount} 条线路需要关注${worstTask ? ` · ${taskLabels.get(worstTask.id)}` : ""}，建议检查线路质量。` : "所选时间范围未检测到异常线路。"}</p>{appearance === "orbital" && <><p>{worstTask ? `最差线路均值 ${formatLatency(worstTask.avg)}，丢包 ${worstTask.loss == null ? "无可用观测" : formatPacketLoss(worstTask.loss)}。` : "暂无可用线路统计。"} 可对比不同线路与时间段，并结合路由报告检查目标与路径。</p><Link className="orbital-diagnostic-report" to={`/instance/${uuid}/report`}>查看完整报告 →</Link></>}</div></div></>}
     </InstancePanel>
   );
 }

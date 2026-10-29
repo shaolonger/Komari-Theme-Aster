@@ -1,3 +1,4 @@
+import { checkOrbital } from "./orbital-browser-gates.mjs";
 import { checkGlacier } from "./glacier-browser-gates.mjs";
 import { checkSlate } from "./slate-browser-gates.mjs";
 import { checkClearSky } from "./clear-sky-browser-gates.mjs";
@@ -68,7 +69,9 @@ const SOAK_TIMEOUT_MS = 60_000;
 // emit harmless DBus diagnostics and take several seconds before Chromium
 // writes its DevTools endpoint, so wait for the actual endpoint rather than
 // interpreting stderr as a startup signal.
-const DEVTOOLS_STARTUP_TIMEOUT_MS = 30_000;
+// Cold hosted runners can need more than 30s to expose the first blank tab.
+// This allowance is separate from, and does not relax, the UI render budgets.
+const DEVTOOLS_STARTUP_TIMEOUT_MS = process.env.CI === "true" ? 60_000 : 30_000;
 
 let activeFixture = {
   backend: BACKEND_PROFILES.legacy.id,
@@ -950,7 +953,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
+  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -1946,7 +1949,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
-  if (!process.env.BROWSER_GLACIER_ONLY) {
+  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY) {
   await clearFixturePage(cdp);
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
   savedUiSettings = null;
@@ -1956,11 +1959,17 @@ try {
   savedUiSettings = null;
   results.push(await checkSlate({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   }
-  if (!process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "glacier", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkGlacier({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
+  }
+  if (!process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 15, soak: false, run: "orbital", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+    savedUiSettings = null;
+    results.push(await checkOrbital({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {

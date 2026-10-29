@@ -83,6 +83,14 @@ Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、
   <img src="docs/images/current/overview-dark.png" alt="Aster 首页深色模式" width="90%">
 </p>
 
+### 星轨暗色外观
+
+v1.28.0 新增「星轨 · Orbital」：深海蓝、青紫光效、全网态势与地区分布、环形节点矩阵、实例性能和 Ping 网络诊断。保留列表、标准、紧凑、大卡片及全部原有内容。展开快捷按钮选择「星轨」，或在工作室保存为默认外观。详见[使用说明与验证截图](docs/orbital.md)。
+
+<p align="center">
+  <img src="docs/images/current/orbital-overview.png" alt="星轨暗色主题总览" width="90%">
+</p>
+
 ### 冰川外观
 
 v1.27.0 新增「冰川」：按高保真设计实现冰蓝玻璃侧栏、全网运行总览、节点列表、性能详情和 Ping 线路检查器。列表、紧凑、标准、大卡片均保留，卡片原有内容完整延续。展开快捷按钮选择「冰川」，或在工作室保存为默认外观。详见[使用说明与验证截图](docs/glacier.md)。

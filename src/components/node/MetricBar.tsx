@@ -22,6 +22,7 @@ interface MetricBarProps {
   detailText?: string;
   fraction: number; // 0..1
   redrawKey?: string;
+  variant?: "segments" | "continuous";
   paint: MetricPaint;
 }
 
@@ -34,6 +35,7 @@ export function MetricBar({
   fraction,
   redrawKey,
   paint,
+  variant = "segments",
 }: MetricBarProps) {
   const clamped = Math.max(0, Math.min(1, fraction));
   const activeSegments = clamped * METRIC_SEGMENT_COUNT;
@@ -62,6 +64,16 @@ export function MetricBar({
             })()
           : safeCanvasColor(paintColor);
 
+      if (variant === "continuous") {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = inactiveColor;
+        fillRoundedRect(ctx, 0, 0, width, height, height / 2);
+        if (clamped > 0) {
+          ctx.fillStyle = activePaint;
+          fillRoundedRect(ctx, 0, 0, Math.max(1, width * clamped), height, height / 2);
+        }
+        return;
+      }
       for (let index = 0; index < METRIC_SEGMENT_COUNT; index += 1) {
         const x = index * (segmentWidth + gap);
         const fillLevel = Math.max(0, Math.min(1, activeSegments - index));
@@ -80,7 +92,7 @@ export function MetricBar({
 
       ctx.globalAlpha = 1;
     },
-    [activeSegments, paintKind, paintColor, paintFrom, paintTo],
+    [activeSegments, clamped, variant, paintKind, paintColor, paintFrom, paintTo],
   );
 
   return (

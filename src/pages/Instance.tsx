@@ -21,6 +21,7 @@ import { describeDisplayTimeZone } from "@/utils/timeDisplay";
 
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
+const OrbitalInstanceHeading = lazy(() => import("@/components/orbital/OrbitalInstanceHeading"));
 const GlacierInstanceHeading = lazy(() => import("@/components/glacier/GlacierInstanceHeading"));
 const DEFAULT_PING_HOURS = 6;
 const NetworkWorkspace = lazy(() => import("@/components/network/NetworkWorkspace").then((m) => ({ default: m.NetworkWorkspace })));
@@ -34,6 +35,7 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const glacier = appearance === "glacier";
+  const orbital = appearance === "orbital";
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
   const [chartType, setChartType] = useState<"load" | "ping" | "traffic" | "network">(focus === "network" ? "network" : focus === "ping" ? "ping" : "load");
@@ -74,10 +76,10 @@ export function Instance() {
                 focus === "ping" ? "instance-chart-controls" :
                   "instance-chart-controls",
       ) ?? chartControlsRef.current;
-      if (!glacier || focus !== "ping") target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!(glacier || orbital) || focus !== "ping") target?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focus, uuid, glacier]);
+  }, [focus, uuid, glacier, orbital]);
 
   const nodeOptions = useMemo(() => {
     const nodeByUuid = new Map(allNodes.map((node) => [node.uuid, node]));
@@ -121,7 +123,7 @@ export function Instance() {
   // InstanceDetails 的 effect;若身份不稳定,父组件每次重渲染都会取消挂起的 rAF
   // 又不重新调度,导致这次性的 scroll-into-view 丢失。
   const alignCharts = useCallback(() => {
-    if (appearance === "glacier") return;
+    if (appearance === "glacier" || appearance === "orbital") return;
     const frame = window.requestAnimationFrame(() => {
       const element = chartControlsRef.current;
       if (!element) return;
@@ -169,9 +171,9 @@ export function Instance() {
   if (!uuid) return null;
 
   return (
-    <div className={`flex flex-col gap-5 py-2${glacier ? " glacier-instance" : ""}`} data-chart={chartType}>
+    <div className={`flex flex-col gap-5 py-2${glacier ? " glacier-instance" : orbital ? " orbital-instance" : ""}`} data-chart={chartType}>
       <div className="instance-topbar">
-        {glacier ? <Suspense fallback={null}><GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : <Link to="/" className="instance-page-back"><ChevronLeft size={14} />返回</Link>}
+        {orbital ? <Suspense fallback={null}><OrbitalInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : glacier ? <Suspense fallback={null}><GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : <Link to="/" className="instance-page-back"><ChevronLeft size={14} />返回</Link>}
         <div className="instance-topbar-actions"><Link className="instance-report-entry" to={`/instance/${encodeURIComponent(uuid)}/report${customRangeActive ? `?${new URLSearchParams({ start: appliedRange.start, end: appliedRange.end })}` : ""}`}><FileChartColumn size={14} />生成报告</Link><NodeSwitcher key={uuid} nodes={nodeOptions} currentUuid={selectedNodeUuid} onSelect={(nextUuid) => {
           if (nextUuid !== uuid) startTransition(() => navigate(`/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`));
         }} /></div>
@@ -181,7 +183,7 @@ export function Instance() {
       <section ref={chartControlsRef} id="instance-chart-controls" className="instance-panel instance-chart-workspace">
         <header className="instance-chart-workspace-header">
           <div className="instance-panel-headings">
-            <h2 className="instance-panel-title">{glacier ? chartType === "ping" ? "Ping · 延迟趋势" : chartType === "network" ? "网络检测" : "性能趋势" : "节点诊断"}</h2>
+            <h2 className="instance-panel-title">{glacier || orbital ? chartType === "ping" ? "Ping · 延迟趋势" : chartType === "network" ? "网络检测" : "性能趋势" : "节点诊断"}</h2>
             <p className="instance-panel-description">{chartType === "network" ? "查看本机探测器、检测计划和网络报告。" : "选择监控指标与时间范围，检查节点状态变化。"}</p>
           </div>
           <div className="instance-chart-controls">

@@ -9,7 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { getDisplayRegionCode } from "@/utils/geo";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpDown,
@@ -93,6 +94,7 @@ import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 const renderGlacierCard = (uuid: string) => <NodeCard uuid={uuid} density="expanded" />;
+const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
 const GlacierHome = lazy(() => import("@/components/glacier/GlacierHome"));
 const GlacierList = lazy(() => import("@/components/glacier/GlacierList"));
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
@@ -814,6 +816,10 @@ export function NodeGrid() {
   const { appearance } = usePreferences();
   const diagnosticAppearance = appearance === "diagnostic";
   const glacier = appearance === "glacier";
+  const orbital = appearance === "orbital";
+  const [orbitalParams, setOrbitalParams] = useSearchParams();
+  const orbitalRegion = orbitalParams.get("region") ?? "";
+  const [orbitalGroup, setOrbitalGroup] = useState("");
   const [glacierTools, setGlacierTools] = useState(false);
   const [glacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention">("all");
   const { mode } = useViewMode();
@@ -1238,8 +1244,9 @@ export function NodeGrid() {
   const filteredNodes = useMemo(() => {
     const facetFiltered = visibleNodes.filter((node) =>
       facetFilteredUuidSet.has(node.uuid) &&
-      (!glacier || glacierStatus === "all" ||
-        (glacierStatus === "online" ? node.online === true : risksByUuid.has(node.uuid))),
+      (!(glacier || orbital) || glacierStatus === "all" ||
+        (glacierStatus === "online" ? node.online === true : risksByUuid.has(node.uuid))) &&
+      (!orbital || (!orbitalRegion || getDisplayRegionCode(node.region) === orbitalRegion) && (!orbitalGroup || node.group === orbitalGroup)),
     );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
     const searchFiltered = normalizedSearch
@@ -1333,6 +1340,9 @@ export function NodeGrid() {
   }, [
     facetFilteredUuidSet,
     glacier,
+    orbital,
+    orbitalRegion,
+    orbitalGroup,
     glacierStatus,
     facetSearchTextByUuid,
     visibleNodes,
@@ -1574,7 +1584,32 @@ export function NodeGrid() {
           if (!open) setOverviewPanel(null);
         }}
       />
-      {glacier ? (
+      {orbital ? (
+        <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
+          <OrbitalHome
+            region={orbitalRegion}
+            onRegion={(region) => setOrbitalParams((current) => { const next = new URLSearchParams(current); if (region) next.set("region", region); else next.delete("region"); return next; })}
+            group={orbitalGroup}
+            onGroup={setOrbitalGroup}
+            nodes={workbenchNodes}
+            summaries={visibleNodes}
+            risks={operationRisks}
+            search={nodeSearch}
+            onSearch={setNodeSearch}
+            toolsOpen={glacierTools}
+            onToggleTools={() => setGlacierTools(v => !v)}
+            status={glacierStatus}
+            onStatus={setGlacierStatus}
+            todayTraffic={todayTraffic}
+            costSummary={costSummary}
+            costLoading={costLoading}
+            onOpenMetric={openOverviewMetric}
+            onOpenCost={openCostSummary}
+            showOverview={showHomeOverview}
+            showCost={showCostDetailButton}
+          />
+        </Suspense>
+      ) : glacier ? (
         <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
           <GlacierHome
             nodes={workbenchNodes}

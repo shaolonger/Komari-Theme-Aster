@@ -121,10 +121,12 @@ export const NodeCard = memo(function NodeCard({
     >
       <div className="server-card-content">
         <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} reference={slate} />
+        {appearance === "orbital" && <div className="orbital-node-meta"><span>{node.region || "未设置地区"} · {node.ipv4 || node.ipv6 || "IP 未公开"}</span><span className="orbital-host-badge" data-host={hostStatus}>{hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "待更新"}</span></div>}
         {slate && <div className="slate-node-badges"><span>{node.region ? regionNames.of(getDisplayRegionCode(node.region)) : "节点"}</span>{node.ipv4 && <span data-kind="ip">V4</span>}{node.ipv6 && <span data-kind="ip">V6</span>}{footerTags.map((tag, i) => <span key={i} data-kind="tag" title="用户标注；不代表线路测量认证">{tag.label}</span>)}</div>}
 
         <div className="server-card-stack">
           <NodeMetricSection
+            orbital={appearance === "orbital"}
             node={node}
             loadFraction={loadFraction}
             redrawKey={appearance + resolvedAppearance}
@@ -239,15 +241,18 @@ function NodeMetricSection({
   loadFraction,
   redrawKey,
   reference,
+  orbital,
 }: {
   node: NodeCardNode;
   loadFraction: number;
   redrawKey: string;
   reference: boolean;
+  orbital: boolean;
 }) {
   return (
     <div className="card-metric-section server-metric-grid">
       <MetricBar
+        variant={orbital ? "continuous" : "segments"}
         icon={<Cpu size={13} strokeWidth={2} />}
         label="CPU"
         valueText={formatMetricNumber(node.cpuPct, { digits: reference ? 0 : 2 })}
@@ -258,6 +263,7 @@ function NodeMetricSection({
         paint={{ kind: "solid", color: "var(--progress-cpu)" }}
       />
       <MetricBar
+        variant={orbital ? "continuous" : "segments"}
         icon={<MemoryStick size={13} strokeWidth={2} />}
         label="内存"
         valueText={formatMetricNumber(node.ramPct, { digits: reference ? 0 : 2 })}
@@ -268,6 +274,7 @@ function NodeMetricSection({
         paint={{ kind: "solid", color: "var(--progress-memory)" }}
       />
       <MetricBar
+        variant={orbital ? "continuous" : "segments"}
         icon={<HardDrive size={13} strokeWidth={2} />}
         label="磁盘"
         valueText={formatMetricNumber(node.diskPct, { digits: reference ? 0 : 2 })}
@@ -278,6 +285,7 @@ function NodeMetricSection({
         paint={{ kind: "solid", color: "var(--progress-disk)" }}
       />
       <MetricBar
+        variant={orbital ? "continuous" : "segments"}
         icon={<Gauge size={13} strokeWidth={2} />}
         label="负载"
         valueText={formatLoadValue(node.load1)}
