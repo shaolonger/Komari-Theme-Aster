@@ -911,3 +911,44 @@
 .report-saved-plan-select { display: grid; gap: 0.3rem; width: 100%; padding: 0.75rem; text-align: left; border: 0; background: transparent; overflow-wrap: anywhere; }
 .report-saved-plan-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0 0.65rem 0.65rem; }
 .report-saved-plan-actions button { font-size: 0.72rem; padding: 0.3rem 0.5rem; }
+
+/* Keep route controls, evidence and path details visually grouped. */
+.report-module--routes { font-size: 13px; line-height: 1.5; }
+.report-module--routes .network-section-heading h3 { font-size: 15px; }
+.report-module--routes .network-section-heading p,
+.report-module--routes .report-caption { font-size: 12px; line-height: 1.55; }
+.report-module--routes .report-round-health { gap: 7px; margin: 12px 0 6px; }
+.report-module--routes .report-round-health span { min-width: 76px; padding: 8px 10px; font-size: 11px; }
+.report-module--routes .report-round-health strong { font-size: 15px; }
+.report-module--routes .report-round-selector { margin: 10px 0; font-size: 12px; }
+.report-route-controls { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 18px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: color-mix(in srgb, var(--border-subtle, #dde3ea) 20%, var(--surface-a, #fff)); }
+.report-route-filter { display: grid; gap: 5px; min-width: 0; }
+.report-route-filter > span, .report-route-target { color: var(--text-secondary); font-size: 12px; line-height: 1.4; }
+.report-route-filter .report-pills { margin: 0; gap: 5px; }
+.report-module--routes .report-route-filter button, .report-module--routes .report-fold { min-height: 32px; padding: 5px 9px; font-size: 12px; line-height: 1.35; }
+.report-route-target { flex: 1 1 100%; min-width: 0; }
+.report-route-target select { font-size: 12px; min-height: 34px; }
+.report-route-observation { display: grid; gap: 7px; margin-top: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 10px; }
+.report-route-observation-heading, .report-route-table-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.report-route-observation-heading strong, .report-route-table-heading strong { font-size: 13px; }
+.report-route-observation-heading span { color: var(--text-secondary); font-size: 12px; }
+.report-route-observation p, .report-route-observation .report-evidence { margin: 0; }
+.report-route-observation .report-evidence span { font-size: 11px; }
+.report-route-observation .report-route-summary { margin: 0; padding: 9px 10px; font-size: 12px; }
+.report-route-observation .report-route-summary p { margin: 0 0 4px; }
+.report-route-observation .report-route-summary small { font-size: 11px; }
+.report-route-table-heading { margin: 12px 0 6px; }
+.report-module--routes .report-mtr-table { font-size: 12px; }
+.report-module--routes .report-mtr-table th, .report-module--routes .report-mtr-table td { padding: 8px; }
+@media (max-width: 520px) {
+  .report-route-controls { gap: 9px 12px; padding: 10px; }
+  .report-route-filter { flex: 1 1 100%; }
+  .report-route-filter:nth-child(1) { order: 1; }
+  .report-route-filter:nth-child(2) { order: 2; flex: 1 1 auto; }
+  .report-route-filter:nth-child(4) { order: 3; flex: 0 0 auto; }
+  .report-route-filter:nth-child(3) { order: 4; }
+  .report-route-target { order: 5; }
+  .report-route-observation { padding: 10px; }
+  .report-module--routes .report-round-health span { min-width: 0; flex: 1 1 72px; }
+}
+.report-module--routes .network-section-heading > .report-actions { flex: 0 0 auto; margin-left: auto; }

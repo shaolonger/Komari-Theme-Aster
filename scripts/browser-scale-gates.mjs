@@ -99,6 +99,7 @@ const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
 const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki'],modules:['routes','tcp-quality','tcpquality-full','nodequality-full','china-speed','international','idc','international-speed','bgp'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
 let reportSavedSuite = null;
+let reportPlanRuns = [];
 const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module => {
  const config={module,preset:reportPresets.find(p=>p.module===module).id,endpoints:[],family:'4',protocols:['tcp','icmp'],sources:[],publicSources:true,seconds:10,warmupSeconds:2,streams:[1,4],enabled:true,timing:{type:'interval',minutes:30},nextAt:Date.now()+60000};
  if (module === 'nodequality-full') {
@@ -472,7 +473,7 @@ const server = createServer(async (request, response) => {
   if (fixture.reports && url.pathname.startsWith('/api/aster-network-observatory/v3/')) {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
-    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails});
+    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:fixture.planCards?Array.from({length:7},(_,i)=>({id:'plan-'+i,name:['测速-v4','测速-v6','国际线路','大陆线路-v4','大陆线路-v6','TcpQuality','NodeQuality'][i],clients:i===3?[]:['node-0'],groups:i===3?['Group 0']:[],inherit:true,enabled:i!==6,trafficAccepted:true,modules:[reportRoundData.international.parameters],catalogVersion:reportCatalogVersion})):reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails});
     if(/^nodes\/[^/]+\/(?:rounds|history-summary)$/.test(suffix)){const module=url.searchParams.get('module');const r=fixtureReportRound(module);return sendJson(response,{rounds:fixture.comprehensive?[r,fixtureReportRound(module,true)]:[r],nextCursor:null});}
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1), prior=id.endsWith('-older'), base=prior?id.slice(0,-6):id;const module=Object.keys(reportRoundData).find(key=>reportRoundData[key].id===base);return sendJson(response,fixtureReportRound(module,prior));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
@@ -492,6 +493,7 @@ const server = createServer(async (request, response) => {
     if(suffix==='home-routes' && request.method==='PUT'){homeRouteNodes=body.nodeUuids;homeRouteDisplay=body.display;homeRouteLabelMode=body.labelMode??homeRouteLabelMode;homeRouteShowDetails=body.showDetails??homeRouteShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='home-speeds' && request.method==='PUT'){homeSpeedNodes=body.nodeUuids;homeSpeedDisplay=body.display;homeSpeedShowDetails=body.showDetails??homeSpeedShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}
+    if(fixture.planCards && /^suites\/[^/]+\/run$/.test(suffix)){ reportPlanRuns.push({suffix,body}); return sendJson(response,{ok:true}); }
     if(suffix==='suites'){reportSavedSuite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite:reportSavedSuite,revision:0});}
     return sendJson(response,{ok:true});
   }
@@ -1390,8 +1392,22 @@ try {
     writeFileSync(process.env.BROWSER_GATE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
-  activeFixture = {backend:BACKEND_PROFILES.official.id,nodes:3,soak:false,run:'report-v3',ui:true,network:true,reports:true};
+  activeFixture = {backend:BACKEND_PROFILES.official.id,nodes:3,soak:false,run:'report-v3',ui:true,network:true,reports:true,planCards:true};
+  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/instance/node-0?focus=network`});
+  await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length===4 && document.querySelectorAll('.report-latency-card').length>0`,6000);
+  await waitUntil(cdp, `document.querySelectorAll('.network-instance-plan-grid .network-instance-plan').length === 7`, 3000);
+  failGate(await cdp.value(`(()=>{const cards=[...document.querySelectorAll('.network-instance-plan')]; return cards[0].getBoundingClientRect().top===cards[1].getBoundingClientRect().top && cards[0].getBoundingClientRect().width<innerWidth/2 && cards[3].textContent.includes('继承分组') && cards[6].querySelector('button').disabled && cards[0].querySelector('a').href.includes('suite=plan-0')})()`),'plan cards lost compact layout or plan state');
+  await cdp.value(`document.querySelector('.network-instance-plan button').click()`);
+  await waitUntil(cdp, `document.querySelector('.network-associated-plans [role="status"]')?.textContent.includes('测速-v4')`, 3000);
+  failGate(reportPlanRuns.length===1 && reportPlanRuns[0].suffix==='suites/plan-0/run' && reportPlanRuns[0].body.nodeUuids.join()==='node-0', 'plan run was not scoped to this VPS');
+  if(process.env.BROWSER_GATE_SCREENSHOT){await cdp.value(`document.querySelector('.network-associated-plans').scrollIntoView({block:'start'})`);await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.associated-plans-desktop.png`);}
+  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:900,deviceScaleFactor:1,mobile:true});
+  failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1 && [...document.querySelectorAll('.network-instance-plan')].every(card=>card.getBoundingClientRect().width<=innerWidth && card.getBoundingClientRect().height<=100)`),'plan cards overflow mobile');
+  if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.associated-plans-mobile.png`);
+  await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  activeFixture.planCards=false;
+  await cdp.call('Page.reload');
   await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length===4 && document.querySelectorAll('.report-latency-card').length>0`,6000);
   failGate(await cdp.value(`document.querySelector('.report-latency-card').querySelectorAll('.report-sample').length===10`),'v3 matrix did not preserve ten attempts');
   await cdp.value(`Array.from(document.querySelectorAll('.report-pills button')).find(b=>b.textContent==='网站').click()`);
@@ -1411,6 +1427,14 @@ try {
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-international-${appearance}.png`);
     await cdp.value(`Array.from(document.querySelectorAll('.report-main-tabs button')).find(b=>b.textContent==='路由').click()`);
     await waitUntil(cdp,`document.querySelector('.report-mtr-table')!==null`,2000);
+    failGate(await cdp.value(`(()=>{const p=document.querySelector('.report-route-controls');return !!p && ['路由方向','路由地区','运营商','探测协议'].every(label=>p.querySelector('[aria-label="'+label+'"]')) && !!p.querySelector('.report-route-target select') && !!document.querySelector('.report-route-observation') && !!document.querySelector('.report-route-table-heading .report-fold')})()`),'route controls or observation grouping missing');
+    await cdp.value(`Array.from(document.querySelectorAll('[aria-label="路由方向"] button')).find(b=>b.textContent.includes('去程')).click()`);
+    failGate(await cdp.value(`document.querySelector('[aria-label="路由方向"] button[aria-pressed="true"]').textContent.includes('去程')`),'forward route selection failed');
+    await cdp.value(`Array.from(document.querySelectorAll('[aria-label="路由方向"] button')).find(b=>b.textContent.includes('回程')).click()`);
+    await waitUntil(cdp,`document.querySelector('.report-mtr-table')!==null`,2000);
+    await cdp.value(`document.querySelector('.report-route-table-heading .report-fold').click()`);
+    failGate(await cdp.value(`document.querySelector('.report-route-table-heading .report-fold').getAttribute('aria-pressed')==='true'`),'AS folding toggle failed');
+    await cdp.value(`document.querySelector('.report-route-table-heading .report-fold').click()`);
     failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('4809')`),'v3 MTR lost ASN evidence');
     failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('中国 · 上海') && document.querySelector('.report-mtr-table').textContent.includes('CN2-BackBone') && document.querySelector('.report-mtr-table').textContent.includes('chinatelecom.com.cn')`),'route table dropped metadata alongside network');
     await cdp.value(`document.querySelector('.report-metadata-observation > summary').click()`);
@@ -1567,6 +1591,8 @@ try {
       await cdp.call('Emulation.setDeviceMetricsOverride', {width,height:1000,deviceScaleFactor:1,mobile:width===390});
       failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1`), `route metadata overflows ${appearance}/${width}`);
       failGate(await cdp.value(`document.querySelector('.report-mtr-table').textContent.includes('中国 · 上海') && document.querySelector('.report-mtr-table').textContent.includes('中国电信')`), `route location lost in ${appearance}`);
+      failGate(await cdp.value(`(()=>{const box=document.querySelector('.report-route-controls'), label=box.querySelector('.report-route-filter > span');const cv=document.createElement('canvas');cv.width=cv.height=1;const c=cv.getContext('2d');const rgb=v=>{c.clearRect(0,0,1,1);c.fillStyle=v;c.fillRect(0,0,1,1);return [...c.getImageData(0,0,1,1).data].slice(0,3).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4})};const lum=a=>.2126*a[0]+.7152*a[1]+.0722*a[2];const a=lum(rgb(getComputedStyle(box).backgroundColor)),b=lum(rgb(getComputedStyle(label).color));return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=3})()`),`route filter labels have insufficient contrast in ${appearance}/${width}`);
+      if(process.env.BROWSER_GATE_SCREENSHOT){await cdp.value(`document.querySelector('.report-route-controls').scrollIntoView({block:'start'})`);await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.route-controls-${appearance}-${width}.png`);}
       await cdp.value(`document.querySelector('.report-metadata-observation').scrollIntoView({block:'start'})`);
       if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.route-metadata-${appearance}-${width}.png`);
     }

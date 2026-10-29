@@ -318,103 +318,33 @@ function MtrReport({
     : undefined;
   return (
     <>
-      <div className="report-pills" aria-label="路由地区">
-        {cities.map((c) => (
-          <button
-            key={c}
-            aria-pressed={actualCity === c}
-            onClick={() => setCity(c)}
-          >
-            {c}
-          </button>
-        ))}
+      <div className="report-route-controls" role="group" aria-label="路由筛选">
+        <div className="report-route-filter"><span>方向</span><div className="report-pills" role="group" aria-label="路由方向">
+          {["VPS→大陆", "大陆→VPS"].map(d => <button key={d} aria-pressed={direction === d} onClick={() => { setDirection(d); setSelection(""); }}>{d === "VPS→大陆" ? "回程 · VPS→大陆" : "去程 · 大陆→VPS"}</button>)}
+        </div></div>
+        <div className="report-route-filter"><span>地区</span><div className="report-pills" role="group" aria-label="路由地区">
+          {cities.map(c => <button key={c} aria-pressed={actualCity === c} onClick={() => setCity(c)}>{c}</button>)}
+        </div></div>
+        <div className="report-route-filter"><span>运营商</span><div className="report-pills" role="group" aria-label="运营商">
+          {carriers.map(c => <button key={c} aria-pressed={actualCarrier === c} onClick={() => setCarrier(c)}>{c}</button>)}
+        </div></div>
+        <div className="report-route-filter"><span>协议</span><div className="report-pills" role="group" aria-label="探测协议">
+          {protocols.map(p => <button key={p} aria-pressed={actualProtocol === p} onClick={() => setProtocol(p)}>{p.toUpperCase()}</button>)}
+        </div></div>
+        <label className="report-target-select report-route-target">测量目标与来源
+          <select value={selected?.id || ""} onChange={e => setSelection(e.target.value)}>
+            {slots.map(s => <option key={s.id} value={s.id}>{s.endpoint?.name || sourceText(s)} · {String(s.options.protocol || "tcp").toUpperCase()} · {s.target || "缺少公网目标"}</option>)}
+          </select>
+        </label>
       </div>
-      <div className="report-filter-row">
-        <div className="report-pills" aria-label="运营商">
-          {carriers.map((c) => (
-            <button
-              key={c}
-              aria-pressed={actualCarrier === c}
-              onClick={() => setCarrier(c)}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        <div className="report-pills" aria-label="探测协议">
-          {protocols.map((p) => (
-            <button
-              key={p}
-              aria-pressed={actualProtocol === p}
-              onClick={() => setProtocol(p)}
-            >
-              {p.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="report-filter-row">
-        <div className="report-pills">
-          {["VPS→大陆", "大陆→VPS"].map((d) => (
-            <button
-              key={d}
-              aria-pressed={direction === d}
-              onClick={() => {
-                setDirection(d);
-                setSelection("");
-              }}
-            >
-              {d === "VPS→大陆" ? "回程 · VPS→大陆" : "去程 · 大陆→VPS"}
-            </button>
-          ))}
-        </div>
-        <button
-          className="report-fold"
-          aria-pressed={fold}
-          onClick={() => setFold(!fold)}
-        >
-          {fold ? "逐跳展开" : "按 AS 折叠"}
-        </button>
-      </div>
-      <label className="report-target-select">
-        测量目标与来源
-        <select
-          value={selected?.id || ""}
-          onChange={(e) => setSelection(e.target.value)}
-        >
-          {slots.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.endpoint?.name || sourceText(s)} ·{" "}
-              {String(s.options.protocol || "tcp").toUpperCase()} ·{" "}
-              {s.target || "缺少公网目标"}
-            </option>
-          ))}
-        </select>
-      </label>
-      {selected && (
-        <p className="report-caption">
-          {result?.data.method || "尚未测量"} ·{" "}
-          {String(selected.options.protocol || "tcp").toUpperCase()} · 端口{" "}
-          {String(selected.options.port || 443)} · {sourceText(selected)} ·{" "}
-          {result?.completedAt
-            ? formatNetworkTime(result.completedAt)
-            : reportLabels[selected.state]}
-        </p>
-      )}
-      {!!evidence.length && (
-        <div className="report-evidence">
-          {evidence.map((e) => (
-            <span
-              key={e.id}
-              title={`${e.basis}；证据跳号 ${e.ttls.join(", ")}；来源 ${e.source}；规则 ${e.ruleVersion}`}
-            >
-              {e.label}
-            </span>
-          ))}
-        </div>
-      )}
-      {result && <p className="report-caption">终点{result.data.complete ? "已确认到达" : "未确认到达（末跳未响应不代表业务 100% 丢包）"} · 商业产品未核验</p>}
-      <RoutePathSummary hops={hops} />
+      {selected && <div className="report-route-observation">
+        <div className="report-route-observation-heading"><strong>线路观测</strong>{result && <span>{result.data.complete ? "终点已确认到达" : "终点未确认到达"}</span>}</div>
+        <p className="report-caption">{result?.data.method || (result ? "测量记录" : "尚未测量")} · {String(selected.options.protocol || "tcp").toUpperCase()} · 端口 {String(selected.options.port || 443)} · {sourceText(selected)} · {result?.completedAt ? formatNetworkTime(result.completedAt) : reportLabels[selected.state]}</p>
+        {!!evidence.length && <div className="report-evidence">{evidence.map(e => <span key={e.id} title={`${e.basis}；证据跳号 ${e.ttls.join(", ")}；来源 ${e.source}；规则 ${e.ruleVersion}`}>{e.label}</span>)}</div>}
+        {result && <p className="report-caption">{!result.data.complete && "末跳未响应不代表业务 100% 丢包 · "}商业产品未核验</p>}
+        <RoutePathSummary hops={hops} />
+      </div>}
+      <div className="report-route-table-heading"><strong>逐跳路径</strong><button className="report-fold" aria-pressed={fold} onClick={() => setFold(!fold)}>{fold ? "逐跳展开" : "按 AS 折叠"}</button></div>
       {!!hops.length && (
         <div className="report-table-scroll">
           <table className="report-mtr-table">
@@ -606,7 +536,7 @@ function RoundModule({
     }
   }
   return (
-    <section className="report-module">
+    <section className={`report-module${module === "routes" ? " report-module--routes" : ""}`}>
       <NetworkSectionHeading
         icon={module === "routes" ? Network : Globe2}
         title={moduleTitles[module]}

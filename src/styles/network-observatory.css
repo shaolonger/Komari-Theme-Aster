@@ -2693,3 +2693,26 @@
 .measurement-node-switcher .instance-node-switcher-label { font-size: 12px; color: var(--text-secondary); }
 .measurement-node-switcher input { width: 100%; }
 .measurement-node-switcher .node-switch-results { left: 0; right: auto; width: 100%; }
+
+/* Compact plan cards in the VPS network workspace. */
+.network-associated-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.network-associated-heading h3 { display: flex; align-items: center; gap: 7px; }
+.network-associated-heading h3 span { color: var(--text-secondary); background: var(--surface-b); border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 600; }
+.network-associated-heading p { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; }
+.network-associated-heading > a { font-size: 12px; white-space: nowrap; }
+.network-instance-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 245px), 1fr)); gap: 8px; min-width: 0; }
+.network-workspace .network-instance-plan-grid .network-instance-plan { display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; gap: 10px; min-width: 0; padding: 11px 12px; border-radius: 10px; }
+.network-instance-plan-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; min-width: 0; }
+.network-instance-plan-title strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
+.network-instance-plan-title span { flex: none; color: var(--text-secondary); background: var(--surface-b); border-radius: 6px; padding: 2px 6px; font-size: 11px; line-height: 1.4; }
+.network-instance-plan-title span[data-enabled="true"] { color: var(--accent-500); background: color-mix(in srgb, var(--accent-500) 9%, transparent); }
+.network-instance-plan-main small { line-height: 1.45; }
+.network-workspace .network-instance-plan-grid .network-actions { width: 100%; justify-content: space-between; align-items: center; gap: 8px; }
+.network-instance-plan-grid .network-actions a { font-size: 12px; }
+.network-workspace .network-instance-plan-grid button { min-height: 32px; padding: 5px 10px; }
+
+@media (max-width: 600px) {
+  .network-workspace .network-instance-plan-grid .network-instance-plan { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; }
+  .network-workspace .network-instance-plan-grid .network-actions { width: auto; gap: 8px; }
+  .network-instance-plan-title { align-items: center; }
+}
