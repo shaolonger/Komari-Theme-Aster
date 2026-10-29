@@ -52,6 +52,24 @@ class HelperTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 helper.Manager(state)
 
+    def test_interrupted_nodequality_rootfs_does_not_prevent_recovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / 'state'
+            artifacts = state / TASK / 'artifacts'
+            workspace = artifacts / '.nodequality2026_10_29_01_28_44'
+            workspace.mkdir(parents=True, mode=0o700)
+            for directory in (state, state / TASK, artifacts): directory.chmod(0o700)
+            (workspace / 'link').symlink_to('/etc/passwd')
+            (workspace / 'system-dir').mkdir(mode=0o777)
+            (state / TASK / 'task.json').write_text(json.dumps({'id':TASK,'nodeUuid':NODE,'kind':'nodequality-full','options':{},'state':'running'}))
+            manager = helper.Manager(state)
+            response = manager.request({'action':'status','id':TASK,'nodeUuid':NODE})
+            self.assertEqual(response['data']['kind'], 'nodequality-full')
+            self.assertEqual(response['data']['state'], 'failed')
+            self.assertTrue((workspace / 'link').is_symlink())
+            workspace.chmod(0o777)
+            with self.assertRaises(ValueError): helper.Manager(state)
+
     def test_idempotency_and_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = str(Path(tmp) / 'state')
@@ -73,6 +91,31 @@ class HelperTests(unittest.TestCase):
                 self.assertTrue((Path(tmp) / TASK / 'task.json').exists())
             with self.assertRaises(ValueError):
                 manager.request({'action': 'start', 'id': TASK, 'nodeUuid': NODE, 'options': {'profile': 'LOWMEM'}})
+
+    def test_nodequality_capability_executes_once_and_preserves_failed_upload(self):
+        import nodequality_full
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / 'state'
+            state.mkdir(mode=0o700)
+            manager = helper.Manager(state)
+            self.assertIn('nodequality-full', manager.request({'action':'capabilities'})['operations'])
+            def run(options, artifact_dir, cancelled):
+                artifact_dir.mkdir(mode=0o700)
+                (artifact_dir / 'result.b64').write_text('raw')
+                return {'kind':'nodequality-full', 'state':'partial', 'reportUrl':'', 'sections':{'ip_quality.json':'{}'}}
+            with patch.object(nodequality_full, 'run', side_effect=run) as execute:
+                payload = {'action':'start','id':TASK,'nodeUuid':NODE,'kind':'nodequality-full','options':{'checks':['ip_quality'],'family':'6','timeoutMinutes':30}}
+                self.assertEqual(manager.request(payload)['state'],'running')
+                for _ in range(100):
+                    response = manager.request({'action':'status','id':TASK,'nodeUuid':NODE})
+                    if response['state'] == 'complete': break
+                    time.sleep(.01)
+                self.assertEqual(response['data']['kind'],'nodequality-full')
+                self.assertEqual(manager.request(payload)['state'],'complete')
+                self.assertEqual(execute.call_count,1)
+                manager.request({'action':'ack','id':TASK,'nodeUuid':NODE,'revision':response['revision']})
+                self.assertTrue((state / TASK / 'artifacts' / 'result.b64').exists())
+                with self.assertRaises(ValueError): manager.request({**payload,'kind':'tcpquality-full'})
 
     def test_restart_interrupted_not_repeated(self):
         with tempfile.TemporaryDirectory() as tmp:

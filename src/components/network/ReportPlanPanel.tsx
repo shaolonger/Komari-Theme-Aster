@@ -61,7 +61,7 @@ export function ReportPlanPanel({
       module: preset.module,
       preset: preset.id,
       endpoints: [...preset.endpoints],
-      family: "4",
+      family: preset.module === "nodequality-full" ? "auto" : "4",
       protocols: ["tcp"],
       sources: [],
       publicSources: preset.publicSources === true,
@@ -69,6 +69,7 @@ export function ReportPlanPanel({
       warmupSeconds: 2,
       streams: [1], samples: 10, packetSizes: [], maxTrafficMiB: 1024,
       ...(preset.module === "tcpquality-full" ? { profile: "AUTO" as const, timeoutMinutes: 120 } : {}),
+      ...(preset.module === "nodequality-full" ? { checks: ["hardware_quality", "ip_quality", "net_quality", "backroute_trace"], hardwareMode: "standard" as const, networkMode: "standard" as const, timeoutMinutes: 120 } : {}),
       enabled: true,
       timing: preset.timing,
       nextAt: 0,
@@ -190,7 +191,7 @@ export function ReportPlanPanel({
                     {selected?.preset === preset.id && <Check size={14} />}
                   </strong>
                   <small>
-                    {preset.module === "tcpquality-full" ? "完整 TcpQuality · 长时任务" : preset.traffic
+                    {preset.module === "tcpquality-full" ? "完整 TcpQuality · 长时任务" : preset.module === "nodequality-full" ? "完整 NodeQuality · 长时任务" : preset.traffic
                       ? "全速 · 需要授权资源"
                       : `${preset.endpoints.length} 个预设目标`}
                   </small>
@@ -226,7 +227,7 @@ export function ReportPlanPanel({
                   移除模块
                 </button>
               </div>
-              {mod.module !== "tcpquality-full" && <div className="network-inline-fields">
+              {!(["tcpquality-full", "nodequality-full"] as string[]).includes(mod.module) && <div className="network-inline-fields">
                 <label>
                   地址族
                   <select
@@ -277,6 +278,20 @@ export function ReportPlanPanel({
                 <p className="report-caption">预览中执行器在线只表示服务可连接；实际执行还取决于容器权限、可用空间和上游服务。</p>
                 <pre className="report-json">curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full</pre>
               </>}
+              {mod.module === "nodequality-full" && <>
+                <div className="network-inline-fields">
+                  <label>地址族<select value={mod.family} onChange={e => moduleChange(mod.module, { family: e.target.value as "auto" | "4" | "6" })}><option value="auto">IPv4 与 IPv6</option><option value="4">仅 IPv4</option><option value="6">仅 IPv6</option></select></label>
+                  <label>超时上限<select value={mod.timeoutMinutes || 120} onChange={e => moduleChange(mod.module, { timeoutMinutes: Number(e.target.value) })}>{[30, 60, 90, 120, 150, 180].map(n => <option key={n} value={n}>{n} 分钟</option>)}</select></label>
+                </div>
+                <div className="network-inline-fields">
+                  <label>硬件测试模式<select value={mod.hardwareMode || "standard"} onChange={e => moduleChange(mod.module, { hardwareMode: e.target.value as "standard" | "fast" | "deep" })}><option value="standard">标准</option><option value="fast">快速</option><option value="deep">深度</option></select></label>
+                  <label>网络测试模式<select value={mod.networkMode || "standard"} onChange={e => moduleChange(mod.module, { networkMode: e.target.value as "standard" | "low-data" })}><option value="standard">标准</option><option value="low-data">低流量</option></select></label>
+                </div>
+                <div className="network-inline-fields">{([['hardware_quality', '硬件性能'], ['ip_quality', 'IP 质量'], ['net_quality', '网络质量'], ['backroute_trace', '回程路由']] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={(mod.checks || []).includes(key)} onChange={e => moduleChange(mod.module, { checks: e.target.checked ? [...(mod.checks || []), key] : (mod.checks || []).filter(c => c !== key) })} /> {label}</label>)}</div>
+                <p className="report-caption">上游脚本以 root 下载并运行 BenchOS 和检测程序，报告会上传到 NodeQuality 第三方服务并生成可访问链接；测试可能占用大量 CPU、带宽和磁盘。请勿在资源不足或不允许上传数据的 VPS 上启用。容器需要挂载权限，执行目录至少需要 1.5 GiB 可用空间；报告与原始输出会保存在面板。</p>
+                <p className="report-caption">先升级插件，再在目标 VPS 上执行下列命令，升级并启用完整检测执行器（保留原有凭证）：</p>
+                <pre className="report-json">curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full</pre>
+              </>}
               {mod.module === "tcp-quality" && <div className="network-inline-fields">
                 <label>完整 TCP 建连样本<select value={mod.samples || 10} onChange={e => moduleChange(mod.module, { samples: Number(e.target.value) })}>
                   {[3, 5, 10].map(n => <option key={n} value={n}>{n} 次</option>)}
@@ -287,7 +302,7 @@ export function ReportPlanPanel({
                 <p className="report-caption">SYN 比较需要探测器安装 nping 及 CAP_NET_RAW；未响应率不等同于业务丢包，包长结果不认证 MTU。不可用时注明原因。</p>
               </div>}
               {mod.module === "routes" && <p className="report-caption">目标名称表示目的网络，不强制选路。默认京沪广三网 9 点；增加 CN2/9929/CMIN2 可比较不同目的网络。公共去程仅按实际国家与 ASN 匹配，不承诺京沪广对称覆盖。</p>}
-              {mod.module === "tcpquality-full" ? null : mod.module === "bgp" ? (
+              {["tcpquality-full", "nodequality-full"].includes(mod.module) ? null : mod.module === "bgp" ? (
                 <p className="report-caption">
                   使用此 VPS 登记的公网 IPv4/IPv6 自动查询实际宣告前缀。公开 BGP
                   数据按来源保存；同前缀共享 55 分钟缓存。
@@ -299,7 +314,7 @@ export function ReportPlanPanel({
                       type="button"
                       onClick={() =>
                         moduleChange(mod.module, {
-                          endpoints: forFamily(presetModule(mod.preset!).endpoints, mod.family),
+                          endpoints: forFamily(presetModule(mod.preset!).endpoints, mod.family === "6" ? "6" : "4"),
                         })
                       }
                     >
@@ -522,7 +537,7 @@ export function ReportPlanPanel({
                             }
                           : {
                               type: "interval",
-                              minutes: mod.module === "tcpquality-full" ? 1440 : mod.module.endsWith("speed")
+                              minutes: ["tcpquality-full", "nodequality-full"].includes(mod.module) ? 1440 : mod.module.endsWith("speed")
                                 ? 1440
                                 : mod.module === "routes" ||
                                     mod.module === "bgp"
@@ -550,7 +565,7 @@ export function ReportPlanPanel({
                       })
                     }
                   >
-                    {(mod.module === "tcpquality-full" ? [60, 120, 180, 240, 360, 480, 720, 1440] : mod.module.endsWith("speed")
+                    {(["tcpquality-full", "nodequality-full"].includes(mod.module) ? [60, 120, 180, 240, 360, 480, 720, 1440] : mod.module.endsWith("speed")
                       ? [1440]
                       : mod.module === "bgp"
                         ? [60, 360, 720, 1440]
@@ -619,7 +634,7 @@ export function ReportPlanPanel({
                   </p>
                 </>
               )}
-              {mod.module === "tcpquality-full" && <p className="report-caption">如果上一轮仍在运行，重叠的定时轮次会记录为跳过；建议间隔大于单次检测的超时时间。</p>}
+              {["tcpquality-full", "nodequality-full"].includes(mod.module) && <p className="report-caption">如果上一轮仍在运行，重叠的定时轮次会记录为跳过；建议间隔大于单次检测的超时时间。</p>}
             </section>
           ))}
         </>

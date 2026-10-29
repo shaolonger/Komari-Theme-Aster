@@ -1066,3 +1066,25 @@ test('full report upload recovery adds only a validated URL to the same partial 
   assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:improved},false,true)).status,409);
  } finally {fs.renameSync=rename;f.close();}
 });
+
+test('NodeQuality plans, validates, persists and replays a complete report independently', async () => {
+ const f=await fixture();
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.14.0',tools:[],features:['report-v3','nodequality-full']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'nodequality-full',family:'auto',checks:['ip_quality','backroute_trace'],hardwareMode:'fast',networkMode:'low-data',timeoutMinutes:120,timing:{type:'daily',times:['04:00','16:00'],timezone:'Asia/Shanghai'}}]});
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.suite.modules[0].timing.times,['04:00','16:00']);
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  assert.equal(task.operation,'nodequality-full'); assert.deepEqual(task.options.checks,['ip_quality','backroute_trace']); assert.equal(task.options.family,'auto'); assert.equal(task.options.hardwareMode,'fast'); assert.equal(task.options.networkMode,'low-data');
+  const data={kind:'nodequality-full',state:'ok',family:'auto',checks:task.options.checks,exitCode:1,sections:{'ip_quality.json':'{}','backroute_trace.log':'报告'},reportUrl:'https://nodequality.com/r/test_id',cleanLog:'检测完成'};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data:{...data,reportUrl:'https://evil.example/r/test'}},false,true)).status,400);
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).status,200);
+  const restarted=await fixture(f.root);
+  assert.equal((await restarted.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).body.replay,true);
+  const history=(await restarted.invoke('GET',`${v3}/nodes/${A}/rounds?module=nodequality-full`)).body;
+  assert.deepEqual(history.retention,{detailDays:null,summaryDays:null});
+  assert.equal(restarted.c.roundController.store.get(A,started.body.rounds[0]).measurements[0].data.sections['backroute_trace.log'],'报告');
+  assert.equal((await restarted.invoke('DELETE',`${v3}/nodes/${A}/rounds/${started.body.rounds[0]}`)).status,200);
+ } finally { f.close(); }
+});

@@ -1,5 +1,5 @@
 [Unit]
-Description=Aster isolated TcpQuality execution helper
+Description=Aster isolated complete network test execution helper
 After=network-online.target
 Wants=network-online.target
 

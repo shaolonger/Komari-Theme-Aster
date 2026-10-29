@@ -44,6 +44,7 @@ const moduleTitles: Record<ReportModule, string> = {
   routes: "大陆路由",
   "tcp-quality": "大陆 TCP 质量",
   "tcpquality-full": "TcpQuality 完整检测",
+  "nodequality-full": "NodeQuality 完整检测",
   "china-speed": "大陆单连接测速",
   international: "国际延迟",
   idc: "常见 IDC 延迟",
@@ -89,6 +90,23 @@ function FullTcpQualityReport({ round }: { round: ReportRound }) {
     </div>
     {(data.logTruncated || data.csvTruncated) && <p role="status">报告超过保存上限，展示或下载的内容已截断；请查看探测器上的原始文件。</p>}
     {data.cleanLog && <details open><summary>检测报告</summary><pre className="report-json">{data.cleanLog}</pre></details>}
+  </div>;
+}
+function FullNodeQualityReport({ round }: { round: ReportRound }) {
+  const result = round.measurements[0];
+  if (!result) return <p className="report-caption">{round.state === "running" ? "检测正在进行，完整测试可能持续数小时。" : round.slots[0]?.missingReason || "本轮尚无报告。"}</p>;
+  const data = result.data;
+  let reportUrl = "";
+  try { const url = new URL(data.reportUrl || ""); if ((url.origin === "https://nodequality.com" || url.origin === "https://www.nodequality.com") && /^\/r\/[A-Za-z0-9_-]{1,128}$/.test(url.pathname) && !url.search && !url.hash && !url.username && !url.password) reportUrl = url.href; } catch { /* Invalid or absent URL. */ }
+  const names: Record<string, string> = {hardware_quality: "硬件性能", ip_quality: "IP 质量", net_quality: "网络质量", backroute_trace: "回程路由", header_info: "服务器信息", port: "端口信息"};
+  return <div className="report-full-tcp">
+    <p><NetworkBadge state={data.state}>{reportLabels[data.state] || data.state}</NetworkBadge> · {formatNetworkTime(result.completedAt)} · {data.family === "auto" ? "IPv4 / IPv6" : `IPv${data.family || "?"}`}</p>
+    {data.diagnostic && <p role="status">{data.diagnostic}</p>}
+    <p className="report-caption">完成状态表示所选项目的报告文件已取得；具体子项是否成功请查看报告。</p>
+    {reportUrl && <section className="report-upstream-preview" aria-label="NodeQuality 在线报告预览"><div className="report-upstream-heading"><div><strong>在线报告预览</strong><p>上游报告可能包含服务器及网络信息。</p></div><a href={reportUrl} target="_blank" rel="noreferrer">无法预览？打开原报告</a></div><iframe key={round.id + reportUrl} title="NodeQuality 在线报告" src={reportUrl} loading="lazy" sandbox="allow-scripts allow-same-origin allow-downloads allow-popups" referrerPolicy="no-referrer" /><p className="report-caption">如果上游限制嵌入，请使用链接查看；原始输出仍保存在下方。</p></section>}
+    {data.sectionsTruncated && <p role="status">部分原始数据超过保存上限，完整文件保留在探测器上。</p>}
+    {Object.entries(data.sections || {}).map(([name, text]) => <details key={name}><summary>{names[name.replace(/\.(json|log)$/, "")] || name} · {name.endsWith(".json") ? "JSON" : "日志"}</summary><pre className="report-json">{text}</pre></details>)}
+    {data.cleanLog && <details><summary>执行日志</summary><pre className="report-json">{data.cleanLog}</pre></details>}
   </div>;
 }
 const sourceText = (slot: ReportSlot) =>
@@ -546,7 +564,7 @@ function RoundModule({
   ];
   const picked =
     rounds.find((r) => r.id === selection) ||
-    (module === "tcpquality-full" ? rounds[0] : undefined) ||
+    (["tcpquality-full", "nodequality-full"].includes(module) ? rounds[0] : undefined) ||
     rounds.find((r) => r.state === "complete" && r.detailAvailable) ||
     rounds[0];
   const pickedId = selection || picked?.id;
@@ -627,16 +645,16 @@ function RoundModule({
                     <Download size={15} />
                     完整 JSON
                   </button>
-                  {module !== "tcpquality-full" && <button onClick={() => exportReportPng(round)}>
+                  {!["tcpquality-full", "nodequality-full"].includes(module) && <button onClick={() => exportReportPng(round)}>
                     汇总 PNG
                   </button>}
-                  {module === "tcpquality-full" && round.state !== "running" && <button onClick={() => {
-                    if (!window.confirm("删除本轮 TcpQuality 报告？此操作不可撤销。")) return;
+                  {["tcpquality-full", "nodequality-full"].includes(module) && round.state !== "running" && <button onClick={() => {
+                    if (!window.confirm("删除本轮完整检测报告？此操作不可撤销。")) return;
                     void deleteFullReportRound(uuid, round.id).then(() => { setSelection(null); return history.refetch(); }).catch(e => setError(String(e.message)));
                   }}>删除本轮报告</button>}
                   {round?.detailAvailable && round.state !== "running" && (
                     <button
-                      title="创建七天以内的公开链接，包含目标和路由 IP"
+                      title="创建七天以内的公开链接，包含完整原始数据，可能涉及服务器信息与报告链接"
                       onClick={() => {
                         void shareReportRound(uuid, round.id)
                           .then(async (data) => {
@@ -796,7 +814,7 @@ function RoundModule({
         </div>
       )}
       {round?.detailAvailable &&
-        (module === "tcpquality-full" ? <FullTcpQualityReport round={round} /> : ["international", "idc", "tcp-quality"].includes(module) ? (
+        (module === "nodequality-full" ? <FullNodeQualityReport round={round} /> : module === "tcpquality-full" ? <FullTcpQualityReport round={round} /> : ["international", "idc", "tcp-quality"].includes(module) ? (
           <LatencyMatrix
             key={round.id}
             round={round}
@@ -825,7 +843,7 @@ function RoundModule({
             ))}
           </div>
         ))}
-      {round && module !== "routes" && module !== "bgp" && module !== "tcpquality-full" && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
+      {round && module !== "routes" && module !== "bgp" && !["tcpquality-full", "nodequality-full"].includes(module) && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
       {inspected && (
         <NetworkDrawer
           title={
@@ -908,7 +926,7 @@ export function NetworkReportWorkspace({
   );
   const tabs = {
     routes: ["routes", "bgp"],
-    "tcp-quality": ["tcpquality-full", "tcp-quality"],
+    "tcp-quality": ["tcpquality-full", "nodequality-full", "tcp-quality"],
     speed: ["china-speed"],
     international: ["international", "idc", "international-speed"],
   } as const;

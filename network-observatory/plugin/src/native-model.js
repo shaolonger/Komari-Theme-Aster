@@ -40,7 +40,7 @@ function timing(input, kind) {
     input?.minutes || (kind === "speed" ? 1440 : kind === "routes" ? 60 : 15),
   );
   if (
-    !(kind === "tcpquality-full" ? [60, 120, 180, 240, 360, 480, 720, 1440] : [5, 15, 30, 60, 360, 720, 1440]).includes(minutes) ||
+    !(["tcpquality-full", "nodequality-full"].includes(kind) ? [60, 120, 180, 240, 360, 480, 720, 1440] : [5, 15, 30, 60, 360, 720, 1440]).includes(minutes) ||
     (kind === "speed" && minutes < 1440)
   )
     throw new Error("检测间隔无效；全速测速至少每天一次");
@@ -89,7 +89,7 @@ function validateResult(data, kind) {
     !data ||
     data.kind !== kind ||
     !["ok", "partial", "failed", "application"].includes(data.state) ||
-    JSON.stringify(data).length > (kind === "tcpquality-full" ? 1000000 : 48000) ||
+    JSON.stringify(data).length > (["tcpquality-full", "nodequality-full"].includes(kind) ? 1000000 : 48000) ||
     (data.diagnostic !== undefined && typeof data.diagnostic !== "string")
   )
     bad();
@@ -100,6 +100,12 @@ function validateResult(data, kind) {
     if (["cleanLog", "csv"].some(k => data[k] !== undefined && (typeof data[k] !== "string" || data[k].length > 400000)) ||
         ["profile", "startedAt", "completedAt", "reportUrl"].some(k => data[k] !== undefined && (typeof data[k] !== "string" || data[k].length > 2048)) ||
         (data.exitCode !== undefined && data.exitCode !== null && !Number.isInteger(data.exitCode))) bad();
+  }
+  if (kind === "nodequality-full") {
+    if (data.deadlineExpired !== undefined || data.lateAfterDeadline !== undefined ||
+        (data.reportUrl && !/^https:\/\/(?:www\.)?nodequality\.com\/r\/[A-Za-z0-9_-]{1,128}$/.test(data.reportUrl)) ||
+        (data.cleanLog !== undefined && (typeof data.cleanLog !== "string" || data.cleanLog.length > 100000)) ||
+        (data.sections !== undefined && (!data.sections || typeof data.sections !== "object" || Array.isArray(data.sections) || Object.keys(data.sections).length > 10 || Object.entries(data.sections).some(([key, value]) => !(/^(hardware_quality|ip_quality|net_quality|backroute_trace)\.(json|log)$/.test(key) || /^(header_info|port)\.log$/.test(key)) || typeof value !== "string" || value.length > 60000)))) bad();
   }
   if (kind === "speed") {
     if (["trafficBytesObserved", "remainingTrafficBytes"].some(k => data[k] !== undefined && !number(data[k])) ||

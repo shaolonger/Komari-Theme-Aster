@@ -4,7 +4,7 @@ import routeRules from "../../../network-observatory/plugin/src/route-networks.j
 const obj = (value: EvidenceValue | undefined): { [key: string]: EvidenceValue } =>
   value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const finite = (value: EvidenceValue | undefined) => typeof value === "number" && Number.isFinite(value) ? value : null;
-const moduleNames: Record<string, string> = { routes: "三网线路", "china-speed": "三网测速", international: "国际连通", "international-speed": "国际测速", "tcp-quality": "TCP 质量", "tcpquality-full": "TcpQuality 完整检测", idc: "IDC 互联", bgp: "BGP / RPKI" };
+const moduleNames: Record<string, string> = { routes: "三网线路", "china-speed": "三网测速", international: "国际连通", "international-speed": "国际测速", "tcp-quality": "TCP 质量", "tcpquality-full": "TcpQuality 完整检测", "nodequality-full": "NodeQuality 完整检测", idc: "IDC 互联", bgp: "BGP / RPKI" };
 
 /** Observations remain separated by source, address family, target and direction. */
 export function networkTrends(items: NetworkEvidence[]): NetworkTrend[] {

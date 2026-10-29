@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Root-only, fixed-operation helper for complete TcpQuality reports.
+"""Root-only, fixed-operation helper for complete network test reports.
 
 It accepts no commands, paths, URLs or shell arguments from a worker. The
 upstream project requires mount/chroot: each run is put in its own mount
@@ -49,7 +49,7 @@ def validate_private_state(state):
             root = os.fstat(state_fd)
             if root.st_uid != os.geteuid() or root.st_mode & 0o077:
                 raise ValueError('TcpQuality 状态目录权限不安全，请人工检查')
-            def inspect(directory_fd):
+            def inspect(directory_fd, parts=()):
                 for name in os.listdir(directory_fd):
                     try:
                         child = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
@@ -60,7 +60,13 @@ def validate_private_state(state):
                         if info.st_uid != os.geteuid() or info.st_mode & 0o022:
                             raise ValueError('TcpQuality 旧状态权限不安全，请人工检查')
                         if stat.S_ISDIR(info.st_mode):
-                            inspect(child)
+                            # NodeQuality extracts an entire rootfs, including
+                            # legitimate symlinks and writable system dirs. Its
+                            # top-level work directory is still root-owned and
+                            # private; never open or follow its contents here.
+                            if len(parts) == 2 and UUID.fullmatch(parts[0]) and parts[1] == 'artifacts' and re.fullmatch(r'\.nodequality\d{4}(?:_\d{2}){5}', name):
+                                continue
+                            inspect(child, (*parts, name))
                         elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                             raise ValueError('TcpQuality 旧状态包含非普通文件或硬链接，请人工检查')
                         elif name == 'task.json' and info.st_size > 1100000:
@@ -109,7 +115,7 @@ class Manager:
                 if task and task.get('reportPending'):
                     self.upload_pending.add(directory.name)
                 if task and task.get('state') == 'running':
-                    task.update(state='complete', revision=1, data={'kind': 'tcpquality-full', 'state': 'failed',
+                    task.update(state='complete', revision=1, data={'kind': task.get('kind', 'tcpquality-full'), 'state': 'failed',
                         'diagnostic': '执行器中断；原始文件已保留，请检查后重新执行',
                         'startedAt': task.get('startedAt', ''), 'completedAt': tcpquality_full.timestamp(),
                         'profile': task.get('options', {}).get('profile', 'AUTO'), 'exitCode': None,
@@ -130,17 +136,23 @@ class Manager:
 
     def _finish(self, task_id, options, event):
         directory = self.state / task_id
+        existing = self._read(directory) or {}
+        kind = existing.get('kind', 'tcpquality-full')
         try:
-            result = tcpquality_full.run(options, directory / 'artifacts', cancelled=event.is_set)
+            if kind == 'nodequality-full':
+                import nodequality_full as runner
+            else:
+                runner = tcpquality_full
+            result = runner.run(options, directory / 'artifacts', cancelled=event.is_set)
         except Exception as error:
-            result = {'kind': 'tcpquality-full', 'state': 'failed', 'diagnostic': str(error)[:1000],
+            result = {'kind': kind, 'state': 'failed', 'diagnostic': str(error)[:1000],
                       'profile': options.get('profile', 'AUTO'), 'exitCode': None, 'cleanLog': '',
                       'csv': '', 'reportUrl': '', 'startedAt': '', 'completedAt': tcpquality_full.timestamp()}
         with self.lock:
             task = self._read(directory)
             if task:
                 task.update(state='complete', revision=1, data=result)
-                if result.get('csv') and not result.get('reportUrl') and result.get('diagnostic') != '检测已取消':
+                if kind == 'tcpquality-full' and result.get('csv') and not result.get('reportUrl') and result.get('diagnostic') != '检测已取消':
                     task['reportPending'] = True
                     self.upload_pending.add(task_id)
                 atomic_json(directory / 'task.json', task)
@@ -152,6 +164,12 @@ class Manager:
             raise ValueError('无效请求')
         action = payload.get('action')
         with self.lock:
+            if action == 'capabilities':
+                try:
+                    import nodequality_full  # noqa: F401
+                    return {'operations': ['tcpquality-full', 'nodequality-full']}
+                except ImportError:
+                    return {'operations': ['tcpquality-full']}
             if action == 'list':
                 tasks = []
                 for task_id in list(self.pending):
@@ -167,21 +185,40 @@ class Manager:
             if action == 'start':
                 node = payload.get('nodeUuid', '')
                 options = payload.get('options', {})
+                kind = payload.get('kind', 'tcpquality-full')
                 if not isinstance(node, str) or not UUID.fullmatch(node) or not isinstance(options, dict):
                     raise ValueError('无效执行身份或参数')
-                profile = options.get('profile', 'AUTO')
-                minutes = options.get('timeoutMinutes', 120)
-                if profile not in ('AUTO', 'FULL', 'LOWMEM') or type(minutes) is not int or not 30 <= minutes <= 150:
-                    raise ValueError('无效运行档位或超时')
-                options = {'profile': profile, 'timeoutMinutes': minutes}
+                if kind == 'tcpquality-full':
+                    profile = options.get('profile', 'AUTO')
+                    minutes = options.get('timeoutMinutes', 120)
+                    if profile not in ('AUTO', 'FULL', 'LOWMEM') or type(minutes) is not int or not 30 <= minutes <= 150:
+                        raise ValueError('无效运行档位或超时')
+                    options = {'profile': profile, 'timeoutMinutes': minutes}
+                elif kind == 'nodequality-full':
+                    try:
+                        import nodequality_full
+                    except ImportError as error:
+                        raise ValueError('请升级探测器以启用 NodeQuality') from error
+                    checks = options.get('checks', list(nodequality_full.FIELDS))
+                    family = options.get('family', 'auto')
+                    minutes = options.get('timeoutMinutes', 120)
+                    hardware_mode = options.get('hardwareMode', 'standard')
+                    network_mode = options.get('networkMode', 'standard')
+                    if hardware_mode not in ('standard', 'fast', 'deep') or network_mode not in ('standard', 'low-data'):
+                        raise ValueError('无效 NodeQuality 检测模式')
+                    if not isinstance(checks, list) or not checks or len(checks) > 4 or any(x not in nodequality_full.FIELDS for x in checks) or len(set(checks)) != len(checks) or family not in ('4', '6', 'auto') or type(minutes) is not int or not 30 <= minutes <= 180:
+                        raise ValueError('无效 NodeQuality 检测参数')
+                    options = {'checks': checks, 'family': family, 'timeoutMinutes': minutes, 'hardwareMode': hardware_mode, 'networkMode': network_mode}
+                else:
+                    raise ValueError('不支持的检测类型')
                 if task:
-                    if task['nodeUuid'] != node or task['options'] != options:
+                    if task['nodeUuid'] != node or task['options'] != options or task.get('kind', 'tcpquality-full') != kind:
                         raise ValueError('任务 ID 已用于不同参数')
                     return {'state': task['state']}
                 if self.events:
-                    raise ValueError('另一项完整 TcpQuality 测试正在运行')
+                    raise ValueError('另一项完整网络测试正在运行')
                 directory.mkdir(mode=0o700)
-                task = {'id': task_id, 'nodeUuid': node, 'options': options, 'state': 'running',
+                task = {'id': task_id, 'nodeUuid': node, 'kind': kind, 'options': options, 'state': 'running',
                         'startedAt': tcpquality_full.timestamp(), 'acknowledged': False}
                 atomic_json(directory / 'task.json', task)
                 self.pending[task_id] = node
@@ -210,9 +247,11 @@ class Manager:
                 data = task.get('data', {})
                 # Complete copies are now durable on the panel. Keep truncated
                 # originals and unuploaded CSVs for recovery and manual access.
-                if not task.get('reportPending') and not data.get('logTruncated') and not data.get('csvTruncated'):
+                if not task.get('reportPending') and not (data.get('kind') == 'nodequality-full' and not data.get('reportUrl')) and not data.get('logTruncated') and not data.get('csvTruncated') and not data.get('sectionsTruncated'):
                     data['cleanLog'] = ''
                     data['csv'] = ''
+                    if 'sections' in data:
+                        data['sections'] = {}
                     atomic_json(directory / 'task.json', task)
                     shutil.rmtree(directory / 'artifacts', ignore_errors=True)
                 else:

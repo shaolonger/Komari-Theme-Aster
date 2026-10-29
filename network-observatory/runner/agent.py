@@ -32,7 +32,7 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.13.0"
+RUNNER_VERSION = "1.14.0"
 RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
@@ -167,6 +167,11 @@ def heartbeat(config, stop):
             features = ["report-v3", "latency-samples", "full-mtr", "speed-intervals", "http-speed", "tcp-quality", "public-speed"]
             if helper_tasks is not None:
                 features.append("tcpquality-full")
+                try:
+                    if "nodequality-full" in tcpquality_request("capabilities").get("operations", []):
+                        features.append("nodequality-full")
+                except (OSError, ValueError, TypeError):
+                    pass  # Older helpers only support TcpQuality.
             active = native.active_tasks() + [t["id"] for t in (helper_tasks or [])]
             response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": features, "activeJobIds": list(dict.fromkeys(active))})
             if "activeJobIds" in response:
@@ -420,7 +425,7 @@ def flush_results(config):
             continue  # The sending worker won the delivery race.
         if payload.get("id") != file.stem:
             raise ValueError("结果缓存 ID 不一致")
-        full = payload.get("data", {}).get("kind") == "tcpquality-full"
+        full = payload.get("data", {}).get("kind") in {"tcpquality-full", "nodequality-full"}
         if not full and time.time() - payload.get("createdAt", 0) > 7 * 86400:
             remove_result(file)
             continue
@@ -445,7 +450,7 @@ def persist_helper_start(config, task):
         raise ValueError("TcpQuality 任务 ID 无效")
     folder = outbox_dir(config)
     output = folder / (task_id + ".start.json")
-    atomic_outbox_write(output, {"id": task_id, "options": task.get("options") or {}})
+    atomic_outbox_write(output, {"id": task_id, "kind": task.get("operation", "tcpquality-full"), "options": task.get("options") or {}})
     with _helper_allowed_lock:
         if _helper_allowed is not None:
             _helper_allowed.add(task_id)
@@ -481,11 +486,11 @@ def flush_helper_starts(config):
             payload["attempted"] = True
             atomic_outbox_write(file, payload)
         try:
-            tcpquality_request("start", id=task_id, nodeUuid=config["nodeUuid"], options=payload.get("options", {}))
+            tcpquality_request("start", id=task_id, nodeUuid=config["nodeUuid"], kind=payload.get("kind", "tcpquality-full"), options=payload.get("options", {}))
         except TcpQualityNotConnected:
             if not first_attempt:
                 raise  # A prior request may have started the measurement.
-            persist_result(config, task_id, {"kind": "tcpquality-full", "state": "failed",
+            persist_result(config, task_id, {"kind": payload.get("kind", "tcpquality-full"), "state": "failed",
                 "diagnostic": "完整 TcpQuality 执行器未连接；请检查服务后重新检测"})
             remove_result(file)
             continue
@@ -503,7 +508,7 @@ def collect_helper_results(config):
         result = tcpquality_request("status", id=task["id"], nodeUuid=config["nodeUuid"])
         data = result.get("data")
         revision = result.get("revision")
-        if result.get("state") == "complete" and isinstance(data, dict) and data.get("kind") == "tcpquality-full" and type(revision) is int and revision > 0:
+        if result.get("state") == "complete" and isinstance(data, dict) and data.get("kind") in {"tcpquality-full", "nodequality-full"} and type(revision) is int and revision > 0:
             target = folder / (task["id"] + ".json")
             if not target.exists():
                 persist_result(config, task["id"], data, revision=revision)
@@ -536,7 +541,7 @@ def _native_task(config, task, listeners):
         except urllib.error.HTTPError as error:
             if error.code in {401, 409}:
                 if cached and error.code == 409:
-                    retain_orphan(cached) if data.get("kind") == "tcpquality-full" else remove_result(cached)
+                    retain_orphan(cached) if data.get("kind") in {"tcpquality-full", "nodequality-full"} else remove_result(cached)
                 return
             if attempt == 2:
                 raise
@@ -596,7 +601,7 @@ def run_daemon(config_path, stop=None):
                             del listeners[key]
                     if native_response.get("task"):
                         task = native_response["task"]
-                        if task.get("operation") == "tcpquality-full":
+                        if task.get("operation") in {"tcpquality-full", "nodequality-full"}:
                             persist_helper_start(config, task)
                             # A claimed task is authorized even before the next heartbeat.
                             with _helper_allowed_lock:

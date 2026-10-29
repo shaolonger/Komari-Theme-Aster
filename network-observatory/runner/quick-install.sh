@@ -255,6 +255,7 @@ expected = {
     "runner/public_speed.py",
     "runner/tcp_quality.py",
     "runner/tcpquality_full.py",
+    "runner/nodequality_full.py",
     "runner/tcpquality_helper.py",
     "runner/aster-network-observatory-tcpquality.service",
     "runner/aster-network-observatory-tcpquality.openrc",

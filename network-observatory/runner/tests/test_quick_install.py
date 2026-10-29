@@ -31,6 +31,7 @@ PLUGIN_FILES = {
     "runner/public_speed.py": b"public-speed",
     "runner/tcp_quality.py": b"tcp-quality",
     "runner/tcpquality_full.py": b"full",
+    "runner/nodequality_full.py": b"nodequality",
     "runner/tcpquality_helper.py": b"helper",
     "runner/aster-network-observatory-tcpquality.service": b"helper-service",
     "runner/aster-network-observatory-tcpquality.openrc": b"helper-openrc",

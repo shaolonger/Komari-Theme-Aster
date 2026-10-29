@@ -69,7 +69,7 @@ install -o root -g root -m 0644 "$SCRIPT_DIR/http_receiver.py" "$SERVICE_DIR/htt
 install -o root -g root -m 0644 "$SCRIPT_DIR/native.py" "$SERVICE_DIR/native.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/public_speed.py" "$SERVICE_DIR/public_speed.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/tcp_quality.py" "$SERVICE_DIR/tcp_quality.py"
-for name in tcpquality_full.py tcpquality_helper.py aster-network-observatory-tcpquality.service aster-network-observatory-tcpquality.openrc; do
+for name in tcpquality_full.py nodequality_full.py tcpquality_helper.py aster-network-observatory-tcpquality.service aster-network-observatory-tcpquality.openrc; do
   install -o root -g root -m 0644 "$SCRIPT_DIR/$name" "$SERVICE_DIR/$name"
 done
 install -o root -g root -m 0644 "$SCRIPT_DIR/agent.py" "$SERVICE_DIR/agent.py"

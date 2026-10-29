@@ -240,8 +240,8 @@ class AgentValidationTests(unittest.TestCase):
             stop.is_set = unittest.mock.Mock(side_effect=[False, True])
             with patch.object(AGENT, "tcpquality_tasks", return_value=[task]), patch.object(AGENT, "tcpquality_request") as helper, patch.object(AGENT, "api_request", side_effect=response if isinstance(response, Exception) else None, return_value=response), patch.object(AGENT.native, "active_tasks", return_value=[]), patch.object(AGENT.native, "reconcile_tasks"):
                 AGENT.heartbeat(config, stop)
-                self.assertEqual(helper.called, expected)
-                if expected: self.assertEqual(helper.call_args.args[0], "cancel")
+                cancellations = [call for call in helper.call_args_list if call.args[0] == "cancel"]
+                self.assertEqual(bool(cancellations), expected)
     def test_rejects_insecure_credential_transport(self):
         with self.assertRaises(ValueError):
             AGENT.validate_base_url("http://komari.example.com")

@@ -3,10 +3,12 @@ const fs = require("fs"),
   path = require("path"),
   crypto = require("crypto");
 const { UUID } = require("./model.js");
+const FULL_MODULES = ["tcpquality-full", "nodequality-full"];
 const MODULES = [
   "routes",
   "tcp-quality",
   "tcpquality-full",
+  "nodequality-full",
   "china-speed",
   "international",
   "idc",
@@ -232,7 +234,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   function create(input) {
     uuid(input.nodeUuid);
     moduleName(input.module);
-    if (input.module === "tcpquality-full" && input.id && deletionPending(input.nodeUuid, input.id)) throw new Error("报告正在删除，请稍后重试");
+    if (FULL_MODULES.includes(input.module) && input.id && deletionPending(input.nodeUuid, input.id)) throw new Error("报告正在删除，请稍后重试");
     if (
       !Array.isArray(input.slots) ||
       input.slots.length > 250 ||
@@ -280,18 +282,18 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     if (!round) { dropCached(key); recoveredRounds.delete(key); return null; }
     // The intent is durable before any on-disk deletion; this also denies
     // late result recovery after a restart before the directory rename.
-    if (round.module === "tcpquality-full" && deletionPending(node, id)) {
+    if (FULL_MODULES.includes(round.module) && deletionPending(node, id)) {
       dropCached(key); recoveredRounds.delete(key); return null;
     }
     // Measurement is written before manifest. Recover this commit after a crash.
     let recovered = false;
     const measurements = [];
     for (const slot of round.slots) {
-      const mayHaveLateFull = round.module === "tcpquality-full" && slot.state === "failed" && !recoveredRounds.has(key);
+      const mayHaveLateFull = FULL_MODULES.includes(round.module) && slot.state === "failed" && !recoveredRounds.has(key);
       if (round.detailAvailable === false || (!details && !mayHaveLateFull && (recoveredRounds.has(key) || TERMINAL.includes(slot.state)))) continue;
       const result = read(slotFile(node, id, slot.id), null);
       if (!result) continue;
-      if (!TERMINAL.includes(slot.state) || (round.module === "tcpquality-full" && result.data?.lateAfterDeadline === true && (slot.lateAfterDeadline !== true || slot.state !== result.data.state || slot.completedAt !== result.completedAt))) {
+      if (!TERMINAL.includes(slot.state) || (FULL_MODULES.includes(round.module) && result.data?.lateAfterDeadline === true && (slot.lateAfterDeadline !== true || slot.state !== result.data.state || slot.completedAt !== result.completedAt))) {
         slot.state = result.data.state;
         slot.completedAt = result.completedAt;
         if (result.data?.lateAfterDeadline === true) { round.completedAt = result.completedAt; slot.lateAfterDeadline = true; }
@@ -408,7 +410,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       at: clock(),
     };
     maintenance.writeReceipt(uuid(job.id), receiptData);
-    if (job.operation === "tcpquality-full") write(path.join(base, "full-receipts", uuid(job.id) + ".json"), receiptData);
+    if (FULL_MODULES.includes(job.operation)) write(path.join(base, "full-receipts", uuid(job.id) + ".json"), receiptData);
     slot.state = result.data.state;
     slot.metrics = metrics(result.data);
     slot.source = result.source || slot.source;
@@ -425,9 +427,9 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   function acceptLateFull(jobId, executor, data) {
     if (!UUID.test(jobId || "")) return false;
     const receipt = read(path.join(base, "full-receipts", uuid(jobId) + ".json"), null);
-    if (!receipt || receipt.executor !== executor || receipt.operation !== "tcpquality-full") return false;
+    if (!receipt || receipt.executor !== executor || !FULL_MODULES.includes(receipt.operation)) return false;
     const round = get(receipt.nodeUuid, receipt.roundId, false);
-    if (!round || round.module !== "tcpquality-full" || round.detailAvailable === false) return false;
+    if (!round || round.module !== receipt.operation || data.kind !== receipt.operation || round.detailAvailable === false) return false;
     const slot = round.slots.find(s => s.id === receipt.slotId && s.jobId === jobId);
     if (!slot) return false;
     const output = slotFile(receipt.nodeUuid, receipt.roundId, slot.id), result = read(output, null);
@@ -442,11 +444,12 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     return true;
   }
   function updateFullReportUrl(jobId, executor, data) {
-    if (!UUID.test(jobId || "") || !/^https:\/\/tcpquality\.ibsgss\.uk\/r\/[A-Za-z0-9_-]{1,128}$/.test(data?.reportUrl || "")) return "invalid";
+    if (!UUID.test(jobId || "") || !/^https:\/\/(?:tcpquality\.ibsgss\.uk|(?:www\.)?nodequality\.com)\/r\/[A-Za-z0-9_-]{1,128}$/.test(data?.reportUrl || "")) return "invalid";
     const receipt = read(path.join(base, "full-receipts", uuid(jobId) + ".json"), null);
-    if (!receipt || receipt.executor !== executor || receipt.operation !== "tcpquality-full") return "invalid";
+    if (!receipt || receipt.executor !== executor || !FULL_MODULES.includes(receipt.operation)) return "invalid";
     const round = get(receipt.nodeUuid, receipt.roundId, false);
-    if (!round || round.module !== "tcpquality-full" || round.detailAvailable === false) return "invalid";
+    if (!round || round.module !== receipt.operation || data.kind !== receipt.operation || round.detailAvailable === false) return "invalid";
+    if (receipt.operation === "tcpquality-full" ? !data.reportUrl.startsWith("https://tcpquality.ibsgss.uk/") : !/^https:\/\/(?:www\.)?nodequality\.com\//.test(data.reportUrl)) return "invalid";
     const slot = round.slots.find(s => s.id === receipt.slotId && s.jobId === jobId);
     if (!slot || slot.state === "cancelled") return "invalid";
     const output = slotFile(receipt.nodeUuid, receipt.roundId, slot.id), result = read(output, null);
@@ -497,13 +500,13 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       .sort()
       .reverse()) {
       for (const row of read(path.join(directory, name), [])) {
-        if (module === "tcpquality-full" && UUID.test(row.id || "") && deletionPending(node, row.id)) {
+        if (FULL_MODULES.includes(module) && UUID.test(row.id || "") && deletionPending(node, row.id)) {
           resumeFullDeletion(node, row.id);
           continue;
         }
         // A crash after the atomic rename in deleteFullRound can leave an
         // index row behind. Finish that deletion before exposing the row.
-        if (module === "tcpquality-full" && UUID.test(row.id || "")) {
+        if (FULL_MODULES.includes(module) && UUID.test(row.id || "")) {
           const tomb = deletedRoundDir(node, row.id);
           let deleting = false;
           try {
@@ -528,14 +531,14 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
         rows.length > limit
           ? rows[limit - 1].plannedAt + "|" + rows[limit - 1].id
           : null,
-      retention: module === "tcpquality-full" ? { detailDays: null, summaryDays: null } : { detailDays: 7, summaryDays: 90 },
+      retention: FULL_MODULES.includes(module) ? { detailDays: null, summaryDays: null } : { detailDays: 7, summaryDays: 90 },
     };
   }
   function finalizeDeletedFull(node, id) {
     const tomb = deletedRoundDir(node, id);
     const round = read(path.join(tomb, "manifest.json"), null);
     if (!round) return false;
-    if (uuid(round.nodeUuid) !== uuid(node) || uuid(round.id) !== uuid(id) || round.module !== "tcpquality-full" || !Array.isArray(round.slots) || round.slots.some(slot => !TERMINAL.includes(slot.state)))
+    if (uuid(round.nodeUuid) !== uuid(node) || uuid(round.id) !== uuid(id) || !FULL_MODULES.includes(round.module) || !Array.isArray(round.slots) || round.slots.some(slot => !TERMINAL.includes(slot.state)))
       throw new Error("待删除报告记录无效");
     const file = path.join(nodeDir(node), "indexes", moduleName(round.module), round.plannedAt.slice(0, 10) + ".json");
     const rows = read(file, []).filter(row => row.id !== round.id);
@@ -560,7 +563,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     if (deletionPending(node, id)) return resumeFullDeletion(node, id);
     const round = get(node, id, false);
     if (!round) return finalizeDeletedFull(node, id);
-    if (round.module !== "tcpquality-full") throw new Error("仅支持删除完整 TcpQuality 报告");
+    if (!FULL_MODULES.includes(round.module)) throw new Error("仅支持删除完整检测报告");
     if (round.slots.some(slot => !TERMINAL.includes(slot.state))) throw new Error("检测仍在进行，请先取消");
     // The intent is written before the rename, so a crash at either boundary
     // cannot make the report visible or allow a late result to replace it.
@@ -578,7 +581,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     if (!deleted) {
       const live = read(path.join(roundDir(node, id), "manifest.json"), null);
       if (live) {
-        if (uuid(live.nodeUuid) !== uuid(node) || uuid(live.id) !== uuid(id) || live.module !== "tcpquality-full" || !Array.isArray(live.slots) || live.slots.some(slot => !TERMINAL.includes(slot.state))) throw new Error("待删除报告记录无效");
+        if (uuid(live.nodeUuid) !== uuid(node) || uuid(live.id) !== uuid(id) || !FULL_MODULES.includes(live.module) || !Array.isArray(live.slots) || live.slots.some(slot => !TERMINAL.includes(slot.state))) throw new Error("待删除报告记录无效");
         fs.renameSync(roundDir(node, id), tomb);
         deleted = live;
       }
@@ -631,7 +634,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
   }
   function cleanup(node) {
     for (const module of MODULES) {
-      if (module === "tcpquality-full") continue;
+      if (FULL_MODULES.includes(module)) continue;
       const directory = path.join(nodeDir(node), "indexes", module);
       for (const name of directories(directory).filter((s) =>
         /^\d{4}-\d\d-\d\d\.json$/.test(s),

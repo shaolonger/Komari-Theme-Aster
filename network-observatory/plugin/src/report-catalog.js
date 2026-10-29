@@ -225,6 +225,8 @@ const ENDPOINTS = [...aws, ...sites, ...dcs, ...routes, ...leaseweb, ...xtom, ..
 const PRESETS = [
   { id: "tcpquality-full", name: "TcpQuality 完整检测", module: "tcpquality-full", endpoints: [],
     timing: { type: "daily", times: ["03:00"], timezone: "Asia/Shanghai" } },
+  { id: "nodequality-full", name: "NodeQuality 完整检测", module: "nodequality-full", endpoints: [],
+    timing: { type: "daily", times: ["04:00"], timezone: "Asia/Shanghai" } },
   { id: "tcp-quality", name: "大陆 TCP 质量", module: "tcp-quality",
     endpoints: routes.filter(e => e.family === "4" && /(?:pek|sha|can)_ipv4_(?:4134|4837|9808)$/.test(e.id)).map(e => e.id),
     timing: { type: "interval", minutes: 60 } },

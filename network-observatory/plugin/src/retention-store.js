@@ -42,7 +42,7 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
   function due(rows) {
     let next = Infinity;
     for (const row of rows) {
-      if (!row.completedAt || row.module === "tcpquality-full") continue;
+      if (!row.completedAt || ["tcpquality-full", "nodequality-full"].includes(row.module)) continue;
       const at = Date.parse(row.completedAt);
       if (Number.isFinite(at)) next = Math.min(next, at + (row.detailAvailable ? 7 : 90) * DAY + 1);
     }
@@ -130,7 +130,7 @@ function retentionStore({ base, modules, nodeDir, roundDir, read, write, missing
   }
   function stepIndex(work, isRoundActive) {
     if (!UUID.test(work.node || "") || !modules.includes(work.module) || !INDEX.test(work.name)) throw new Error("保留期扫描游标无效");
-    if (work.module === "tcpquality-full") { note(work.node, work.module, work.name, currentRows(work)); indexCache = null; return true; }
+    if (["tcpquality-full", "nodequality-full"].includes(work.module)) { note(work.node, work.module, work.name, currentRows(work)); indexCache = null; return true; }
     if (work.deleting) {
       // A queued lease can outlive an already-committed manifest after a
       // process/save failure. Check the queue on every resumed deletion step,

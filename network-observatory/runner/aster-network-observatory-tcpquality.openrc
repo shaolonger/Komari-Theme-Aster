@@ -1,6 +1,6 @@
 #!/sbin/openrc-run
 
-description="Aster isolated TcpQuality execution helper"
+description="Aster isolated complete network test execution helper"
 supervisor="supervise-daemon"
 command="/usr/bin/python3"
 command_args="-B /usr/local/libexec/aster-network-observatory/tcpquality_helper.py"

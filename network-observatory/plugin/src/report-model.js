@@ -57,7 +57,7 @@ function normalizeSuite(input, resources = []) {
     if (speed && input.trafficAccepted !== true)
       throw new Error("启用全速测速前需要接受时长和流量说明");
     const family = value.family || "4";
-    if (!["4", "6"].includes(family)) throw new Error("请选择 IPv4 或 IPv6");
+    if (!(value.module === "nodequality-full" ? ["4", "6", "auto"] : ["4", "6"]).includes(family)) throw new Error("请选择有效地址族");
     const protocols = [...new Set(value.protocols || ["tcp"])];
     if (
       !protocols.length ||
@@ -102,9 +102,14 @@ function normalizeSuite(input, resources = []) {
     const timeoutMinutes = value.timeoutMinutes === undefined ? 120 : value.timeoutMinutes;
     if (value.module === "tcpquality-full" && (! ["AUTO", "FULL", "LOWMEM"].includes(profile) || !Number.isInteger(timeoutMinutes) || timeoutMinutes < 30 || timeoutMinutes > 150))
       throw new Error("TcpQuality 模式或超时时间无效（30–150 分钟）");
+    const hardwareMode = value.hardwareMode || "standard", networkMode = value.networkMode || "standard";
+    if (value.module === "nodequality-full" && (!["standard", "fast", "deep"].includes(hardwareMode) || !["standard", "low-data"].includes(networkMode))) throw new Error("NodeQuality 检测模式无效");
+    const checks = value.checks === undefined ? ["hardware_quality", "ip_quality", "net_quality", "backroute_trace"] : value.checks;
+    if (value.module === "nodequality-full" && (!Array.isArray(checks) || !checks.length || checks.length > 4 || new Set(checks).size !== checks.length || checks.some(c => !["hardware_quality", "ip_quality", "net_quality", "backroute_trace"].includes(c)) || !Number.isInteger(timeoutMinutes) || timeoutMinutes < 30 || timeoutMinutes > 180))
+      throw new Error("NodeQuality 检测项目或超时时间无效");
     const timing = M.timing(
       value.timing || preset.timing,
-      speed ? "speed" : value.module === "routes" ? "routes" : value.module === "tcpquality-full" ? "tcpquality-full" : "websites",
+      speed ? "speed" : value.module === "routes" ? "routes" : ["tcpquality-full", "nodequality-full"].includes(value.module) ? value.module : "websites",
     );
     if (
       value.module === "bgp" &&
@@ -124,6 +129,7 @@ function normalizeSuite(input, resources = []) {
       warmupSeconds,
       streams, samples, packetSizes, maxTrafficMiB,
       ...(value.module === "tcpquality-full" ? { profile, timeoutMinutes } : {}),
+      ...(value.module === "nodequality-full" ? { checks, timeoutMinutes, hardwareMode, networkMode } : {}),
       timing,
       enabled: value.enabled !== false,
       nextAt: M.next(timing),
@@ -213,6 +219,9 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
   if (module.module === "tcpquality-full")
     add("tcpquality-full", "localhost", source, "VPS→TcpQuality 测点", "tcpquality-full", "node:" + nodeUuid,
       { ...common, profile: module.profile, timeoutMinutes: module.timeoutMinutes }, null, "");
+  if (module.module === "nodequality-full")
+    add("nodequality-full", "localhost", source, "VPS→NodeQuality 测点", "nodequality-full", "node:" + nodeUuid,
+      { ...common, checks: module.checks, hardwareMode: module.hardwareMode, networkMode: module.networkMode, timeoutMinutes: module.timeoutMinutes }, null, "");
   if (["international", "idc", "tcp-quality"].includes(module.module)) {
     for (const id of module.endpoints) {
       const e = all.find((r) => r.id === id);

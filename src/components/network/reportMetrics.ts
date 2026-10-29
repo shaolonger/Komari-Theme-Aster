@@ -5,6 +5,7 @@ export const reportLabels: Record<string, string> = {
   routes: "大陆路由",
   "tcp-quality": "大陆 TCP 质量",
   "tcpquality-full": "TcpQuality 完整检测",
+  "nodequality-full": "NodeQuality 完整检测",
   "china-speed": "大陆单连接测速",
   international: "国际延迟",
   idc: "IDC 接入延迟",
