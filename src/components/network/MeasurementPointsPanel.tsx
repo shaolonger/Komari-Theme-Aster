@@ -11,6 +11,7 @@ import {
 } from "@/services/nativeObservatory";
 import { formatNetworkTime, installCommand } from "./shared";
 import { NetworkDrawer } from "./NetworkDrawer";
+import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
 export function MeasurementPointsPanel({
   initialNodes = [],
@@ -101,27 +102,15 @@ export function MeasurementPointsPanel({
         Komari 完整地址
         <input value={base} onChange={(e) => setBase(e.target.value)} />
       </label>
-      <label>
-        VPS
-        <select
-          value={selected}
-          onChange={(e) => {
-            setUuid(e.target.value);
-            setAddress(null);
-            setIpv4(null);
-            setIpv6(null);
-            setPort(null);
-            setCredential(null);
-            setConfirm(null);
-          }}
-        >
-          {data.inventory.map((n) => (
-            <option key={n.uuid} value={n.uuid}>
-              {n.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <NodeSwitcher className="measurement-node-switcher" label="VPS" nodes={data.inventory} currentUuid={selected} onSelect={(next) => {
+        setUuid(next);
+        setAddress(null);
+        setIpv4(null);
+        setIpv6(null);
+        setPort(null);
+        setCredential(null);
+        setConfirm(null);
+      }} />
       <div className="measurement-layout">
       <section className="network-section measurement-agent">
         <h3>VPS 探测器</h3>

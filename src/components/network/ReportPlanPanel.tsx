@@ -13,6 +13,7 @@ import {
   type ReportSuite,
 } from "@/services/reportObservatory";
 import { NetworkSectionHeading } from "./NetworkUi";
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { FullScheduleEditor } from "./FullScheduleEditor";
 import { reportLabels } from "./reportMetrics";
 import { formatNetworkTime } from "./shared";
@@ -41,6 +42,7 @@ export function ReportPlanPanel({
     > | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const [vpsSearch, setVpsSearch] = useState("");
   const [dailyInputs, setDailyInputs] = useState<Record<string, string>>({});
   const catalog = query.data;
   if (!catalog)
@@ -87,6 +89,7 @@ export function ReportPlanPanel({
     modules: [presetModule("international-basic")],
     revision: catalog.revision,
   };
+  const matchedInventory = catalog.inventory.filter(node => matchesNodeSearch(vpsSearch, node.name, node.uuid, node.group, node.ip));
   function change(patch: Partial<ReportDraft>) {
     setDraft({ ...current, ...patch });
     setPreview(null);
@@ -126,6 +129,7 @@ export function ReportPlanPanel({
   function edit(suite: ReportSuite) {
     setDraft({ ...suite, revision: catalog!.revision });
     setDailyInputs({});
+    setVpsSearch("");
     setPreview(null);
     setStep(1);
   }
@@ -137,6 +141,15 @@ export function ReportPlanPanel({
         description="选择模块、执行时间和 VPS；保存和执行操作直接写入网络插件。探测器与目标端点在网络观测中统一管理。"
 
       />
+      <section className="report-saved-plans" aria-label="已保存方案">
+        <div className="report-saved-plans-heading"><div><strong>已保存方案</strong><small>{catalog.suites.length} 个方案 · 选择卡片编辑详情</small></div>
+          <button type="button" onClick={() => { setDraft({ name: "网络报告", clients: initialNodes.length ? initialNodes : uuid ? [uuid] : [], groups: [], inherit: true, enabled: true, trafficAccepted: false, modules: [presetModule("international-basic")], revision: catalog.revision }); setStep(1); setPreview(null); setDailyInputs({}); setVpsSearch(""); }}>新建方案</button>
+        </div>
+        {catalog.suites.length ? <div className="report-saved-plans-grid">{catalog.suites.map(suite => <article key={suite.id} className="report-saved-plan" data-selected={(current as ReportDraft).id === suite.id}>
+          <button type="button" className="report-saved-plan-select" aria-pressed={(current as ReportDraft).id === suite.id} onClick={() => edit(suite)}><strong>{suite.name}</strong><span>{suite.enabled ? "已启用" : "已暂停"} · {suite.clients.length} 台指定 VPS{suite.groups.length ? ` · ${suite.groups.length} 个分组` : ""}</span><small>{suite.modules.map(m => reportLabels[m.module] || m.module).join(" / ") || "未配置模块"}</small></button>
+          <div className="report-saved-plan-actions"><button disabled={busy || !suite.enabled} onClick={() => void mutate(() => runReportSuite(suite.id))}>立即检测</button><button disabled={busy} onClick={() => void mutate(() => saveReportSuite({ ...suite, enabled: !suite.enabled, revision: catalog.revision }))}>{suite.enabled ? "暂停" : "启用"}</button><button disabled={busy} onClick={() => void mutate(async () => { await deleteReportSuite(suite.id); if ((current as ReportDraft).id === suite.id) setDraft(null); })}>删除</button></div>
+        </article>)}</div> : <p className="report-caption">尚无保存的方案，可在下方创建。</p>}
+      </section>
       <nav className="report-plan-steps" aria-label="配置步骤">
         {[
           [1, "模块与预设"],
@@ -661,8 +674,10 @@ export function ReportPlanPanel({
                 {uuid ? "仅当前 VPS" : "清空"}
               </button>
             </div>
+            <label>搜索执行 VPS<input type="search" aria-label="搜索执行 VPS" placeholder="名称、分组或 UUID；空格分词" value={vpsSearch} onChange={e => setVpsSearch(e.target.value)} /></label>
+            <div className="report-target-actions"><span>匹配 {matchedInventory.length} 台 · 已选 {current.clients.length} 台</span><button type="button" disabled={!matchedInventory.length} onClick={() => change({ clients: [...new Set([...current.clients, ...matchedInventory.map(node => node.uuid)])] })}>选择匹配结果</button></div>
             <div className="report-target-checklist">
-              {catalog.inventory.map((node) => (
+              {matchedInventory.map((node) => (
                 <label key={node.uuid}>
                   <input
                     type="checkbox"
@@ -681,6 +696,7 @@ export function ReportPlanPanel({
                   </span>
                 </label>
               ))}
+              {!matchedInventory.length && <p role="status">没有匹配的 VPS。</p>}
             </div>
           </fieldset>
           <fieldset>
@@ -807,49 +823,7 @@ export function ReportPlanPanel({
           </button>
         )}
       </div>
-      {!!catalog.suites.length && (
-        <details>
-          <summary>已保存方案 · {catalog.suites.length}</summary>
-          {catalog.suites.map((suite) => (
-            <div key={suite.id} className="report-saved-suite">
-              <strong>{suite.name}</strong>
-              <small>
-                {suite.modules.map((m) => reportLabels[m.module]).join(" / ")} ·{" "}
-                {suite.enabled ? reportLabels.ok : "已暂停"}
-              </small>
-              <div>
-                <button onClick={() => edit(suite)}>编辑</button>
-                <button
-                  disabled={busy || !suite.enabled}
-                  onClick={() => void mutate(() => runReportSuite(suite.id))}
-                >
-                  全部立即检测
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(() =>
-                      saveReportSuite({
-                        ...suite,
-                        enabled: !suite.enabled,
-                        revision: catalog.revision,
-                      }),
-                    )
-                  }
-                >
-                  {suite.enabled ? "暂停" : "启用"}
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => void mutate(() => deleteReportSuite(suite.id))}
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          ))}
-        </details>
-      )}
+
     </div>
   );
 }

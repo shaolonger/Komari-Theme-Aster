@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { NetworkSettingsPanel } from "@/components/network/NetworkSettingsPanel";
 import { HomepagePreview } from "@/components/settings/HomepagePreview";
 import { validateStudioInputs } from "@/utils/studioValidation";
@@ -339,7 +340,7 @@ export function ThemeManage() {
         .map((value) => String(value ?? "").trim().toLowerCase())
         .filter(Boolean)
         .join(" ");
-      return haystack.includes(keyword);
+      return matchesNodeSearch(keyword, haystack);
     });
   }, [draftHomeNodeFacets, facetSearch, sortedClients]);
 

@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,6 +13,7 @@ export function HomeSpeedsPublishPanel({
 }: {
   catalog: ReportCatalog;
 }) {
+  const [search, setSearch] = useState("");
   const [selection, setSelection] = useState<string[] | null>(null);
   const [display, setDisplay] = useState<boolean | null>(null);
   const [showDetails, setShowDetails] = useState<boolean | null>(null);
@@ -77,8 +79,9 @@ export function HomeSpeedsPublishPanel({
       </label>
       <label className="report-checkbox"><input type="checkbox" aria-label="显示测速计量说明" checked={showDetails ?? catalog.homeSpeedShowDetails} onChange={event => setShowDetails(event.target.checked)} />显示接收端计量、TCP 已确认等说明</label>
       <p>默认仅显示速率值，点击数值仍可查看计量侧、部分样本与测量时间。</p>
+      <label>搜索 VPS<input type="search" aria-label="搜索测速发布 VPS" placeholder="名称、分组或 UUID；空格分词" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <div className="home-speeds-publish-nodes">
-        {nodes.map((n) => {
+        {nodes.filter(n => matchesNodeSearch(search, n.name, n.uuid, n.group, n.ip)).map((n) => {
           const values = Object.values(speeds.data?.nodes[n.uuid] || {}).flatMap(snapshot => snapshot?.cities.flatMap(city => city.rows.flatMap(row => [row.download, row.upload])) || []);
           return (
             <label key={n.uuid}>

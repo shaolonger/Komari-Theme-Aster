@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import {
   lazy,
   Suspense,
@@ -67,7 +68,6 @@ import { buildHomeCompareUrl } from "@/utils/pingCompareLink";
 import type { VpsRisk, VpsRiskKind } from "@/utils/vpsRisk";
 import {
   buildVpsWorkbenchNode,
-  searchWorkbenchNode,
   sortWorkbenchNodes,
   summarizeWorkbench,
   type VpsWorkbenchNode,
@@ -730,7 +730,7 @@ function NodeSelectionPanel({
   const visibleNodes = keyword
     ? nodes.filter((node) => {
         const searchText = searchTextByUuid.get(node.uuid) ?? `${node.name} ${node.uuid}`.toLowerCase();
-        return searchText.includes(keyword);
+        return matchesNodeSearch(keyword, searchText);
       })
     : nodes;
   const allVisibleSelected =
@@ -1233,14 +1233,8 @@ export function NodeGrid() {
     const normalizedSearch = nodeSearch.trim().toLowerCase();
     const searchFiltered = normalizedSearch
       ? facetFiltered.filter((node) => {
-          const workbenchNode = workbenchNodesByUuid.get(node.uuid);
           const meta = workbenchMetaByUuid.get(node.uuid);
-          if (workbenchNode && meta) {
-            if (searchWorkbenchNode(workbenchNode, meta, normalizedSearch)) return true;
-          }
-          return (facetSearchTextByUuid.get(node.uuid) ?? node.uuid.toLowerCase()).includes(
-            normalizedSearch,
-          );
+          return matchesNodeSearch(normalizedSearch, node.uuid, node.group, node.region, facetSearchTextByUuid.get(node.uuid), meta?.os, meta?.version);
         })
       : facetFiltered;
     const riskFiltered =

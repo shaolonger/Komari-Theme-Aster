@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import type { NodeInfo, PingOverviewItem } from "@/types/komari";
 import { formatRenewalPrice } from "@/utils/billing";
 import { formatLatency, formatPacketLoss, getExpireDaysRemaining, trimFixed } from "@/utils/format";
@@ -322,22 +323,9 @@ export function buildVpsWorkbenchNode(input: VpsWorkbenchNodeInput): VpsWorkbenc
   };
 }
 
-export function searchWorkbenchNode(node: VpsWorkbenchNode, meta: NodeInfo, keyword: string) {
-  const normalized = keyword.trim().toLowerCase();
-  if (!normalized) return true;
-  return [
-    node.name,
-    node.uuid,
-    node.group,
-    node.region,
-    meta.tags,
-    meta.public_remark,
-    meta.os,
-    meta.version,
-  ]
-    .join(" ")
-    .toLowerCase()
-    .includes(normalized);
+export function searchWorkbenchNode(node: VpsWorkbenchNode, meta: NodeInfo, keyword: string, extra = "") {
+  return matchesNodeSearch(keyword, node.name, node.uuid, node.group, node.region, meta.tags,
+    meta.public_remark, meta.os, meta.version, meta.provider, meta.business_role, extra);
 }
 
 function expirySortValue(node: VpsWorkbenchNode) {

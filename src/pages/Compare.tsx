@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -1204,7 +1205,7 @@ export function Compare() {
   const filteredNodes = useMemo(() => {
     const query = nodeSearch.trim().toLowerCase();
     if (!query) return nodeOptions;
-    return nodeOptions.filter((node) => compareSearchText(node).includes(query));
+    return nodeOptions.filter((node) => matchesNodeSearch(query, compareSearchText(node)));
   }, [nodeOptions, nodeSearch]);
   const pingTaskCatalogIds = useMemo(() => {
     const ids = new Set<number>();

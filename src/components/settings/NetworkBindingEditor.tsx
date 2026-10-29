@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { assignNetworkTasks } from "@/utils/networkBindingDraft";
 import { TaskPicker } from "./TaskPicker";
 import { useState } from "react";
@@ -18,7 +19,7 @@ export function NetworkBindingEditor({ clients, tasks, bindings, order, onChange
   const [editing, setEditing] = useState<string | null>(null);
   const [batchTasks, setBatchTasks] = useState<number[]>([]);
   const resolved = normalizeHomepagePingTaskOrder(order, bindings);
-  const visible = clients.filter((client) => `${client.name} ${client.uuid} ${client.group} ${client.region}`.toLowerCase().includes(search.toLowerCase()));
+  const visible = clients.filter((client) => matchesNodeSearch(search, client.name, client.uuid, client.group, client.region, client.tags, client.provider, client.remark, client.public_remark));
   const taskNames = new Map(tasks.map((task) => [task.id, task.name || `任务 #${task.id}`]));
   function assign(uuids: string[], ids: number[], append = false) {
     const { bindings: next, order: nextOrder } = assignNetworkTasks(bindings, order, uuids, ids, append);

@@ -2688,3 +2688,8 @@
 .native-site-picker .network-choice-title { display: grid; gap: 4px; }
 .native-site-picker .network-choice-title strong { font-size: inherit; font-weight: 600; }
 .native-site-picker .network-choice-title small { overflow-wrap: anywhere; color: var(--text-secondary); font-size: 11px; }
+
+.measurement-node-switcher { display: grid; width: 100%; gap: 7px; }
+.measurement-node-switcher .instance-node-switcher-label { font-size: 12px; color: var(--text-secondary); }
+.measurement-node-switcher input { width: 100%; }
+.measurement-node-switcher .node-switch-results { left: 0; right: auto; width: 100%; }

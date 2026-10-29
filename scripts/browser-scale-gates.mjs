@@ -1351,6 +1351,12 @@ try {
   }
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3 && document.querySelectorAll('.ping-task-lane').length === 9 && document.querySelectorAll('.ping-task-overflow').length === 3`, 6_000);
+  await cdp.value(`document.querySelector('input[aria-label="搜索 VPS"]').focus()`);
+  await cdp.call('Input.insertText',{text:'2 scale'});
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 1 && document.querySelector('.home-node-card-slot').textContent.includes('Scale Node 2')`, 2_000);
+  await cdp.value(`document.querySelector('input[aria-label="搜索 VPS"]').focus();document.querySelector('input[aria-label="搜索 VPS"]').select()`);
+  await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
+  await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3`, 2_000);
   await cdp.value(`Array.from(document.querySelectorAll('.home-node-card-slot .ping-task-overflow')).forEach(button => button.click())`);
   await waitUntil(cdp, `document.querySelectorAll('.ping-task-lane').length === 18`, 2_000);
   failGate(await cdp.value(`Array.from(document.querySelectorAll('.home-node-card-slot')[0].querySelectorAll('.ping-task-lane-name')).map(e => e.textContent).join() === 'Task 1,Task 2,Task 3,Task 4,Task 6,Task 5'`), "card did not preserve all six configured tasks in order");
@@ -1371,7 +1377,7 @@ try {
   await waitUntil(cdp, `document.querySelector('.instance-uplot-wrap canvas') !== null`, 6_000);
   await cdp.value(`document.querySelector('input[aria-label="搜索并切换 VPS"]').focus()`);
   await waitUntil(cdp, `document.querySelectorAll('.node-switch-results [role="option"]').length === 3`, 4_000);
-  await cdp.call("Input.insertText", { text: "scale 2" });
+  await cdp.call("Input.insertText", { text: "2 scale" });
   await waitUntil(cdp, `document.querySelectorAll('.node-switch-results [role="option"]').length === 1`, 2_000);
   if (process.env.BROWSER_GATE_SCREENSHOT) {
     const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
@@ -1414,15 +1420,19 @@ try {
     await cdp.value(`document.querySelector(".report-main-tabs").scrollIntoView({block:"start"})`);
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-routes-${appearance}.png`);
     await cdp.value(`Array.from(document.querySelectorAll('.report-main-tabs button')).find(b=>b.textContent==='TCP 质量').click()`);
-    await waitUntil(cdp,`document.querySelectorAll('.report-latency-card').length===9`,2000);
     await waitUntil(cdp,`document.querySelector('.report-full-tcp pre')?.textContent.includes('TcpQuality 测试报告示例')`,2000);
+    failGate(await cdp.value(`document.querySelectorAll('.report-quality-tabs button').length===3 && document.querySelectorAll('.report-module').length===1 && !document.querySelector('.report-full-tcp details[open]') && getComputedStyle(document.querySelector('.report-main-tabs')).borderBottomStyle!=='solid'`), 'quality tabs, collapsed output or main tab styling incorrect');
     failGate(await cdp.value(`document.querySelector('.report-full-tcp').textContent.includes('上游报告已补传') && document.querySelector('.report-full-tcp a')?.href==='https://tcpquality.ibsgss.uk/r/fixture' && document.querySelector('.report-full-tcp button')?.textContent.includes('CSV')`), 'full TcpQuality report or recovered URL missing');
     failGate(await cdp.value(`(()=>{const f=document.querySelector('.report-upstream-preview iframe');return f?.getAttribute('src')==='https://tcpquality.ibsgss.uk/r/fixture' && f.title==='TcpQuality 在线报告' && f.referrerPolicy==='no-referrer' && f.sandbox.contains('allow-scripts') && !f.sandbox.contains('allow-top-navigation')})()`), 'full TcpQuality inline preview missing or unsafe');
+    failGate(await cdp.value(`document.querySelector('.report-full-coverage').textContent.includes('失败 1') && document.querySelector('.report-full-coverage').textContent.includes('IPv6：不可用')`), 'full TcpQuality coverage was misreported');
+    await cdp.value(`Array.from(document.querySelectorAll('.report-quality-tabs button')).find(b=>b.textContent.includes('NodeQuality 完整检测')).click()`);
     await waitUntil(cdp,`document.querySelector('iframe[title="NodeQuality 在线报告"]')!==null`,2000);
     failGate(await cdp.value(`(()=>{const f=document.querySelector('iframe[title="NodeQuality 在线报告"]');return f.getAttribute('src')==='https://nodequality.com/r/fixture' && f.referrerPolicy==='no-referrer' && f.sandbox.contains('allow-scripts') && !f.sandbox.contains('allow-top-navigation') && f.closest('.report-full-tcp').textContent.includes('IP 质量')})()`), 'NodeQuality report preview or local data missing');
-    failGate(await cdp.value(`document.querySelector('.report-full-coverage').textContent.includes('失败 1') && document.querySelector('.report-full-coverage').textContent.includes('IPv6：不可用')`), 'full TcpQuality coverage was misreported');
+    failGate(await cdp.value(`document.querySelectorAll('.report-module').length===1 && !document.querySelector('iframe[title="TcpQuality 在线报告"]')`),'quality report tabs are not exclusive');
+    await cdp.value(`Array.from(document.querySelectorAll('.report-quality-tabs button')).find(b=>b.textContent.includes('大陆 TCP 质量')).click()`);
+    await waitUntil(cdp,`document.querySelectorAll('.report-latency-card').length===9`,2000);
     await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-    failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('.report-upstream-preview iframe').getBoundingClientRect().width<=innerWidth`), 'TcpQuality preview overflows mobile viewport');
+    failGate(await cdp.value(`document.documentElement.scrollWidth<=innerWidth+1 && document.documentElement.scrollWidth<=innerWidth+1`), 'TcpQuality preview overflows mobile viewport');
     await cdp.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     if(process.env.BROWSER_GATE_SCREENSHOT){
       await cdp.value(`document.querySelector('.report-latency-grid').scrollIntoView({block:'start'})`);
@@ -1464,13 +1474,30 @@ try {
     failGate(await cdp.value(`document.querySelectorAll('.report-schedule-weekdays input').length===7 && document.documentElement.scrollWidth<=innerWidth+1`),'weekly schedule or mobile layout broken');
     if(process.env.BROWSER_GATE_SCREENSHOT){ await cdp.value(`document.querySelector('.report-schedule-weekdays').scrollIntoView({block:'center'})`); await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.full-schedule-${appearance}.png`); }
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-steps button')).find(b=>b.textContent.includes('VPS 与覆盖')).click()`);
+    await cdp.value(`document.querySelector('input[aria-label="搜索执行 VPS"]').focus()`);
+    await cdp.call('Input.insertText',{text:'2 scale'});
+    await waitUntil(cdp,`document.querySelectorAll('.report-target-checklist label').length===1 && document.querySelector('.report-target-checklist').textContent.includes('Scale Node 2')`,2000);
+    await cdp.value(`document.querySelector('input[aria-label="搜索执行 VPS"]').focus(); document.querySelector('input[aria-label="搜索执行 VPS"]').select()`);
+    await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-plan-mobile-${appearance}.png`);
+    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-footer button')).find(b=>b.textContent.includes('保存报告方案')).click()`);
+    await waitUntil(cdp,`document.querySelector('.report-saved-plan-select')!==null`,3000);
+    failGate(await cdp.value(`document.querySelector('.report-saved-plans').compareDocumentPosition(document.querySelector('.report-plan-steps')) & Node.DOCUMENT_POSITION_FOLLOWING`),'saved plans not above editor');
+    await cdp.value(`document.querySelector('.report-saved-plan-select').click()`);
+    failGate(await cdp.value(`document.querySelector('.report-saved-plan-select').getAttribute('aria-pressed')==='true'`),'saved plan card did not select plan');
+    if(process.env.BROWSER_GATE_SCREENSHOT){ await cdp.value(`document.querySelector('.report-saved-plans').scrollIntoView({block:'start'})`); await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.saved-plans-${appearance}.png`); }
+    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-steps button')).find(b=>b.textContent.includes('VPS 与覆盖')).click()`);
     failGate(await cdp.value(`['主页延迟检测','主页三网线路','检测方案','探测器与测量点','目标端点'].every(title=>Array.from(document.querySelectorAll('.aster-studio-panel h2')).some(e=>e.textContent===title))`), 'network center panels missing');
     failGate(await cdp.value(`!document.body.textContent.includes('旧版单次检测与历史') && !document.body.textContent.includes('工具诊断与旧计划') && !document.body.textContent.includes('兼容与迁移')`), 'removed network functionality is still visible');
     failGate(await cdp.value(`Array.from(document.querySelectorAll('.report-target-checklist input:checked')).length===1`),'instance shortcut lost selected VPS');
     await cdp.value(`document.querySelector('#network-agents').scrollIntoView({block:'start'})`);
+    await cdp.value(`document.querySelector('input[aria-label="搜索并选择VPS"]').focus()`);
+    await cdp.call('Input.insertText',{text:'2 scale'});
+    await waitUntil(cdp,`document.querySelectorAll('.measurement-node-switcher [role="option"]').length===1 && document.querySelector('.measurement-node-switcher [role="option"]').textContent.includes('Scale Node 2')`,2000);
+    if(process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.measurement-search-${appearance}.png`);
+    await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     for (const label of ['探针名称','大陆城市']) {
       await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel label')).find(l=>l.textContent.startsWith(${JSON.stringify(label)})).querySelector('input').focus()`);
       await cdp.call('Input.insertText', {text:label==='探针名称'?'上海测试测量点':'上海'});

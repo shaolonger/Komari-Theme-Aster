@@ -89,7 +89,7 @@ function FullTcpQualityReport({ round }: { round: ReportRound }) {
       {data.csv && <button type="button" onClick={downloadCsv}>下载 CSV{data.csvTruncated ? "（已截断）" : ""}</button>}
     </div>
     {(data.logTruncated || data.csvTruncated) && <p role="status">报告超过保存上限，展示或下载的内容已截断；请查看探测器上的原始文件。</p>}
-    {data.cleanLog && <details open><summary>检测报告</summary><pre className="report-json">{data.cleanLog}</pre></details>}
+    {data.cleanLog && <details><summary>检测报告</summary><pre className="report-json">{data.cleanLog}</pre></details>}
   </div>;
 }
 function FullNodeQualityReport({ round }: { round: ReportRound }) {
@@ -924,6 +924,10 @@ export function NetworkReportWorkspace({
   const [tab, setTab] = useState<"routes" | "tcp-quality" | "speed" | "international">(
     (() => { const value = new URLSearchParams(window.location.search).get("tab"); return value === "routes" || value === "speed" || value === "tcp-quality" ? value : "international"; })(),
   );
+  const qualityModules = ["tcpquality-full", "nodequality-full", "tcp-quality"] as const;
+  const [qualityTab, setQualityTab] = useState<(typeof qualityModules)[number]>("tcpquality-full");
+  const visibleQuality = qualityModules.filter(module => availableModules.includes(module));
+  const selectedQuality = visibleQuality.includes(qualityTab) ? qualityTab : visibleQuality[0];
   const tabs = {
     routes: ["routes", "bgp"],
     "tcp-quality": ["tcpquality-full", "nodequality-full", "tcp-quality"],
@@ -956,7 +960,10 @@ export function NetworkReportWorkspace({
           </button>
         ))}
       </div>
-      {tabs[tab]
+      {tab === "tcp-quality" && visibleQuality.length > 0 && <div className="report-quality-tabs" aria-label="TCP 质量报告类型">
+        {visibleQuality.map(module => <button key={module} type="button" aria-pressed={selectedQuality === module} onClick={() => setQualityTab(module)}>{moduleTitles[module]}</button>)}
+      </div>}
+      {(tab === "tcp-quality" ? (selectedQuality ? [selectedQuality] : []) : tabs[tab])
         .filter((m) => availableModules.includes(m))
         .map((module) => (
           <RoundModule

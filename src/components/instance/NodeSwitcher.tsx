@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { NodeInfo } from "@/types/komari";
+import { matchesNodeSearch } from "@/utils/nodeSearch";
+export type SearchableNode = { uuid: string; name: string; group?: string | null; region?: string | null; tags?: string | null; public_remark?: string | null; provider?: string | null; business_role?: string | null; remark?: string | null; ipv4?: string | null; ipv6?: string | null; };
 
-export function NodeSwitcher({ nodes, currentUuid, onSelect }: { nodes: NodeInfo[]; currentUuid: string; onSelect: (uuid: string) => void }) {
+export function NodeSwitcher({ nodes, currentUuid, onSelect, label = "切换 VPS", className = "" }: { nodes: SearchableNode[]; currentUuid: string; onSelect: (uuid: string) => void; label?: string; className?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -9,8 +10,7 @@ export function NodeSwitcher({ nodes, currentUuid, onSelect }: { nodes: NodeInfo
   const root = useRef<HTMLDivElement>(null);
   const current = nodes.find((node) => node.uuid === currentUuid);
   const matches = useMemo(() => {
-    const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-    return nodes.filter((node) => words.every((word) => `${node.name} ${node.uuid} ${node.group ?? ""} ${node.region ?? ""}`.toLocaleLowerCase().includes(word)));
+    return nodes.filter((node) => matchesNodeSearch(query, node.name, node.uuid, node.group, node.region, node.tags, node.public_remark, node.remark, node.provider, node.business_role, node.ipv4, node.ipv6));
   }, [nodes, query]);
   const index = Math.min(active, Math.max(0, matches.length - 1));
   useEffect(() => {
@@ -22,16 +22,16 @@ export function NodeSwitcher({ nodes, currentUuid, onSelect }: { nodes: NodeInfo
     return () => document.removeEventListener("pointerdown", close);
   }, []);
   const choose = (uuid: string) => { setOpen(false); setQuery(""); setActive(0); onSelect(uuid); };
-  return <div ref={root} className="instance-node-switcher node-search-switcher" onBlur={() => {
+  return <div ref={root} className={`instance-node-switcher node-search-switcher ${className}`} onBlur={() => {
     // Browsers may report a null relatedTarget while restoring focus during
     // layout. Close only after focus has actually left the component.
     requestAnimationFrame(() => { if (!root.current?.contains(document.activeElement)) setOpen(false); });
   }}>
-    <label className="instance-node-switcher-label" htmlFor={`${listId}-input`}>切换 VPS</label>
+    <label className="instance-node-switcher-label" htmlFor={`${listId}-input`}>{label}</label>
     <input id={`${listId}-input`} className="instance-node-select" role="combobox" autoComplete="off"
-      aria-label="搜索并切换 VPS" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+      aria-label={label === "切换 VPS" ? "搜索并切换 VPS" : `搜索并选择${label}`} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
       aria-activedescendant={open && matches.length ? `${listId}-${index}` : undefined}
-      value={open ? query : current?.name ?? ""} placeholder="输入名称、分组或 UUID 搜索"
+      value={open ? query : current?.name ?? ""} placeholder="输入名称、分组或 UUID；空格分词"
       onFocus={() => { setOpen(true); setQuery(""); setActive(0); }}
       onClick={() => setOpen(true)}
       onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }}

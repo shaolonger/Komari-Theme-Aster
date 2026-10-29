@@ -1,3 +1,4 @@
+import { matchesNodeSearch } from "@/utils/nodeSearch";
 import { useId, useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { FacetValuesInput } from './FacetValuesInput';
@@ -12,7 +13,7 @@ export function NodeScopeEditor({ nodes, selected, onChange, label, excluded = f
   const id = useId();
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const known = useMemo(() => new Set(nodes.map(node => node.uuid)), [nodes]);
-  const filtered = useMemo(() => nodes.filter(node => [node.name, node.group, node.region, node.uuid].some(value => value?.toLocaleLowerCase().includes(search.toLocaleLowerCase()))), [nodes, search]);
+  const filtered = useMemo(() => nodes.filter(node => matchesNodeSearch(search, node.name, node.group, node.region, node.uuid, node.tags, node.provider, node.remark, node.public_remark)), [nodes, search]);
   const update = (uuid: string, checked: boolean) => onChange(checked ? [...new Set([...selected, uuid])] : selected.filter(value => value !== uuid));
   return <fieldset className="studio-scope"><legend>{label}</legend>
     <p>{excluded ? '选中的节点不计入资产统计；未选择时全部纳入。' : '未选择节点时不限制范围；选择后仅包含这些节点。'}</p>
