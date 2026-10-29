@@ -1369,6 +1369,11 @@
 }
 
 .ping-task-overflow {
+  grid-column: 1 / -1;
+  min-height: 24px;
+  flex-direction: row;
+  gap: 6px;
+  padding: 3px 7px;
   align-items: center;
   justify-content: center;
   color: var(--text-tertiary);
@@ -1377,14 +1382,14 @@
 
 .ping-task-overflow strong {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 11px;
   font-weight: 790;
   line-height: 1;
 }
 
 .ping-task-overflow span {
-  margin-top: 3px;
-  font-size: 8px;
+  margin-top: 0;
+  font-size: 10px;
   font-weight: 650;
 }
 

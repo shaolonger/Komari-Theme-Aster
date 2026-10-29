@@ -37,6 +37,7 @@ import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardS
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
+import { DailyTrafficTrend } from "./LazyDailyTrafficTrend";
 import { getDisplayRegionCode } from "@/utils/geo";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
@@ -141,6 +142,7 @@ export const NodeCard = memo(function NodeCard({
           />
 
           {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} /> : <NodeTrafficQuota traffic={traffic} uptime={slate ? `${uptime.value}${uptime.unit}` : undefined} />}
+          <DailyTrafficTrend uuid={uuid} />
 
           {showExtended && showConnections && (
             <div className="card-metric-section card-metric-divided server-card-meta-grid">

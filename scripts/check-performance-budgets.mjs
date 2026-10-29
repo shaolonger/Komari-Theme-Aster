@@ -46,7 +46,9 @@ const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
 // Keep the CSS/font/icon limits unchanged.
 // The fleet-wide speed-summary query adds up to 1 KiB; its schema, card and
 // evidence drawer remain lazy. It does not add a request per card.
-const limits = { js: 166 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
+// Shared, cached daily traffic history adds a small coordinator; the chart and
+// aggregation are lazy-loaded and do not add per-card network requests.
+const limits = { js: 167 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
 if (jsBytes > limits.js) failures.push(`Home JS Brotli ${jsBytes} > ${limits.js}`);
 if (cssBytes > limits.css) failures.push(`Home CSS Brotli ${cssBytes} > ${limits.css}`);

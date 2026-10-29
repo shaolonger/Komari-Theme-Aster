@@ -33,6 +33,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useViewMode } from "@/hooks/useViewMode";
 import { getAdminClients, getComparisonLoadRecords } from "@/services/api";
 import type { HomeNodeSummary } from "@/services/wsStore";
+import type { LoadRecord } from "@/types/komari";
 import {
   formatBytes,
   formatByteRateLabel,
@@ -86,9 +87,10 @@ import { CompactNodeCard } from "./CompactNodeCard";
 import { CostSummary } from "./CostSummary";
 import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
+import { DailyTrafficProvider } from "./DailyTrafficContext";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
-import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTrafficQueryRange, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
+import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
@@ -1036,49 +1038,48 @@ export function NodeGrid() {
   );
   const showHomeOverview = themeSettings.isReady && themeSettings.showHomeOverview;
   useEffect(() => {
-    if (!showHomeOverview) return;
+    if (!showHomeOverview && mode === "list") return;
     const timer = window.setInterval(() => setTrafficClock(Date.now()), 60_000);
     return () => window.clearInterval(timer);
-  }, [showHomeOverview]);
-  const trafficHistoryQuery = useQuery({
-    queryKey: ["home-traffic-overview", visibleNodeUuids, themeSettings.displayTimeZone, getHomeTrafficDateKey(trafficClock, themeSettings.displayTimeZone)],
-    queryFn: async () => {
-      const common = {
-        uuids: visibleNodeUuids,
-        loadType: "traffic" as const,
-        nodes: allMeta,
-        maxPoints: 500,
-      };
-      const [todayRecords, monthRecords] = await Promise.all([
-        getComparisonLoadRecords({
-          ...common,
-          hours: 24,
-          range: getHomeTodayTrafficQueryRange(trafficClock, themeSettings.displayTimeZone),
-        }),
-        getComparisonLoadRecords({
-          ...common,
-          hours: 30 * 24,
-          range: getHomeTrafficQueryRange(trafficClock, themeSettings.displayTimeZone),
-        }),
-      ]);
-      return Object.fromEntries(visibleNodeUuids.map((uuid) => {
-        const recordsByTime = new Map<string, (typeof monthRecords)[string][number]>();
-        for (const record of monthRecords[uuid] ?? []) recordsByTime.set(String(record.time), record);
-        // Today's denser query takes precedence when the two windows share a sample.
-        for (const record of todayRecords[uuid] ?? []) recordsByTime.set(String(record.time), record);
-        return [uuid, Array.from(recordsByTime.values()).sort((left, right) => {
-          const milliseconds = (value: string | number) => typeof value === "number"
-            ? value > 1_000_000_000_000 ? value : value * 1_000
-            : Date.parse(value);
-          return milliseconds(left.time) - milliseconds(right.time);
-        })];
-      }));
-    },
+  }, [showHomeOverview, mode]);
+  // Reuse one batched history query for every card; older history changes slowly.
+  const trafficWindowKey = getHomeTrafficDateKey(trafficClock, themeSettings.displayTimeZone);
+  const trafficMonthQuery = useQuery({
+    queryKey: ["home-traffic-history", visibleNodeUuids, themeSettings.displayTimeZone, trafficWindowKey],
+    queryFn: () => getComparisonLoadRecords({
+      uuids: visibleNodeUuids, loadType: "traffic", nodes: allMeta,
+      maxPoints: Math.max(24, Math.min(250, Math.floor(20_000 / visibleNodeUuids.length))),
+      hours: 32 * 24, range: { start: trafficClock - 32 * 24 * 60 * 60_000, end: trafficClock },
+    }),
+    staleTime: 30 * 60_000,
+    refetchInterval: 30 * 60_000,
+    enabled: (showHomeOverview || mode !== "list") && visibleNodeUuids.length > 0,
+    retry: 1,
+  });
+  const trafficTodayQuery = useQuery({
+    queryKey: ["home-traffic-today", visibleNodeUuids, themeSettings.displayTimeZone, trafficWindowKey],
+    queryFn: () => getComparisonLoadRecords({
+      uuids: visibleNodeUuids, loadType: "traffic", nodes: allMeta, maxPoints: 500,
+      hours: 24, range: getHomeTodayTrafficQueryRange(trafficClock, themeSettings.displayTimeZone),
+    }),
     staleTime: 60_000,
-    refetchInterval: showHomeOverview ? 60_000 : false,
+    refetchInterval: 60_000,
     enabled: showHomeOverview && visibleNodeUuids.length > 0,
     retry: 1,
   });
+  const monthHistory = trafficMonthQuery.data;
+  const todayHistory = trafficTodayQuery.data;
+  const trafficHistory = useMemo(() => Object.fromEntries(visibleNodeUuids.map((uuid) => {
+    const byTime = new Map<string, LoadRecord>();
+    for (const record of monthHistory?.[uuid] ?? []) byTime.set(String(record.time), record);
+    for (const record of todayHistory?.[uuid] ?? []) byTime.set(String(record.time), record);
+    return [uuid, Array.from(byTime.values())];
+  })), [visibleNodeUuids, monthHistory, todayHistory]);
+  const trafficHistoryQuery = {
+    data: trafficHistory,
+    isError: trafficMonthQuery.isError || (showHomeOverview && trafficTodayQuery.isError),
+    isLoading: trafficMonthQuery.isLoading || (showHomeOverview && trafficTodayQuery.isLoading),
+  };
   const trafficOverviewRows = useMemo<HomeTrafficOverviewRow[]>(
     () => buildHomeTrafficOverview(overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone),
     [overviewNodes, trafficHistoryQuery.data, trafficClock, themeSettings.displayTimeZone],
@@ -1784,7 +1785,7 @@ export function NodeGrid() {
             data-view-mode={mode}
             style={{ gridTemplateColumns: diagnosticAppearance && mode === "standard" ? "repeat(auto-fit, minmax(min(100%, 340px), min(100%, 400px)))" : gridColumns }}
           >
-            {cards}
+            <DailyTrafficProvider records={trafficHistoryQuery.data} now={trafficClock} timeZone={themeSettings.displayTimeZone}>{cards}</DailyTrafficProvider>
           </div>
         )
       ) : (

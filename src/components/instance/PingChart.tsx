@@ -57,7 +57,8 @@ function inferTaskRegion(name: string, target: string) {
 
 function rgbaSeriesColor(color: string, opacity: number) {
   if (color.startsWith("oklch(")) return color.replace(/\/\s*[\d.]+\s*\)/, `/ ${opacity})`);
-  if (color.startsWith("hsl(")) return color.replace(/\)$/, ` / ${opacity})`);
+  if (color.startsWith("hsl(")) return color.replace(/^hsl\(/, "hsla(").replace(/\)$/, `, ${opacity})`);
+  if (/^#[\da-f]{6}$/i.test(color)) return `${color}${Math.round(opacity * 255).toString(16).padStart(2, "0")}`;
   return color;
 }
 
@@ -105,7 +106,7 @@ export function PingChart({
   const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
   const [smoothLines, setSmoothLines] = useState(true);
-  const [viewFilter, setViewFilter] = useState<PingViewFilter>("focus");
+  const [viewFilter, setViewFilter] = useState<PingViewFilter>("all");
   const [metricMode, setMetricMode] = useState<PingMetricMode>("rtt");
   const [groupingMode, setGroupingMode] = useState<PingGroupingMode>("none");
   const [activeGroupFilter, setActiveGroupFilter] = useState("");
@@ -217,7 +218,7 @@ export function PingChart({
 
   useEffect(() => {
     setHiddenTasks(new Set());
-    setViewFilter("focus");
+    setViewFilter("all");
     setHoveredTaskId(null);
     setActiveGroupFilter("");
   }, [uuid]);
@@ -476,9 +477,7 @@ export function PingChart({
           label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
           stroke: rgbaSeriesColor(
             taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
-            hoveredTaskId == null
-              ? viewFilter === "all" && diagnosticsById.get(task.id)?.severity === "ok" ? 0.2 : 0.88
-              : hoveredTaskId === task.id ? 1 : 0.14,
+            hoveredTaskId == null ? 0.88 : hoveredTaskId === task.id ? 1 : 0.14,
           ),
           width: hoveredTaskId === task.id ? 2.7 : diagnosticsById.get(task.id)?.severity !== "ok" ? 2.1 : 1.5,
           spanGaps: connectNulls,
@@ -520,7 +519,6 @@ export function PingChart({
     tasks,
     visibleTasks,
     visibleTaskIds,
-    viewFilter,
     yRange,
   ]);
 
@@ -733,14 +731,14 @@ export function PingChart({
                 const watched = watchedTasks.has(task.id);
                 const taskName = taskLabels.get(task.id) ?? `任务 #${task.id}`;
                 return (
-                  <div key={task.id} className="instance-ping-task-row" data-severity={task.severity} onMouseEnter={() => setHoveredTaskId(task.id)} onMouseLeave={() => setHoveredTaskId(null)}>
+                  <div key={task.id} className="instance-ping-task-row" data-severity={task.severity} onMouseEnter={() => setHoveredTaskId(visible ? task.id : null)} onMouseLeave={() => setHoveredTaskId(null)}>
                     <button
                       type="button"
                       className="instance-ping-task"
                       data-visible={visible ? "true" : "false"}
                       aria-pressed={visible}
                       onClick={() => toggleTask(task.id)}
-                      onFocus={() => setHoveredTaskId(task.id)}
+                      onFocus={() => setHoveredTaskId(visible ? task.id : null)}
                       onBlur={() => setHoveredTaskId(null)}
                       style={{ borderColor: visible ? task.color : "var(--border-subtle)" }}
                       title={[taskName, `当前 ${formatLatency(task.latest)} | 均值 ${formatLatency(task.avg)} | 丢包 ${task.loss == null ? "无样本" : formatPacketLoss(task.loss)}`, `p99 ${formatLatency(task.p99)} | 抖动 ${formatMetricNumber(task.volatility)}`, `min ${formatLatency(task.min)} | max ${formatLatency(task.max)} | 样本 ${task.total ?? 0} | 间隔 ${task.interval}s`].join("\n")}

@@ -30,6 +30,7 @@ import { CarrierSpeeds } from "./LazyCarrierSpeeds";
 import { PingSourceMatrix } from "./PingSourceMatrix";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
+import { DailyTrafficTrend } from "./LazyDailyTrafficTrend";
 import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardShared";
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary } from "./NodeStatusSummary";
 import type { NodeInfo, NodeMetrics, TrafficTrendSample } from "@/types/komari";
@@ -313,6 +314,7 @@ function CompactLiveTraffic({
           <strong className="tabular">{traffic.compactDetail}</strong>
         </span>
       </div>}
+      <DailyTrafficTrend uuid={node.uuid} />
     </div>
   );
 }

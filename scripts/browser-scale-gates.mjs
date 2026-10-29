@@ -906,14 +906,16 @@ function assertOfficialRequestProfile(run, nodes) {
     `${profileLabel} expected one rpc.methods capability request`,
   );
   assertOneNodeBatch(run, profileLabel, "common:getNodesLatestStatus", "uuids", nodes);
-  assertOneNodeBatch(run, profileLabel, "public:queryMetrics", "entity_ids", nodes);
   assertOneNodeBatch(run, profileLabel, "public:getPingMetricStats", "entity_ids", nodes);
   failGate(
     rpcRequests(run, "public:getPublicPingTasks").length === 1,
     `${profileLabel} expected one public:getPublicPingTasks request`,
   );
 
-  const metricParams = rpcRequests(run, "public:queryMetrics")[0]?.params ?? {};
+  const metricBatches = rpcRequests(run, "public:queryMetrics");
+  const metricParams = metricBatches.find(({ params }) => params.metric_keys?.includes("ping.latency_ms"))?.params ?? {};
+  const trafficParams = metricBatches.find(({ params }) => params.metric_keys?.includes("net.total.up"))?.params;
+  failGate(metricBatches.length <= 2 && trafficParams && trafficParams.entity_ids?.length === nodes && Number(trafficParams.max_points) <= 250, `${profileLabel} daily traffic history was not bounded and batched`);
   const metricKeys = metricParams.metric_keys;
   failGate(
     Array.isArray(metricKeys) &&
@@ -1105,6 +1107,13 @@ try {
   }
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Ping').click()`);
   await waitUntil(cdp, `document.querySelector('.instance-ping-task') !== null`, 6_000);
+  failGate(await cdp.value(`document.querySelector('[aria-label="Ping 线路筛选"] button:nth-child(2)')?.getAttribute('aria-pressed') === 'true'`), 'Ping chart did not default to all routes');
+  await waitUntil(cdp, `document.querySelector('.instance-ping-panel .uplot canvas') !== null`, 6_000);
+  const pingBeforeHover = await cdp.value(`document.querySelector('.instance-ping-panel .uplot canvas').toDataURL()`);
+  await cdp.value(`document.querySelector('.instance-ping-task-row').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))`);
+  await waitUntil(cdp, `document.querySelector('.instance-ping-panel .uplot canvas').toDataURL() !== ${JSON.stringify(pingBeforeHover)}`, 3_000);
+  await cdp.value(`document.querySelector('.instance-ping-task-row').dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))`);
+  await waitUntil(cdp, `document.querySelector('.instance-ping-panel .uplot canvas').toDataURL() === ${JSON.stringify(pingBeforeHover)}`, 3_000);
   for (const label of ["6 小时", "1 天", "7 天", "1 月", "自定义"]) {
     await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
     if (label !== "自定义") {
@@ -1353,6 +1362,9 @@ try {
   }
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3 && document.querySelectorAll('.ping-task-lane').length === 9 && document.querySelectorAll('.ping-task-overflow').length === 3`, 6_000);
+  failGate(await cdp.value(`Array.from(document.querySelectorAll('.ping-task-overflow')).every(button => button.getBoundingClientRect().height <= 30 && button.getAttribute('aria-label').includes('监控任务'))`), 'Ping overflow control is not compact or accessible');
+  await waitUntil(cdp, `document.querySelectorAll('.daily-traffic-trend').length === 3`, 6_000);
+  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.daily-traffic.png`);
   await cdp.value(`document.querySelector('input[aria-label="搜索 VPS"]').focus()`);
   await cdp.call('Input.insertText',{text:'2 scale'});
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 1 && document.querySelector('.home-node-card-slot').textContent.includes('Scale Node 2')`, 2_000);

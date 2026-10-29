@@ -217,10 +217,11 @@ export function PingSourceMatrix({
             type="button"
             className="ping-task-overflow"
             aria-expanded={showAll}
+            aria-label={`展开剩余 ${hiddenCount} 个监控任务`}
             onClick={() => setShowAll(true)}
           >
             <strong>+{hiddenCount}</strong>
-            <span>展开剩余监控任务</span>
+            <span>展开更多</span>
           </button>
         )}
         {showAll && prioritizedRows.length > 3 && (
