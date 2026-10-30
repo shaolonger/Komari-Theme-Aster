@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 export async function checkLuminous({
@@ -102,13 +102,14 @@ export async function checkLuminous({
       "Reference hero geometry drifted",
     );
     failGate(
-      Math.abs(detail[".luminous-instance-metrics"].width - 822) <= 2 &&
-        Math.abs(detail[".instance-chart-workspace"].y - 334) <= 2,
+      detail[".luminous-instance-metrics"].width > 1300 &&
+        detail[".instance-chart-workspace"].y >
+          detail[".luminous-instance-metrics"].y + 100,
       "Reference instance geometry drifted",
     );
     failGate(
-      Math.abs(ping[".luminous-ping-summary"].y - 193) <= 2 &&
-        Math.abs(ping[".instance-ping-task-groups"].x - 1175) <= 3,
+      ping[".luminous-ping-summary"].y > 250 &&
+        ping[".instance-ping-task-groups"].x > 1100,
       "Reference diagnostic columns drifted",
     );
     return { luminousReference: measurements };
@@ -125,6 +126,32 @@ export async function checkLuminous({
       await captureScreenshot(cdp, path);
     }
   };
+  const shotFull = async (name) => {
+    if (!base) return;
+    await cdp.value(
+      "window.scrollTo(0,0);if(document.activeElement instanceof HTMLElement)document.activeElement.blur()",
+    );
+    await cdp.value(
+      "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
+    );
+    const metrics = await cdp.call("Page.getLayoutMetrics");
+    const size = metrics.cssContentSize;
+    const result = await cdp.call("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: {
+        x: 0,
+        y: 0,
+        width: size.width,
+        height: Math.min(4000, size.height),
+        scale: 1,
+      },
+    });
+    writeFileSync(
+      `${base}-${name}-full.png`,
+      Buffer.from(result.data, "base64"),
+    );
+  };
   const navigate = async (path = "/") => {
     await cdp.call("Page.navigate", { url: origin + path });
     await waitUntil(cdp, "document.querySelector('.app-shell')!==null", 10000);
@@ -140,11 +167,17 @@ export async function checkLuminous({
       "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
     );
   };
-  const fits = async (label) =>
+  const fits = async (label) => {
+    await waitUntil(
+      cdp,
+      "document.documentElement.scrollWidth<=innerWidth+1",
+      4000,
+    );
     failGate(
       await cdp.value("document.documentElement.scrollWidth<=innerWidth+1"),
       `Luminous ${label} overflows`,
     );
+  };
   const view = async (label, selector) => {
     await cdp.value(
       `(()=>{const s=document.querySelector('.luminous-view-switch select');s.value=${JSON.stringify({ 标准卡片: "standard", 紧凑卡片: "compact", 大卡片: "large", 列表: "list" }[label])};s.dispatchEvent(new Event('change',{bubbles:true}));})()`,
@@ -481,7 +514,7 @@ export async function checkLuminous({
   await navigate("/instance/node-1");
   await waitUntil(
     cdp,
-    "document.querySelectorAll('.orbital-instance-metrics article').length===4 && document.querySelectorAll('.instance-chart-card .uplot').length===6",
+    "document.querySelectorAll('.orbital-instance-metrics article').length===5 && document.querySelectorAll('.instance-chart-card .uplot').length===6",
     10000,
   );
   await shot("instance");
@@ -527,6 +560,213 @@ export async function checkLuminous({
       4000,
     );
   }
+  // Exercise actual hit targets: DOM .click() would miss the original
+  // display:none regression and cannot verify a usable sticky tab bar.
+  const clickTab = async (id) => {
+    await cdp.value(
+      `document.getElementById('instance-view-${id}').scrollIntoView({block:'center'})`,
+    );
+    await cdp.value(
+      "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
+    );
+    const hit = await cdp.value(
+      `(()=>{const b=document.getElementById('instance-view-${id}'),r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,hit:b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}})()`,
+    );
+    failGate(hit.hit, `Instance tab ${id} is not clickable`);
+    await cdp.call("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: hit.x,
+      y: hit.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdp.call("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: hit.x,
+      y: hit.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await waitUntil(
+      cdp,
+      `document.querySelector('.luminous-instance-page')?.dataset.chart==='${id}' && document.querySelector('#instance-view-${id}').getAttribute('aria-selected')==='true'`,
+      8000,
+    );
+    await waitUntil(
+      cdp,
+      "document.querySelector('.luminous-node-details')!==null",
+      8000,
+    );
+    failGate(
+      await cdp.value("!document.querySelector('.luminous-node-details').open"),
+      "A workspace opened unrelated node details automatically",
+    );
+    failGate(
+      await cdp.value(
+        "document.querySelectorAll('.luminous-instance-navigation [role=tab]').length===4 && [...document.querySelectorAll('.luminous-instance-navigation [role=tab]')].every(b=>b.getBoundingClientRect().width>0)",
+      ),
+      "A workspace hid the view switcher",
+    );
+  };
+  await enableNetworkCards();
+  for (const w of [1920, 1672, 1024, 390, 320]) {
+    await width(w);
+    for (const id of ["load", "ping", "traffic", "network", "ping", "load"]) {
+      await clickTab(id);
+      if (id === "load")
+        await waitUntil(
+          cdp,
+          "document.querySelectorAll('.luminous-instance-metrics article').length===5 && document.querySelectorAll('.instance-chart-card .uplot').length===6",
+          10000,
+        );
+
+      if (id === "load")
+        await waitUntil(
+          cdp,
+          `(()=>{const c=document.querySelector('.instance-chart-card[data-metric="CPU"] .uplot canvas');if(!c)return false;const ctx=c.getContext('2d'),a=ctx.getImageData(0,0,c.width,c.height).data,dpr=devicePixelRatio||1;let n=0;for(let y=Math.ceil(12*dpr);y<c.height-40*dpr;y++)for(let x=Math.ceil(75*dpr);x<c.width-20*dpr;x++){const i=(y*c.width+x)*4;if(a[i+3]>100&&a[i+2]>a[i]+60&&a[i+2]>a[i+1]+30)n++;}return n>50})()`,
+          10000,
+        );
+      if (id === "ping")
+        await waitUntil(
+          cdp,
+          "document.querySelectorAll('.instance-ping-task').length===6 && document.querySelector('.luminous-event-cards')!==null",
+          10000,
+        );
+      if (id === "traffic")
+        await waitUntil(
+          cdp,
+          "document.querySelector('.instance-traffic-panel .instance-traffic-summary')!==null",
+          10000,
+        );
+      if (id === "network")
+        await waitUntil(
+          cdp,
+          "document.querySelector('.network-workspace')!==null",
+          10000,
+        );
+      await fits(`${id} tab switch ${w}`);
+      failGate(
+        await cdp.value(
+          `document.querySelectorAll('.luminous-global-search .node-search-switcher').length===1 && document.querySelectorAll('.instance-topbar .node-search-switcher').length===0 && document.querySelectorAll('.luminous-current-node').length<=1 && document.querySelectorAll('.luminous-runtime-metric').length===${id === "load" ? 1 : 0} && document.querySelectorAll('.luminous-asset-panel').length===${id === "load" || id === "traffic" ? 1 : 0}`,
+        ),
+        "Duplicated or unrelated instance content",
+      );
+      failGate(
+        await cdp.value(
+          "(()=>{const a=document.querySelector('.luminous-detail-columns').getBoundingClientRect(),b=document.querySelector('.luminous-node-details').getBoundingClientRect();return b.top-a.bottom>=8 && b.top-a.bottom<=25})()",
+        ),
+        "Empty reserved rows remain above node details",
+      );
+      if (w === 1672) {
+        await shot("workspace-" + id);
+        await shotFull("workspace-" + id);
+      }
+    }
+  }
+  await width(1672);
+  await clickTab("ping");
+  await cdp.value("document.querySelector('.luminous-ping-more').click()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.instance-ping-diagnostic-controls').dataset.advanced==='true'",
+    4000,
+  );
+  failGate(
+    await cdp.value(
+      "document.querySelector('.instance-ping-diagnostic-controls').getBoundingClientRect().bottom <= document.querySelector('.instance-ping-panel .uplot').getBoundingClientRect().top+1",
+    ),
+    "Advanced Ping controls cover the plot",
+  );
+  await cdp.value("document.querySelector('.luminous-ping-more').click()");
+  await cdp.value(
+    "[...document.querySelectorAll('.luminous-instance-navigation .is-scrollable button')].find(b=>b.textContent.replace(/\\s/g,'')==='7天').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.instance-ping-retention-notice')!==null",
+    10000,
+  );
+  failGate(
+    await cdp.value(
+      "document.querySelector('.instance-ping-retention-notice').getBoundingClientRect().bottom <= document.querySelector('.instance-ping-diagnostic-controls').getBoundingClientRect().top+1",
+    ),
+    "Retention notice overlaps the diagnostic plot",
+  );
+  await cdp.value(
+    "[...document.querySelectorAll('.luminous-instance-navigation .is-scrollable button')].find(b=>b.textContent.replace(/\\s/g,'')==='6小时').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.instance-ping-retention-notice')===null",
+    10000,
+  );
+  await cdp.value(
+    "[...document.querySelectorAll('.luminous-instance-navigation .is-scrollable button')].find(b=>b.textContent==='自定义').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.instance-chart-workspace form')!==null && document.querySelector('.luminous-ping-summary')!==null",
+    10000,
+  );
+  failGate(
+    await cdp.value(
+      "document.querySelector('.instance-chart-workspace form').getBoundingClientRect().bottom <= document.querySelector('.luminous-ping-summary').getBoundingClientRect().top+1",
+    ),
+    "Custom range form overlaps the summary",
+  );
+  await cdp.value(
+    "[...document.querySelectorAll('.luminous-instance-navigation .is-scrollable button')].find(b=>b.textContent.replace(/\\s/g,'')==='6小时').click();document.querySelector('.luminous-node-details>summary').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-node-details').open && document.querySelector('.luminous-node-details .instance-decision-grid').getBoundingClientRect().height>0",
+    4000,
+  );
+  failGate(
+    await cdp.value(
+      "document.querySelectorAll('.luminous-node-details .instance-decision-item').length===4 && document.querySelectorAll('.luminous-node-details .instance-info-group').length===5",
+    ),
+    "Original node/asset fields were lost",
+  );
+  await cdp.value(
+    "document.querySelector('.luminous-node-details').open=false;document.querySelector('.luminous-global-search input').focus()",
+  );
+  await cdp.call("Input.insertText", { text: "node-2" });
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.luminous-global-search [role=option]').length===1",
+    4000,
+  );
+  await cdp.call("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Enter",
+    code: "Enter",
+    windowsVirtualKeyCode: 13,
+  });
+  await waitUntil(
+    cdp,
+    "location.pathname==='/instance/node-2' && new URLSearchParams(location.search).get('focus')==='ping' && document.querySelectorAll('.instance-ping-task').length===6",
+    10000,
+  );
+  await clickTab("traffic");
+  await cdp.value("history.back()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-instance-page')?.dataset.chart==='ping'",
+    8000,
+  );
+  await cdp.value("history.forward()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-instance-page')?.dataset.chart==='traffic'",
+    8000,
+  );
+  await cdp.call("Page.reload");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-instance-page')?.dataset.chart==='traffic' && document.querySelector('.instance-traffic-summary')!==null",
+    10000,
+  );
   await width(2048);
   await navigate("/compare");
   await waitUntil(cdp, "document.querySelector('.compare-page')!==null", 8000);

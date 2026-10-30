@@ -2010,7 +2010,7 @@ try {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: process.env.BROWSER_LUMINOUS_REFERENCE ? 49 : 15, luminousReference: Boolean(process.env.BROWSER_LUMINOUS_REFERENCE), soak: false, run: "luminous", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
-    results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
+    results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; activeFixture.network = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
     if (!process.env.BROWSER_LUMINOUS_REFERENCE) {
       await clearFixturePage(cdp);
       activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 49, luminousReference: true, run: "luminous-reference", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };

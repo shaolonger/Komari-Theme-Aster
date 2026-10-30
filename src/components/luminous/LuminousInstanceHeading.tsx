@@ -1,43 +1,46 @@
 import { useLayoutEffect } from "react";
-import { Clock3 } from "lucide-react";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
-import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { Flag } from "@/components/ui/Flag";
 import { formatUptimeDays } from "@/utils/format";
-import { formatDisplayDateTime } from "@/utils/timeDisplay";
 import { regionLabel } from "@/components/glacier/regionLabel";
+import { instanceViews, type InstanceView } from "@/utils/instanceView";
 import LuminousScene from "./LuminousScene";
 export default function LuminousInstanceHeading({
   uuid,
-  ping,
+  view,
 }: {
   uuid: string;
-  ping: boolean;
+  view: InstanceView;
 }) {
   const model = useNodeCardModel(uuid);
   const node = model.node;
   const tags = model.node ? model.tags : [];
-  const settings = useThemeSettings();
+  const ping = view === "ping";
+  const title = instanceViews.find((item) => item.id === view)!;
   const uptime = formatUptimeDays(node?.uptime ?? 0);
   useLayoutEffect(() => {
-    document.documentElement.dataset.luminousPage = ping ? "ping" : "instance";
-  }, [ping]);
+    document.documentElement.dataset.luminousPage = "instance";
+    document.documentElement.dataset.luminousView = view;
+    return () => {
+      delete document.documentElement.dataset.luminousView;
+    };
+  }, [view]);
   return (
     <div className="luminous-instance-heading">
-      <LuminousScene variant={ping ? "network" : "server"} />
+      <LuminousScene variant={view === "load" ? "server" : "network"} />
       <div className="luminous-instance-title">
         <p>
           ‹ 节点 /{" "}
-          {ping ? (
+          {view !== "load" ? (
             <>
-              <span>{node?.name || uuid}</span> / Ping
+              <span>{node?.name || uuid}</span> / {title.label}
             </>
           ) : (
             <> {regionLabel(node?.region)} / 详情</>
           )}
         </p>
         <h1>
-          {ping ? "网络诊断" : node?.name || uuid}
+          {view === "load" ? node?.name || uuid : title.title}
           {!ping && (
             <small data-online={node?.online}>
               <i />
@@ -49,7 +52,7 @@ export default function LuminousInstanceHeading({
             </small>
           )}
         </h1>
-        {!ping ? (
+        {view === "load" ? (
           <div className="luminous-instance-tags">
             <span>
               <Flag region={node?.region} size={19} />
@@ -67,12 +70,10 @@ export default function LuminousInstanceHeading({
             {node?.os && <span data-os="true">◷ {node.os}</span>}
           </div>
         ) : (
-          <p className="luminous-instance-subtitle">
-            实时检测节点网络质量，分析延迟、丢包与线路稳定性
-          </p>
+          <p className="luminous-instance-subtitle">{title.description}</p>
         )}
       </div>
-      {ping && (
+      {view !== "load" && (
         <div
           className="luminous-network-node-label luminous-glass"
           aria-hidden="true"
@@ -92,31 +93,13 @@ export default function LuminousInstanceHeading({
           </span>
         </div>
       )}
-      {!ping && (
+      {view === "load" && (
         <>
           <div className="luminous-hero-flag" aria-hidden="true">
             <Flag region={node?.region} size={47} />
           </div>
           <div className="luminous-hero-node-placard" aria-hidden="true">
             {node?.name}
-          </div>
-          <div className="luminous-uptime luminous-glass">
-            <Clock3 />
-            <span>
-              <small>运行时长</small>
-              <strong>
-                {uptime.value} {uptime.unit}
-              </strong>
-              <small>
-                {node?.created_at
-                  ? formatDisplayDateTime(
-                      Date.parse(node.created_at),
-                      settings.displayTimeZone,
-                      { year: "numeric", month: "2-digit", day: "2-digit" },
-                    ) + " 创建"
-                  : "Agent 持续运行"}
-              </small>
-            </span>
           </div>
         </>
       )}

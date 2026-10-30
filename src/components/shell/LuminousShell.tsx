@@ -20,19 +20,25 @@ import {
   Sun,
   Workflow,
 } from "lucide-react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useSearchParams,
+  useNavigate,
+} from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useAllNodeMeta, useHomeNodeSummaries } from "@/hooks/useNode";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { usePreferences } from "@/hooks/usePreferences";
 import { Flag } from "@/components/ui/Flag";
 import { formatBytes } from "@/utils/format";
-import { matchesNodeSearch } from "@/utils/nodeSearch";
+import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 import { notifyPaletteChanged } from "@/utils/palette";
 import ServerSculpture from "@/components/luminous/ServerSculpture";
 import { MOTION_EVENT } from "@/components/luminous/motion";
 import "@/styles/luminous.css";
 import "@/styles/luminous-reference.css";
+import "@/styles/luminous-instance.css";
 
 export default function LuminousShell() {
   useLayoutEffect(notifyPaletteChanged, []);
@@ -49,9 +55,7 @@ export default function LuminousShell() {
     document.documentElement.dataset.luminousPage = pathname.startsWith(
       "/instance/",
     )
-      ? params.get("focus") === "ping"
-        ? "ping"
-        : "instance"
+      ? "instance"
       : pathname !== "/"
         ? "utility"
         : params.get("view") === "theme-manage"
@@ -215,66 +219,39 @@ function Masthead({
   );
 }
 function QuickSearch() {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const nodes = useAllNodeMeta();
   const { data: me } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const current = location.pathname.match(/^\/instance\/([^/]+)/)?.[1] ?? "";
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        input.current?.focus();
+        root.current?.querySelector("input")?.focus();
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  const visible = nodes
-    .filter(
-      (n) =>
-        (me?.logged_in || !n.hidden) &&
-        matchesNodeSearch(query, n.name, n.uuid, n.group, n.ipv4, n.ipv6),
-    )
-    .slice(0, 6);
   return (
-    <div className="luminous-global-search">
+    <div ref={root} className="luminous-global-search">
       <Search size={18} />
-      <input
-        ref={input}
-        aria-label="搜索并跳转 VPS"
-        placeholder="搜索 VPS、IP、地区、标签…"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") setOpen(false);
-        }}
+      <NodeSwitcher
+        nodes={nodes.filter((node) => me?.logged_in || !node.hidden)}
+        currentUuid={current}
+        onSelect={(uuid) =>
+          navigate(
+            "/instance/" +
+              encodeURIComponent(uuid) +
+              (current && !location.pathname.endsWith("/report")
+                ? location.search
+                : ""),
+          )
+        }
       />
       <kbd>⌘K</kbd>
-      {open && (
-        <div className="luminous-quick-results">
-          {visible.map((node) => (
-            <Link
-              key={node.uuid}
-              to={"/instance/" + node.uuid}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setOpen(false);
-                setQuery("");
-              }}
-            >
-              <Flag region={node.region} size={14} />
-              {node.name}
-            </Link>
-          ))}
-          {!visible.length && <span>没有匹配的节点</span>}
-        </div>
-      )}
     </div>
   );
 }

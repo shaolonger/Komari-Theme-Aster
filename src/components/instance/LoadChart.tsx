@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
@@ -268,10 +268,12 @@ const ChartCard = memo(function ChartCard({
   hidden = false,
   selected = false,
   luminous = false,
+  active = true,
   workspace = false,
 }: {
   selected?: boolean;
   luminous?: boolean;
+  active?: boolean;
   hidden?: boolean;
   workspace?: boolean;
   icon: ReactNode;
@@ -301,7 +303,18 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
-  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize(workspace ? "workspace" : "grid");
+  const span =
+    data[0].length > 1 ? data[0][data[0].length - 1] - data[0][0] : 0;
+  const previousSpan = useRef(span);
+  // A lone live sample can arrive before history. Expand that initial domain
+  // once history is available; subsequent updates keep the user's zoom.
+  const seedHistoryScales = !xRange && previousSpan.current <= 1 && span > 1;
+  useEffect(() => {
+    previousSpan.current = span;
+  }, [span]);
+  const { w: measuredWidth, ref: plotRef } = useResponsiveChartSize(
+    workspace ? "workspace" : "grid",
+  );
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -333,7 +346,9 @@ const ChartCard = memo(function ChartCard({
   );
 
   // 不含尺寸的增强配置 (base + 交互 hook)。resize 时保持稳定，最终对象上只有 width/height 变。
-  const enhancedOptions = useMemo<Omit<uPlot.Options, "width" | "height">>(() => {
+  const enhancedOptions = useMemo<
+    Omit<uPlot.Options, "width" | "height">
+  >(() => {
     const tooltip = buildChartTooltipHooks({
       rangeHours,
       displayTimeZone,
@@ -350,22 +365,69 @@ const ChartCard = memo(function ChartCard({
           color: colors[keyIndex] ?? colors[0],
         })),
     });
+    let restoreQueued = false;
+    const restoreMissingDomain = (plot: uPlot) => {
+      const invalid = () =>
+        plot.scales.x.min == null ||
+        plot.scales.x.max == null ||
+        !Number.isFinite(plot.scales.x.min) ||
+        !Number.isFinite(plot.scales.x.max);
+      if (xRange || restoreQueued || !invalid()) return;
+      // uPlot batches draw/size hooks inside its commit. Restore after that
+      // commit so it cannot discard a scale update queued from inside itself.
+      restoreQueued = true;
+      queueMicrotask(() => {
+        restoreQueued = false;
+        if (!plot.root.isConnected || !invalid()) return;
+        const times = plot.data[0],
+          first = times[0],
+          last = times[times.length - 1];
+        if (Number.isFinite(first) && Number.isFinite(last) && last > first)
+          plot.setScale("x", { min: first, max: last });
+      });
+    };
     return {
       ...baseOptions,
+      axes: luminous
+        ? baseOptions.axes?.map((axis) => ({
+            ...axis,
+            font: "10px Inter, sans-serif",
+          }))
+        : baseOptions.axes,
       hooks: {
         ...baseOptions.hooks,
         init: [...(baseOptions.hooks?.init ?? []), tooltip.onInit],
+        draw: [restoreMissingDomain],
+        ready: [restoreMissingDomain],
+        setData: [restoreMissingDomain],
+        setSize: [restoreMissingDomain],
         setCursor: [tooltip.onSetCursor],
       },
     };
-  }, [colors, displayTimeZone, keys, baseOptions, rangeHours, unit]);
+  }, [
+    colors,
+    displayTimeZone,
+    keys,
+    baseOptions,
+    rangeHours,
+    unit,
+    luminous,
+    xRange,
+  ]);
 
   // resize 时只有这个 memo 变，uplot-react 走 setSize() 而非整个 chart 的拆建重建。
   const chartOptions = useMemo<uPlot.Options>(
-    () => ({ ...enhancedOptions, axes: luminous ? enhancedOptions.axes?.map(axis=>({...axis,font:"10px Inter, sans-serif"})) : enhancedOptions.axes, width: workspace ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
+    () =>
+      ({
+        ...enhancedOptions,
+        width: workspace ? measuredWidth : Math.min(width, measuredWidth),
+        height,
+      }) as uPlot.Options,
     [enhancedOptions, width, measuredWidth, height, workspace, luminous],
   );
 
+  // Hidden tabs measure as zero width; never build a luminous plot before its axes fit.
+  const showPlot = !luminous || (active && measuredWidth > 100);
   return (
     <div
       hidden={hidden}
@@ -381,17 +443,51 @@ const ChartCard = memo(function ChartCard({
         </div>
         <div className="instance-series-stats">
           <span className="tabular">{value}</span>
-          {note && <span className="tabular text-[var(--text-tertiary)]">{note}</span>}
+          {note && (
+            <span className="tabular text-[var(--text-tertiary)]">{note}</span>
+          )}
         </div>
       </header>
-      {luminous && selected && <aside className="luminous-current-metric"><span className="luminous-current-icon">{icon}</span><small>当前{title === "CPU" ? "使用率" : title}</small><strong>{value}</strong><dl>{(()=>{const values=(data[1] as (number|null)[]).filter((v):v is number=>v!=null&&Number.isFinite(v));if(!values.length)return <div><dt>暂无采样</dt><dd>—</dd></div>;return [["平均值",values.reduce((a,b)=>a+b,0)/values.length],["最大值",values.reduce((a,b)=>Math.max(a,b),-Infinity)],["最小值",values.reduce((a,b)=>Math.min(a,b),Infinity)]].map(([label,value])=><div key={String(label)}><dt>{label}</dt><dd>{formatTooltipValue(keys[0],Number(value),unit)}</dd></div>);})()}</dl></aside>}
+      {luminous && selected && (
+        <aside className="luminous-current-metric">
+          <span className="luminous-current-icon">{icon}</span>
+          <small>当前{title === "CPU" ? "使用率" : title}</small>
+          <strong>{value}</strong>
+          <dl>
+            {(() => {
+              const values = (data[1] as (number | null)[]).filter(
+                (v): v is number => v != null && Number.isFinite(v),
+              );
+              if (!values.length)
+                return (
+                  <div>
+                    <dt>暂无采样</dt>
+                    <dd>—</dd>
+                  </div>
+                );
+              return [
+                ["平均值", values.reduce((a, b) => a + b, 0) / values.length],
+                ["最大值", values.reduce((a, b) => Math.max(a, b), -Infinity)],
+                ["最小值", values.reduce((a, b) => Math.min(a, b), Infinity)],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <dt>{label}</dt>
+                  <dd>{formatTooltipValue(keys[0], Number(value), unit)}</dd>
+                </div>
+              ));
+            })()}
+          </dl>
+        </aside>
+      )}
       <div className="instance-uplot-wrap" ref={plotRef}>
-        <UplotReact
-          key={`${uuid}-${rangeHours}-${xRange?.[0] ?? "auto"}-${xRange?.[1] ?? "auto"}`}
-          options={chartOptions}
-          data={data}
-          resetScales={false}
-        />
+        {showPlot && (
+          <UplotReact
+            key={`${uuid}-${rangeHours}-${xRange?.[0] ?? "auto"}-${xRange?.[1] ?? "auto"}`}
+            options={chartOptions}
+            data={data}
+            resetScales={seedHistoryScales}
+          />
+        )}
         {tooltip.show && (
           <div
             className="instance-chart-tooltip"
@@ -400,7 +496,10 @@ const ChartCard = memo(function ChartCard({
             <div className="instance-chart-tooltip-time">{tooltip.time}</div>
             {tooltip.rows.map((row) => (
               <div key={row.label} className="instance-chart-tooltip-row">
-                <span className="instance-chart-tooltip-dot" style={{ background: row.color }} />
+                <span
+                  className="instance-chart-tooltip-dot"
+                  style={{ background: row.color }}
+                />
                 <span>{row.label}</span>
                 <strong>{row.value}</strong>
               </div>
@@ -563,6 +662,7 @@ export function LoadChart({
     >
       <div className="instance-chart-grid">
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 0}
@@ -590,6 +690,7 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 1}
@@ -627,6 +728,7 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 2}
@@ -656,6 +758,7 @@ export function LoadChart({
           axisKind="percent"
         />
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 3}
@@ -690,6 +793,7 @@ export function LoadChart({
           axisSize={78}
         />
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 4}
@@ -718,6 +822,7 @@ export function LoadChart({
           axisKind="count"
         />
         <ChartCard
+          active={active}
           workspace={glacier || orbital}
           luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 5}

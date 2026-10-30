@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { AlertCircle, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Flag } from "@/components/ui/Flag";
@@ -27,6 +27,7 @@ import {
   buildVpsWorkbenchNode,
   type VpsWorkbenchNode,
 } from "@/utils/vpsWorkbench";
+import type { InstanceView } from "@/utils/instanceView";
 import { InstancePanel } from "./InstancePanel";
 import { usePreferences } from "@/hooks/usePreferences";
 import { getHostHealthStatus, NodeStatusSummary, type NetworkHealthStatus } from "@/components/node/NodeStatusSummary";
@@ -98,8 +99,12 @@ export function InstanceDetails({
   uuid,
   onNodeReady,
   onPingSummarySlot,
+  view = "load",
+  children,
 }: {
   uuid: string;
+  view?: InstanceView;
+  children?: ReactNode;
   onNodeReady?: () => (() => void) | void;
   onPingSummarySlot?: (node: HTMLDivElement | null) => void;
 }) {
@@ -225,20 +230,8 @@ export function InstanceDetails({
       ? "未设置流量上限"
       : `剩余 ${formatBytes(Math.max(0, workbenchNode.traffic.remaining))} · ${workbenchNode.traffic.exhaustLabel}`;
 
-  return (
-    <InstancePanel
-      id="instance-summary"
-      title={panelTitle}
-      className="instance-summary-panel"
-      aside={diagnosticAppearance && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
-      description={
-        isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
-      }
-    >
-      {appearance === "luminous" ? <Suspense fallback={null}><LuminousInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode}/></Suspense> : appearance === "orbital" && <Suspense fallback={null}><OrbitalInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} state={workbenchNode.riskSeverity} /></Suspense>}
-      {glacier && <div className="glacier-identity glacier-panel"><span className="glacier-flag"><Flag region={nodeMeta.region} size={48} /></span><div><h2>{nodeMeta.name}</h2><p>{[nodeMeta.region, nodeMeta.os, nodeMeta.virtualization, nodeMeta.cpu_name].filter(Boolean).join(" · ")}</p></div><div className="glacier-ping-summary-slot" ref={onPingSummarySlot} /><Link className="glacier-identity-alert" title={workbenchNode.ping.detail} data-ok={workbenchNode.ping.state === "ok"} to={`/instance/${uuid}?focus=ping`}><AlertCircle size={22} /><span>{workbenchNode.ping.label}{ping.loss != null ? ` · 丢包 ${ping.loss.toFixed(2)}%` : ""}</span><ChevronRight size={16} /></Link></div>}
-      {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
-      <div className="instance-decision-grid">
+  const decisionGrid = (
+    <div className="instance-decision-grid">
         {glacier && <><h2 className="glacier-asset-title">流量与续费</h2><div className="glacier-quota"><div className="glacier-quota-ring" style={{ "--quota": `${Math.min(100, Math.max(0, trafficUsage.fraction * 100))}%` } as CSSProperties}><strong>{trafficUsage.unlimited ? "∞" : `${(trafficUsage.used / trafficUsage.limit * 100).toFixed(2)}%`}</strong><span>{trafficUsage.unlimited ? "未设限" : "已使用"}</span></div><div><small>流量使用 · {trafficTypeLabel(nodeMeta.traffic_limit_type)}</small><strong>{formatBytes(trafficUsage.used)}</strong><p>/ {trafficLimitLabel}</p><p>剩余 {trafficUsage.unlimited ? "不限" : formatBytes(Math.max(0, trafficUsage.remaining))}</p><p>{workbenchNode.traffic.exhaustLabel}</p></div></div></>}
 
         {diagnosticAppearance && <>
@@ -292,7 +285,9 @@ export function InstanceDetails({
         />
         </>}
       </div>
-      <div className="instance-info-groups">
+  );
+  const infoGroups = (
+    <div className="instance-info-groups">
         <div className="instance-info-group">
           <div className="instance-info-group-title">系统</div>
           <InfoRow label="状态" value={isOnline ? "在线" : "离线"} />
@@ -380,6 +375,29 @@ export function InstanceDetails({
           <InfoRow label="流量额度" value={trafficLimitLabel} />
         </div>
       </div>
+  );
+  if (appearance === "luminous") return (
+    <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}>
+      <LuminousInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>}>
+        {children}
+      </LuminousInstanceSummary>
+    </Suspense>
+  );
+  return (
+    <InstancePanel
+      id="instance-summary"
+      title={panelTitle}
+      className="instance-summary-panel"
+      aside={diagnosticAppearance && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
+      description={
+        isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
+      }
+    >
+      {appearance === "orbital" && <Suspense fallback={null}><OrbitalInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} state={workbenchNode.riskSeverity} /></Suspense>}
+      {glacier && <div className="glacier-identity glacier-panel"><span className="glacier-flag"><Flag region={nodeMeta.region} size={48} /></span><div><h2>{nodeMeta.name}</h2><p>{[nodeMeta.region, nodeMeta.os, nodeMeta.virtualization, nodeMeta.cpu_name].filter(Boolean).join(" · ")}</p></div><div className="glacier-ping-summary-slot" ref={onPingSummarySlot} /><Link className="glacier-identity-alert" title={workbenchNode.ping.detail} data-ok={workbenchNode.ping.state === "ok"} to={`/instance/${uuid}?focus=ping`}><AlertCircle size={22} /><span>{workbenchNode.ping.label}{ping.loss != null ? ` · 丢包 ${ping.loss.toFixed(2)}%` : ""}</span><ChevronRight size={16} /></Link></div>}
+      {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
+      {decisionGrid}
+      {infoGroups}
     </InstancePanel>
   );
 }
