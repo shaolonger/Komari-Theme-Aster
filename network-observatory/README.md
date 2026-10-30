@@ -133,7 +133,7 @@ curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/down
 
 「检测方案」中的“TcpQuality 完整检测”独立于已有的轻量 TCP 建连质量检测。它调用上游 TcpQuality 的 `--all`；自动档位根据内存和容器限制选择标准或低内存模式，低内存模式使用 `-p 1`，不缩减检测项目。支持固定间隔和按时区设置每天多个时刻；同一 VPS 的上一轮尚未结束时，重叠轮次会记录为跳过。VPS 详情的「TCP 质量」可查看各次报告、状态和原始结果，管理员可删除不再需要的完整报告。
 
-完整检测需要单独启用本机执行器；先升级面板网络观测插件，再在现有节点执行下面的保留凭证升级命令一次。该执行器会下载并以 root 身份运行上游脚本；请先确认你信任上游来源。未启用的 VPS 不增加该特权服务。
+工作室「探测器与测量点」生成的 VPS 安装和升级命令默认包含 `--enable-tcpquality-full`，启用 TcpQuality 和 NodeQuality 共用的本机特权执行器。手写安装命令仍需显式传入该参数；已安装但未启用执行器的 VPS 需要执行一次保留凭证升级命令，自动更新不会自动开启该能力。执行器仅在完整检测任务触发时下载并以 root 身份运行上游脚本；NodeQuality 报告会上传第三方服务，请先确认你信任上游来源。
 
 ```sh
 curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full
@@ -151,7 +151,7 @@ curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/down
 
 上游运行前会下载约 300 MiB 的 BenchOS 压缩包并解压，以 root 执行多个外部脚本、挂载并运行 chroot；工作目录要求至少 1.5 GiB 空闲空间和可用的挂载权限。硬件与网络测试会产生负载、流量和磁盘写入，小规格或权限受限的 LXC 可能不适合运行。运行环境会向 NodeQuality 第三方上传服务器和检测信息，在线报告链接可能允许其他持有链接的人访问；请确认该行为符合你的隐私要求。该功能依赖上游服务，可用性和测试结果由上游决定。
 
-先升级主题和插件。在已安装探测器的 VPS 上，使用以下命令升级并显式启用完整检测的本机特权执行器；原有凭证会保留。已经启用过 TcpQuality 完整执行器的 VPS 也需要升级，才能提供 NodeQuality 能力。
+工作室生成的 VPS 安装 / 升级命令默认启用本机特权执行器。对于已安装但尚未启用的 VPS，可使用以下命令升级并启用该执行器；原有凭证会保留。虽然参数名是 `--enable-tcpquality-full`，它会同时启用 TcpQuality 和 NodeQuality，前提是探测器版本至少为 1.14.0。
 
 ```sh
 curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full

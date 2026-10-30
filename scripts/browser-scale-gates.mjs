@@ -1549,6 +1549,7 @@ try {
     await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel button')).find(b=>b.textContent==='生成大陆探针凭证').click()`);
     await waitUntil(cdp, `document.querySelector('.network-credential-reveal')?.textContent.includes('--probe-id')`, 2000);
     failGate(await cdp.value(`document.querySelector('.network-credential-reveal code').textContent.length===64`), 'probe credentials are unavailable');
+    failGate(await cdp.value(`!document.querySelector('.network-credential-reveal pre').textContent.includes('--enable-tcpquality-full')`), 'measurement point command unexpectedly enables the full VPS executor');
     await cdp.value(`Array.from(document.querySelectorAll('.measurement-points-panel button')).find(b=>b.textContent==='隐藏凭证').click()`);
     failGate(await cdp.value(`document.querySelector('.network-credential-reveal')===null`), 'credential reveal did not clear');
     await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/instance/node-0?focus=network`});
@@ -1566,10 +1567,10 @@ try {
   for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {
     await cdp.value(`localStorage.setItem('appearance',JSON.stringify(${JSON.stringify(appearance)}))`);
     await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/?view=theme-manage&section=network&panel=agents&nodes=node-0`});
-    await waitUntil(cdp,`document.querySelector('.measurement-install pre')?.textContent.includes('--upgrade')`,6000);
+    await waitUntil(cdp,`document.querySelector('.measurement-install pre')?.textContent.includes('--upgrade') && document.querySelector('.measurement-install pre')?.textContent.includes('--enable-tcpquality-full')`,6000);
     const mutations=requestCounts.get('measurement-maintenance')?.['credential-mutation']||0;
     await cdp.value(`Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copiedUpgrade=text}}});Array.from(document.querySelectorAll('.measurement-install button')).find(b=>b.textContent==='复制升级命令').click()`);
-    await waitUntil(cdp,`window.__copiedUpgrade?.includes('--upgrade')`,2000);
+    await waitUntil(cdp,`window.__copiedUpgrade?.includes('--upgrade') && window.__copiedUpgrade?.includes('--enable-tcpquality-full')`,2000);
     failGate((requestCounts.get('measurement-maintenance')?.['credential-mutation']||0)===mutations,'copy upgrade rotated a credential');
     failGate(await cdp.value(`!document.querySelector('.measurement-auto-update input').checked`),'automatic updates enabled without consent');
     await waitUntil(cdp,`document.querySelector('.measurement-credentials button')?.disabled===false`,2000);
@@ -1598,6 +1599,15 @@ try {
   await cdp.value(`Array.from(document.querySelectorAll('dialog[open] button')).find(b=>b.textContent==='确认重置').click()`);
   await waitUntil(cdp,`document.querySelector('.network-credential-reveal code')?.textContent.length===64`,2000);
   failGate((requestCounts.get('measurement-maintenance')?.['credential-mutation']||0)===mutationsBeforeReset+1,'confirmed reset did not issue exactly one credential');
+  failGate(await cdp.value(`(()=>{const command=document.querySelector('.network-credential-reveal pre').textContent;return command.includes('agent.py configure') && command.includes('--upgrade --enable-tcpquality-full') && command.includes(' && ')})()`),'reset must configure the new credential before enabling the full executor');
+  await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/?view=theme-manage&section=network&panel=agents&nodes=node-1`});
+  await waitUntil(cdp,`Array.from(document.querySelectorAll('.measurement-agent button')).some(b=>b.textContent==='生成 VPS 接入凭证')`,6000);
+  failGate(await cdp.value(`document.querySelector('.measurement-install pre').textContent.includes('--enable-tcpquality-full') && !document.querySelector('.measurement-install pre').textContent.includes('--upgrade')`),'new VPS install command must enable the shared full executor');
+  await cdp.value(`(()=>{const select=document.querySelector('.measurement-install select');select.value='lite';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await waitUntil(cdp,`document.querySelector('.measurement-install pre').textContent.includes("--profile 'lite'")`,2000);
+  await cdp.value(`Array.from(document.querySelectorAll('.measurement-agent button')).find(b=>b.textContent==='生成 VPS 接入凭证').click()`);
+  await waitUntil(cdp,`document.querySelector('.network-credential-reveal pre')?.textContent.includes('--enable-tcpquality-full')`,2000);
+  failGate(await cdp.value(`!document.querySelector('.network-credential-reveal pre').textContent.includes('agent.py configure') && document.querySelector('.network-credential-reveal pre').textContent.includes("--profile 'lite'")`),'new VPS credential command must remain a fresh installation with the selected profile');
   results.push({measurementMaintenance:'visible upgrade command, credential mutation isolation, reset cancellation/confirmation, default-off opt-in policy and uniform typography; six appearances at 1440/390px'});
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 3, ui: true, network: true, reports: true, run: 'route-metadata' };
   for (const appearance of ['light','dark','system','clearsky','slate','slate-light']) {

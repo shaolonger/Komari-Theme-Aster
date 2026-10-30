@@ -288,7 +288,7 @@ export function ReportPlanPanel({
                   </select></label>
                 </div>
                 <p className="report-caption">执行完整 TcpQuality --all，低内存模式保持检测项目并降低并发。测试会下载并以 root 权限运行上游脚本，可能持续数小时，同一 VPS 的其他检测将在此期间排队；执行器保守要求临时目录至少 700 MiB 可用空间及挂载权限，受限容器可能无法运行。请避免与旧版定时脚本同时运行。报告长期保存，请关注面板磁盘空间。</p>
-                <p className="report-caption">先升级面板的网络观测插件，再在已安装探测器的 VPS 上启用完整检测执行器；以下命令保留已有凭证。需要 bash、curl 和 util-linux 的 unshare。</p>
+                <p className="report-caption">新生成的 VPS 安装 / 升级命令默认启用两项完整检测共用的执行器；参数名称沿用 --enable-tcpquality-full。已安装但尚未启用的 VPS 可执行以下保留凭证的升级命令。需要 bash、curl 和 util-linux 的 unshare。</p>
                 <p className="report-caption">预览中执行器在线只表示服务可连接；实际执行还取决于容器权限、可用空间和上游服务。</p>
                 <pre className="report-json">curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full</pre>
               </>}
@@ -303,7 +303,7 @@ export function ReportPlanPanel({
                 </div>
                 <div className="network-inline-fields">{([['hardware_quality', '硬件性能'], ['ip_quality', 'IP 质量'], ['net_quality', '网络质量'], ['backroute_trace', '回程路由']] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={(mod.checks || []).includes(key)} onChange={e => moduleChange(mod.module, { checks: e.target.checked ? [...(mod.checks || []), key] : (mod.checks || []).filter(c => c !== key) })} /> {label}</label>)}</div>
                 <p className="report-caption">上游脚本以 root 下载并运行 BenchOS 和检测程序，报告会上传到 NodeQuality 第三方服务并生成可访问链接；测试可能占用大量 CPU、带宽和磁盘。请勿在资源不足或不允许上传数据的 VPS 上启用。容器需要挂载权限，执行目录至少需要 1.5 GiB 可用空间；报告与原始输出会保存在面板。</p>
-                <p className="report-caption">先升级插件，再在目标 VPS 上执行下列命令，升级并启用完整检测执行器（保留原有凭证）：</p>
+                <p className="report-caption">新生成的 VPS 安装 / 升级命令默认启用两项完整检测共用的执行器；参数名称沿用 --enable-tcpquality-full，并同时支持 NodeQuality。已安装但尚未启用的 VPS 可执行下列命令，升级并保留原有凭证：</p>
                 <pre className="report-json">curl -fsSL https://github.com/shaolonger/Komari-Theme-Aster/releases/latest/download/Aster-Network-Observatory-install.sh | sudo sh -s -- --upgrade --enable-tcpquality-full</pre>
               </>}
               {mod.module === "tcp-quality" && <div className="network-inline-fields">

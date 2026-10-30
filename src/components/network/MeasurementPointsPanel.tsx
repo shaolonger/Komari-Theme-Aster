@@ -9,7 +9,7 @@ import {
   revokeNodeToken,
   setWorkerUpdatePolicy,
 } from "@/services/nativeObservatory";
-import { formatNetworkTime, installCommand } from "./shared";
+import { formatNetworkTime, installCommand, resetNodeCommand } from "./shared";
 import { NetworkDrawer } from "./NetworkDrawer";
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
@@ -41,6 +41,7 @@ export function MeasurementPointsPanel({
     id: string;
     token: string;
     role: "node" | "probe";
+    reset?: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -74,7 +75,7 @@ export function MeasurementPointsPanel({
         <button onClick={() => void query.refetch()}>重试</button>
       </p>
     );
-  const command = credential ? installCommand(credential.id, base, { role: credential.role }) : "";
+  const command = credential ? credential.role === "node" && credential.reset ? resetNodeCommand(credential.id, base) : installCommand(credential.id, base, { role: credential.role, ...(credential.role === "node" ? { profile: profile === "preserve" ? "auto" : profile } : {}) }) : "";
   const registered = data.registeredNodes.includes(selected);
   const node = data.inventory.find(n => n.uuid === selected);
   const worker = data.workers["node:" + selected];
@@ -83,11 +84,11 @@ export function MeasurementPointsPanel({
   async function issue() {
     await act(async () => {
       const c = await issueNodeToken(selected);
-      setCredential({ id: c.uuid, token: c.token, role: "node" });
+      setCredential({ id: c.uuid, token: c.token, role: "node", reset: registered });
       setConfirm(null);
     }, registered ? "新凭证已生成，旧凭证已失效；请在对应 VPS 写入新密钥" : "接入凭证已生成，请在对应 VPS 执行安装命令并输入密钥");
   }
-  const featureNames: Record<string, string> = { "report-v3": "成组报告", "latency-samples": "延迟采样", "full-mtr": "逐跳路由", "speed-intervals": "测速分段", "http-speed": "HTTP 测速", "tcp-quality": "TCP 质量", "public-speed": "公共测速" };
+  const featureNames: Record<string, string> = { "report-v3": "成组报告", "latency-samples": "延迟采样", "full-mtr": "逐跳路由", "speed-intervals": "测速分段", "http-speed": "HTTP 测速", "tcp-quality": "TCP 质量", "public-speed": "公共测速", "tcpquality-full": "TcpQuality 完整检测", "nodequality-full": "NodeQuality 完整检测" };
   return (
     <div className="network-form measurement-points-panel">
       <p className="measurement-intro">
@@ -120,10 +121,11 @@ export function MeasurementPointsPanel({
         <div className="measurement-install">
           <strong>{registered ? "保留凭证升级" : "安装探测器"}</strong>
           <p>{registered ? "更新程序与服务，保留现有地址、UUID 和密钥。无需重新生成凭证。" : "先生成一次接入凭证，再到 VPS 执行下方命令，在隐藏提示中输入密钥。"}</p>
+          <p>命令默认启用 TcpQuality 和 NodeQuality 共用的完整检测执行器；参数名沿用 <code>--enable-tcpquality-full</code>，同时支持两项检测。执行器以 root 运行上游程序，仅在配置并触发完整检测时执行；NodeQuality 会向第三方上传报告。</p>
           {registered ? <small>升级保留当前轻量 / 完整模式及现有工具。</small> : <label>安装模式<select value={profile} onChange={e => setProfile(e.target.value)}><option value="preserve">自动选择</option><option value="lite">轻量模式</option><option value="full">完整模式</option></select></label>}
           <pre><code>{maintenanceCommand}</code></pre>
           <button disabled={!selected || busy} onClick={() => void act(() => navigator.clipboard.writeText(maintenanceCommand), registered ? "升级命令已复制，现有凭证保持不变" : "安装命令已复制")}>{registered ? "复制升级命令" : "复制安装命令"}</button>
-          <small>以 root 登录时省略 sudo。128 MiB VPS 建议轻量模式；轻量模式不自动安装 NextTrace 等可选工具。</small>
+          <small>以 root 登录时省略 sudo。128 MiB VPS 建议轻量模式；轻量模式不自动安装 NextTrace 等可选工具。完整检测运行时还需要挂载权限及足够磁盘空间，受限容器或小规格 VPS 可能无法运行。</small>
         </div>
         {data.runnerRelease && <div className="measurement-auto-update"><label className="network-check"><input type="checkbox" checked={data.updatePolicies["node:" + selected]?.enabled || false} disabled={busy || !registered} onChange={e => void act(() => setWorkerUpdatePolicy("node", selected, e.target.checked), "自动更新偏好已保存")} />允许此 VPS 自动更新探测器</label><p>默认关闭。首次需运行上方升级命令安装维护服务；之后约每小时检查兼容版本，空闲时更新，失败回滚。共用同一机器的接入身份均需允许。</p>{data.updates["node:" + selected] && <small role="status">{data.updates["node:" + selected].message} · {formatNetworkTime(data.updates["node:" + selected].at)}</small>}</div>}
         {!registered && <button disabled={busy || !selected} onClick={() => void issue()}>生成 VPS 接入凭证</button>}
@@ -289,7 +291,7 @@ export function MeasurementPointsPanel({
           <strong>密钥仅显示一次</strong>
           <code>{credential.token}</code>
           <pre>{command}</pre>
-          <p>复制命令到对应设备运行，在隐藏输入提示中粘贴密钥。</p>
+          <p>{credential.reset ? "在目标 VPS 上运行：已有探测器会先提示输入新密钥，再保留凭证升级；未安装则直接安装并启用两项完整检测。" : "复制命令到对应设备运行，在隐藏输入提示中粘贴密钥。"}</p>
           <button
             onClick={() =>
               void act(

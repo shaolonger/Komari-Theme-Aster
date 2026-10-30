@@ -87,6 +87,8 @@ Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、
 
 v1.28.0 新增「星轨 · Orbital」：深海蓝、青紫光效、全网态势与地区分布、环形节点矩阵、实例性能和 Ping 网络诊断。保留列表、标准、紧凑、大卡片及全部原有内容。展开快捷按钮选择「星轨」，或在工作室保存为默认外观。详见[使用说明与验证截图](docs/orbital.md)。
 
+v1.28.1 让工作室生成的 VPS 探测器安装和保留凭证升级命令默认启用 TcpQuality / NodeQuality 共用的完整检测执行器。现有探测器需运行一次升级命令启用；测量点和自动更新设置不变。
+
 <p align="center">
   <img src="docs/images/current/orbital-overview.png" alt="星轨暗色主题总览" width="90%">
 </p>
