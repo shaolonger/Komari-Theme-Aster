@@ -1,3 +1,4 @@
+import { checkLuminous } from "./luminous-browser-gates.mjs";
 import { checkOrbital } from "./orbital-browser-gates.mjs";
 import { checkGlacier } from "./glacier-browser-gates.mjs";
 import { checkSlate } from "./slate-browser-gates.mjs";
@@ -663,6 +664,10 @@ const child = spawn(chrome, [
   "--disable-component-update",
   "--disable-dev-shm-usage",
   "--disable-sync",
+  // Exercise the real WebGL path on GPU-less CI bots with Chromium's
+  // documented software GLES driver, independently of host GPU availability.
+  // https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md
+  ...(process.env.CI === "true" ? ["--use-gl=angle", "--use-angle=swiftshader"] : []),
   // Linux headless hosts can advertise no pointing device. Start with an
   // explicit desktop mouse; the input gates separately emulate touch/reduced
   // motion so they assert product behavior, not the runner's hardware.
@@ -953,7 +958,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
+  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -1526,6 +1531,9 @@ try {
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);
     if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-plan-mobile-${appearance}.png`);
+    // Preview renders before mutate() has finished refreshing the catalog.
+    // Wait for the real enabled action so a disabled click cannot be lost.
+    await waitUntil(cdp,`Array.from(document.querySelectorAll('.report-plan-footer button')).some(b=>b.textContent.includes('保存报告方案') && !b.disabled)`,3000);
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-footer button')).find(b=>b.textContent.includes('保存报告方案')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-saved-plan-select')!==null`,3000);
     failGate(await cdp.value(`document.querySelector('.report-saved-plans').compareDocumentPosition(document.querySelector('.report-plan-steps')) & Node.DOCUMENT_POSITION_FOLLOWING`),'saved plans not above editor');
@@ -1959,7 +1967,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
-  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY) {
+  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY) {
   await clearFixturePage(cdp);
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
   savedUiSettings = null;
@@ -1969,17 +1977,23 @@ try {
   savedUiSettings = null;
   results.push(await checkSlate({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   }
-  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "glacier", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkGlacier({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   }
-  if (!process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 15, soak: false, run: "orbital", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkOrbital({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
+  }
+  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 15, soak: false, run: "luminous", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+    savedUiSettings = null;
+    results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {

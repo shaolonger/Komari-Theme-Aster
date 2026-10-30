@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Cpu,
@@ -44,6 +44,7 @@ import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from
 import type { ByteRateDisplay } from "@/utils/format";
 import type { TrafficDisplay } from "@/utils/traffic";
 
+const ServerSculpture = lazy(() => import("@/components/luminous/ServerSculpture"));
 const regionNames = new Intl.DisplayNames(["zh-CN"], { type: "region" });
 
 type NodeCardNode = NodeInfo & NodeMetrics;
@@ -121,12 +122,13 @@ export const NodeCard = memo(function NodeCard({
     >
       <div className="server-card-content">
         <NodeCardHeader node={node} subtitle={subtitle} osName={osName} hostStatus={hostStatus} networkStatus={networkStatus} diagnostic={diagnosticAppearance} reference={slate} />
+        {appearance === "luminous" && <Suspense fallback={null}><ServerSculpture small tone={shownStatus === "critical" ? "red" : "blue"} /></Suspense>}
         {appearance === "orbital" && <div className="orbital-node-meta"><span>{node.region || "未设置地区"} · {node.ipv4 || node.ipv6 || "IP 未公开"}</span><span className="orbital-host-badge" data-host={hostStatus}>{hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "待更新"}</span></div>}
         {slate && <div className="slate-node-badges"><span>{node.region ? regionNames.of(getDisplayRegionCode(node.region)) : "节点"}</span>{node.ipv4 && <span data-kind="ip">V4</span>}{node.ipv6 && <span data-kind="ip">V6</span>}{footerTags.map((tag, i) => <span key={i} data-kind="tag" title="用户标注；不代表线路测量认证">{tag.label}</span>)}</div>}
 
         <div className="server-card-stack">
           <NodeMetricSection
-            orbital={appearance === "orbital"}
+            orbital={appearance === "orbital" || appearance === "luminous"}
             node={node}
             loadFraction={loadFraction}
             redrawKey={appearance + resolvedAppearance}

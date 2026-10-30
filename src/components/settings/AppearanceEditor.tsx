@@ -10,6 +10,7 @@ const appearances: { value: Appearance; label: string; detail: string }[] = [
   { value: 'slate', label: '曜石', detail: '石墨灰、彩色指标与分段网络趋势' },
   { value: 'slate-light', label: '曜石·明', detail: '曜石的亮色版本，保留相同卡片层次' },
   { value: 'clearsky', label: '澄空', detail: '冷白冰蓝、薄片叠层与轻微空间视差' },
+  { value: 'luminous', label: '光域未来', detail: '蓝白玻璃、实时三维地球与动态云端装置' },
   { value: 'orbital', label: '星轨', detail: '深海蓝、青紫光效与环形节点仪表工作台' },
   { value: 'glacier', label: '冰川', detail: '冰蓝玻璃侧栏、全网总览与双栏诊断工作台' },
 ];

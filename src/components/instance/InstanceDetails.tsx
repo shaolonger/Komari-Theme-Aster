@@ -234,7 +234,7 @@ export function InstanceDetails({
         isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
       }
     >
-      {appearance === "orbital" && <Suspense fallback={null}><OrbitalInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} state={workbenchNode.riskSeverity} /></Suspense>}
+      {(appearance === "orbital" || appearance === "luminous") && <Suspense fallback={null}><OrbitalInstanceSummary luminous={appearance === "luminous"} node={{...nodeMeta,...metrics}} loss={ping.loss} state={workbenchNode.riskSeverity} /></Suspense>}
       {glacier && <div className="glacier-identity glacier-panel"><span className="glacier-flag"><Flag region={nodeMeta.region} size={48} /></span><div><h2>{nodeMeta.name}</h2><p>{[nodeMeta.region, nodeMeta.os, nodeMeta.virtualization, nodeMeta.cpu_name].filter(Boolean).join(" · ")}</p></div><div className="glacier-ping-summary-slot" ref={onPingSummarySlot} /><Link className="glacier-identity-alert" title={workbenchNode.ping.detail} data-ok={workbenchNode.ping.state === "ok"} to={`/instance/${uuid}?focus=ping`}><AlertCircle size={22} /><span>{workbenchNode.ping.label}{ping.loss != null ? ` · 丢包 ${ping.loss.toFixed(2)}%` : ""}</span><ChevronRight size={16} /></Link></div>}
       {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
       <div className="instance-decision-grid">

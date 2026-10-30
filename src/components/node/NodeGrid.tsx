@@ -94,6 +94,7 @@ import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 const renderGlacierCard = (uuid: string) => <NodeCard uuid={uuid} density="expanded" />;
+const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
 const GlacierHome = lazy(() => import("@/components/glacier/GlacierHome"));
 const GlacierList = lazy(() => import("@/components/glacier/GlacierList"));
@@ -816,7 +817,8 @@ export function NodeGrid() {
   const { appearance } = usePreferences();
   const diagnosticAppearance = appearance === "diagnostic";
   const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital";
+  const orbital = appearance === "orbital" || appearance === "luminous";
+  const OrbitalWorkspace = appearance === "luminous" ? LuminousHome : OrbitalHome;
   const [orbitalParams, setOrbitalParams] = useSearchParams();
   const orbitalRegion = orbitalParams.get("region") ?? "";
   const [orbitalGroup, setOrbitalGroup] = useState("");
@@ -1586,7 +1588,7 @@ export function NodeGrid() {
       />
       {orbital ? (
         <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
-          <OrbitalHome
+          <OrbitalWorkspace
             region={orbitalRegion}
             onRegion={(region) => setOrbitalParams((current) => { const next = new URLSearchParams(current); if (region) next.set("region", region); else next.delete("region"); return next; })}
             group={orbitalGroup}

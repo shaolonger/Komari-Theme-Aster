@@ -21,6 +21,7 @@ import { describeDisplayTimeZone } from "@/utils/timeDisplay";
 
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
+const LuminousInstanceHeading = lazy(() => import("@/components/luminous/LuminousInstanceHeading"));
 const OrbitalInstanceHeading = lazy(() => import("@/components/orbital/OrbitalInstanceHeading"));
 const GlacierInstanceHeading = lazy(() => import("@/components/glacier/GlacierInstanceHeading"));
 const DEFAULT_PING_HOURS = 6;
@@ -35,7 +36,8 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital";
+  const orbital = appearance === "orbital" || appearance === "luminous";
+  const WorkspaceHeading = appearance === "luminous" ? LuminousInstanceHeading : OrbitalInstanceHeading;
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
   const [chartType, setChartType] = useState<"load" | "ping" | "traffic" | "network">(focus === "network" ? "network" : focus === "ping" ? "ping" : "load");
@@ -123,7 +125,7 @@ export function Instance() {
   // InstanceDetails 的 effect;若身份不稳定,父组件每次重渲染都会取消挂起的 rAF
   // 又不重新调度,导致这次性的 scroll-into-view 丢失。
   const alignCharts = useCallback(() => {
-    if (appearance === "glacier" || appearance === "orbital") return;
+    if (appearance === "glacier" || appearance === "orbital" || appearance === "luminous") return;
     const frame = window.requestAnimationFrame(() => {
       const element = chartControlsRef.current;
       if (!element) return;
@@ -173,7 +175,7 @@ export function Instance() {
   return (
     <div className={`flex flex-col gap-5 py-2${glacier ? " glacier-instance" : orbital ? " orbital-instance" : ""}`} data-chart={chartType}>
       <div className="instance-topbar">
-        {orbital ? <Suspense fallback={null}><OrbitalInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : glacier ? <Suspense fallback={null}><GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : <Link to="/" className="instance-page-back"><ChevronLeft size={14} />返回</Link>}
+        {orbital ? <Suspense fallback={null}><WorkspaceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : glacier ? <Suspense fallback={null}><GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} /></Suspense> : <Link to="/" className="instance-page-back"><ChevronLeft size={14} />返回</Link>}
         <div className="instance-topbar-actions"><Link className="instance-report-entry" to={`/instance/${encodeURIComponent(uuid)}/report${customRangeActive ? `?${new URLSearchParams({ start: appliedRange.start, end: appliedRange.end })}` : ""}`}><FileChartColumn size={14} />生成报告</Link><NodeSwitcher key={uuid} nodes={nodeOptions} currentUuid={selectedNodeUuid} onSelect={(nextUuid) => {
           if (nextUuid !== uuid) startTransition(() => navigate(`/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`));
         }} /></div>

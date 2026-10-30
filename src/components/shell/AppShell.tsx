@@ -6,6 +6,7 @@ import { lazy, Suspense, useRef } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
 const SlateAppearance = lazy(() => import("./SlateAppearance"));
 const ClearSkyLayer = lazy(() => import("./ClearSkyLayer"));
+const LuminousShell = lazy(() => import("./LuminousShell"));
 const OrbitalShell = lazy(() => import("./OrbitalShell"));
 const GlacierShell = lazy(() => import("./GlacierShell"));
 
@@ -20,6 +21,7 @@ export function AppShell() {
       {appearance.startsWith("slate") && <Suspense fallback={null}><SlateAppearance /></Suspense>}
       {clearSky && <Suspense fallback={null}><ClearSkyLayer shellRef={ref} /></Suspense>}
       {appearance === "glacier" && <Suspense fallback={null}><GlacierShell /></Suspense>}
+      {appearance === "luminous" && <Suspense fallback={null}><LuminousShell /></Suspense>}
       {appearance === "orbital" && <Suspense fallback={null}><OrbitalShell /></Suspense>}
       <FloatingControls />
       {/* max-[720px]:pt-16 给右上角固定的浮动控件留出空间，避免窄屏下展开的控件行盖住首张卡片的头部 */}

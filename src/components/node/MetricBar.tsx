@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, type CSSProperties, type ReactNode } from "react";
 import { CanvasStrip, fillRoundedRect, safeCanvasColor } from "./CanvasStrip";
 
 const METRIC_SEGMENT_COUNT = 18;
@@ -96,7 +96,7 @@ export function MetricBar({
   );
 
   return (
-    <div className="metric-item">
+    <div className="metric-item" style={{ "--metric-fill": (clamped * 100) + "%" } as CSSProperties}>
       <div className="metric-heading flex justify-between items-center gap-3 min-w-0">
         <div className="metric-label flex items-center gap-1.5 text-[var(--text-secondary)] flex-shrink-0">
           <span className="metric-icon">{icon}</span>

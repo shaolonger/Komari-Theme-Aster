@@ -202,3 +202,5 @@
 .studio-appearance-drawing[data-appearance="glacier"]{--mini-bg:#dcecff;--mini-surface:#ffffffdd;--mini-line:#c7dbfa;background:linear-gradient(130deg,#eff8ff,#cbdfff);color:#1766ff;border:1px solid #fff}.studio-appearance-drawing[data-appearance="glacier"] .studio-mini-sidebar{background:#ffffff60;border:1px solid #fff;border-radius:9px}
 
 .studio-appearance-drawing[data-appearance="orbital"]{--mini-bg:#040e19;--mini-surface:#0a2437;--mini-line:#194861;background:linear-gradient(125deg,#04111c,#071c30);border:1px solid #1b526a;color:#39daf4}
+
+.studio-appearance-drawing[data-appearance="luminous"]{--mini-bg:#e9f3ff;--mini-surface:#fff;--mini-line:#c2dcff;background:radial-gradient(circle at 60% 25%,#55c4ff88,transparent 45%),linear-gradient(120deg,#f1f7ff,#e2edff);color:#007bff;border:1px solid white}

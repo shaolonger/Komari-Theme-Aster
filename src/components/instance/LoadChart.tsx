@@ -51,6 +51,7 @@ const PROCESS_KEYS = ["process"];
 const PROCESS_COLORS = [CHART_PALETTE.warning];
 const ORBITAL_COLORS = { cpu: ["#14d8ff"], memory: ["#a46aff", "#ffb24c"], disk: ["#ffb24c"], network: ["#14d8ff", "#a46aff"], connections: ["#14d8ff", "#a46aff"], process: ["#59dc9a"] };
 const GLACIER_COLORS = { cpu: ["#1768ff"], memory: ["#a044ff", "#ffb122"], disk: ["#ff9600"], network: ["#08b98c", "#1768ff"], connections: ["#1768ff", "#9b44ff"], process: ["#4a71a3"] };
+const LUMINOUS_COLORS = { cpu: ["#0085ff"], memory: ["#9852ff", "#e3ac5e"], disk: ["#ff980f"], network: ["#00b58a", "#0085ff"], connections: ["#9852ff", "#0085ff"], process: ["#0085ff"] };
 const SKY_COLORS = { cpu: ["#486bc2"], memory: ["#8a75bc", "#ae7746"], disk: ["#ae7746"], network: ["#2a899c", "#486bc2"], connections: ["#8a75bc", "#486bc2"], process: ["#486bc2"] };
 const SERIES_LABELS: Record<string, string> = {
   cpu: "CPU",
@@ -428,7 +429,7 @@ export function LoadChart({
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital";
+  const orbital = appearance === "orbital" || appearance === "luminous";
   const { w, h } = useResponsiveChartSize(glacier || orbital ? "workspace" : "grid");
   const [selectedMetric, setSelectedMetric] = useState(0);
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
@@ -573,7 +574,7 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={orbital ? ORBITAL_COLORS.cpu : glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.cpu : orbital ? ORBITAL_COLORS.cpu : glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
           width={w}
           height={orbital ? selectedMetric === 0 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
@@ -609,7 +610,7 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={orbital ? ORBITAL_COLORS.memory : glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.memory : orbital ? ORBITAL_COLORS.memory : glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
           width={w}
           height={orbital ? selectedMetric === 1 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
@@ -637,7 +638,7 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={orbital ? ORBITAL_COLORS.disk : glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.disk : orbital ? ORBITAL_COLORS.disk : glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
           width={w}
           height={orbital ? selectedMetric === 2 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
@@ -670,7 +671,7 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={orbital ? ORBITAL_COLORS.network : glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.network : orbital ? ORBITAL_COLORS.network : glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
           width={w}
           height={orbital ? selectedMetric === 3 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
@@ -698,7 +699,7 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={orbital ? ORBITAL_COLORS.connections : glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.connections : orbital ? ORBITAL_COLORS.connections : glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
           width={w}
           height={orbital ? selectedMetric === 4 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
@@ -731,7 +732,7 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={orbital ? ORBITAL_COLORS.process : glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
+          colors={appearance === "luminous" ? LUMINOUS_COLORS.process : orbital ? ORBITAL_COLORS.process : glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
           width={w}
           height={orbital ? selectedMetric === 5 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}

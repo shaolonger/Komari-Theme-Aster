@@ -22,9 +22,11 @@ export default function OrbitalInstanceSummary({
   node,
   loss,
   state,
+  luminous = false,
 }: {
   node: NodeInfo & NodeMetrics;
   loss: number | null | undefined;
+  luminous?: boolean;
   state: "none" | "critical" | "warning";
 }) {
   const history = useLoadRecords(node.uuid, 1, true, node);
@@ -35,7 +37,7 @@ export default function OrbitalInstanceSummary({
       icon: Cpu,
       value: formatMetricPercent(node.cpuPct),
       detail: "",
-      color: "#10dafa",
+      color: luminous ? "#0085ff" : "#10dafa",
       samples: (history.data?.records ?? []).map((r) => r.cpu),
     },
     {
@@ -43,7 +45,7 @@ export default function OrbitalInstanceSummary({
       icon: MemoryStick,
       value: formatMetricPercent(node.ramPct),
       detail: formatBytes(node.ramUsed),
-      color: "#a16cff",
+      color: luminous ? "#9747ff" : "#a16cff",
       samples: (history.data?.records ?? []).map((r) =>
         r.ram_total > 0 ? (r.ram / r.ram_total) * 100 : NaN,
       ),
@@ -53,7 +55,7 @@ export default function OrbitalInstanceSummary({
       icon: HardDrive,
       value: formatMetricPercent(node.diskPct),
       detail: formatBytes(node.diskUsed),
-      color: "#f6ae55",
+      color: luminous ? "#ff980f" : "#f6ae55",
       samples: (history.data?.records ?? []).map((r) =>
         r.disk_total > 0 ? (r.disk / r.disk_total) * 100 : NaN,
       ),
@@ -139,10 +141,10 @@ export default function OrbitalInstanceSummary({
               {formatTrafficRateLabel(node.netDown)}
             </span>
           </p>
-          <TrafficSparkline samples={traffic.up} color="#13daf7" height={30} />
+          <TrafficSparkline samples={traffic.up} color={luminous ? "#0085ff" : "#13daf7"} height={30} />
           <TrafficSparkline
             samples={traffic.down}
-            color="#a06aff"
+            color={luminous ? "#9852ff" : "#a06aff"}
             height={30}
           />
           <small>最近实时采样 · 上行 / 下行</small>
