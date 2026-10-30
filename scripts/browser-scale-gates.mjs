@@ -664,10 +664,11 @@ const child = spawn(chrome, [
   "--disable-component-update",
   "--disable-dev-shm-usage",
   "--disable-sync",
-  // Exercise the real WebGL path on GPU-less CI bots with Chromium's
-  // documented software GLES driver, independently of host GPU availability.
+  // Allow WebGL fallback for these trusted local fixtures on GPU-less CI bots.
+  // Keep the default compositor: forcing the entire GLES driver to SwiftShader
+  // slows the existing DOM/Canvas2D long-poll stress test on hosted runners.
   // https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md
-  ...(process.env.CI === "true" ? ["--use-gl=angle", "--use-angle=swiftshader"] : []),
+  ...(process.env.CI === "true" ? ["--enable-unsafe-swiftshader"] : []),
   // Linux headless hosts can advertise no pointing device. Start with an
   // explicit desktop mouse; the input gates separately emulate touch/reduced
   // motion so they assert product behavior, not the runner's hardware.
