@@ -267,9 +267,11 @@ const ChartCard = memo(function ChartCard({
   axisSize,
   hidden = false,
   selected = false,
+  luminous = false,
   workspace = false,
 }: {
   selected?: boolean;
+  luminous?: boolean;
   hidden?: boolean;
   workspace?: boolean;
   icon: ReactNode;
@@ -360,8 +362,8 @@ const ChartCard = memo(function ChartCard({
 
   // resize 时只有这个 memo 变，uplot-react 走 setSize() 而非整个 chart 的拆建重建。
   const chartOptions = useMemo<uPlot.Options>(
-    () => ({ ...enhancedOptions, width: workspace ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
-    [enhancedOptions, width, measuredWidth, height, workspace],
+    () => ({ ...enhancedOptions, axes: luminous ? enhancedOptions.axes?.map(axis=>({...axis,font:"10px Inter, sans-serif"})) : enhancedOptions.axes, width: workspace ? measuredWidth : Math.min(width, measuredWidth), height }) as uPlot.Options,
+    [enhancedOptions, width, measuredWidth, height, workspace, luminous],
   );
 
   return (
@@ -382,6 +384,7 @@ const ChartCard = memo(function ChartCard({
           {note && <span className="tabular text-[var(--text-tertiary)]">{note}</span>}
         </div>
       </header>
+      {luminous && selected && <aside className="luminous-current-metric"><span className="luminous-current-icon">{icon}</span><small>当前{title === "CPU" ? "使用率" : title}</small><strong>{value}</strong><dl>{(()=>{const values=(data[1] as (number|null)[]).filter((v):v is number=>v!=null&&Number.isFinite(v));if(!values.length)return <div><dt>暂无采样</dt><dd>—</dd></div>;return [["平均值",values.reduce((a,b)=>a+b,0)/values.length],["最大值",values.reduce((a,b)=>Math.max(a,b),-Infinity)],["最小值",values.reduce((a,b)=>Math.min(a,b),Infinity)]].map(([label,value])=><div key={String(label)}><dt>{label}</dt><dd>{formatTooltipValue(keys[0],Number(value),unit)}</dd></div>);})()}</dl></aside>}
       <div className="instance-uplot-wrap" ref={plotRef}>
         <UplotReact
           key={`${uuid}-${rangeHours}-${xRange?.[0] ?? "auto"}-${xRange?.[1] ?? "auto"}`}
@@ -561,6 +564,7 @@ export function LoadChart({
       <div className="instance-chart-grid">
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 0}
           hidden={glacier && selectedMetric !== 0}
           icon={<Cpu size={13} />}
@@ -576,7 +580,7 @@ export function LoadChart({
           keys={CPU_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.cpu : orbital ? ORBITAL_COLORS.cpu : glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 0 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 0 ? 180 : 155 : orbital ? selectedMetric === 0 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -587,6 +591,7 @@ export function LoadChart({
         />
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 1}
           hidden={glacier && selectedMetric !== 1}
           icon={<MemoryStick size={13} />}
@@ -612,7 +617,7 @@ export function LoadChart({
           keys={MEMORY_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.memory : orbital ? ORBITAL_COLORS.memory : glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 1 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 1 ? 180 : 155 : orbital ? selectedMetric === 1 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -623,6 +628,7 @@ export function LoadChart({
         />
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 2}
           hidden={glacier && selectedMetric !== 2}
           icon={<HardDrive size={13} />}
@@ -640,7 +646,7 @@ export function LoadChart({
           keys={DISK_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.disk : orbital ? ORBITAL_COLORS.disk : glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 2 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 2 ? 180 : 155 : orbital ? selectedMetric === 2 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -651,6 +657,7 @@ export function LoadChart({
         />
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 3}
           hidden={glacier && selectedMetric !== 3}
           icon={<Network size={13} />}
@@ -673,7 +680,7 @@ export function LoadChart({
           keys={NETWORK_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.network : orbital ? ORBITAL_COLORS.network : glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 3 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 3 ? 180 : 155 : orbital ? selectedMetric === 3 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -684,6 +691,7 @@ export function LoadChart({
         />
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 4}
           hidden={glacier && selectedMetric !== 4}
           icon={<Workflow size={13} />}
@@ -701,7 +709,7 @@ export function LoadChart({
           keys={CONNECTION_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.connections : orbital ? ORBITAL_COLORS.connections : glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 4 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 4 ? 180 : 155 : orbital ? selectedMetric === 4 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -711,6 +719,7 @@ export function LoadChart({
         />
         <ChartCard
           workspace={glacier || orbital}
+          luminous={appearance === "luminous"}
           selected={orbital && selectedMetric === 5}
           hidden={glacier && selectedMetric !== 5}
           icon={<Gauge size={13} />}
@@ -734,7 +743,7 @@ export function LoadChart({
           keys={PROCESS_KEYS}
           colors={appearance === "luminous" ? LUMINOUS_COLORS.process : orbital ? ORBITAL_COLORS.process : glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
           width={w}
-          height={orbital ? selectedMetric === 5 ? 300 : 150 : glacier ? 180 : h}
+          height={appearance === "luminous" ? selectedMetric === 5 ? 180 : 155 : orbital ? selectedMetric === 5 ? 300 : 150 : glacier ? 180 : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}

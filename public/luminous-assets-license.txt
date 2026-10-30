@@ -1,0 +1,21 @@
+Luminous Future visual assets
+
+Earth day map, night map and cloud map:
+Solar System Scope / INOVE (https://www.solarsystemscope.com/textures/).
+Licensed under Creative Commons Attribution 4.0 International:
+https://creativecommons.org/licenses/by/4.0/
+Source files:
+https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg
+https://www.solarsystemscope.com/textures/download/2k_earth_nightmap.jpg
+https://www.solarsystemscope.com/textures/download/2k_earth_clouds.jpg
+Changes: rendered on a rotating WebGL sphere, combined with lighting, city lights,
+clouds, a blue color grade and an atmospheric rim. The original local texture
+files are distributed with this theme. The provider describes its maps as based
+on NASA elevation and imagery data.
+
+The previous luminous-earth.svg outline is derived from Natural Earth 1:110m,
+public domain: https://www.naturalearthdata.com/about/terms-of-use/.
+
+The four luminous-*-v2.png server/city illustrations were generated with OpenAI
+ImageGen for this theme from the user's visual references. They are decorative;
+locations and connection arcs do not represent measured network routes.

@@ -27,6 +27,11 @@ type Props = ComponentProps<typeof GlacierHome> & {
   onRegion: (value: string) => void;
   group: string;
   onGroup: (value: string) => void;
+  facets?: { dimension: {id:string;label:string}; options:string[] }[];
+  selectedFacets?: Record<string,string[]>;
+  onFacet?: (dimension:string,value:string)=>void;
+  sortKey?: import("@/utils/vpsWorkbench").WorkbenchSortKey;
+  onSort?: (value:import("@/utils/vpsWorkbench").WorkbenchSortKey)=>void;
 };
 const views = [
   { value: "list", label: "列表", icon: List },

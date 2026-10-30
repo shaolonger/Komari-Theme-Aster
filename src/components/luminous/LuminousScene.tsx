@@ -7,28 +7,23 @@ import { MOTION_EVENT, motionAllowed } from "./motion";
 const vertex =
   "attribute vec2 position; varying vec2 uv; void main(){uv=position;gl_Position=vec4(position,0.,1.);}";
 const fragment = `precision mediump float;
-varying vec2 uv; uniform sampler2D earth; uniform float angle;
+varying vec2 uv; uniform sampler2D earth; uniform sampler2D night; uniform sampler2D clouds; uniform float angle;
 void main(){
- vec2 p=uv*1.12; float r=dot(p,p);
- if(r>1.){float a=exp(-18.*(sqrt(r)-1.))*.38;gl_FragColor=vec4(.25,.68,1.,a);return;}
- vec3 n=vec3(p.x,p.y,sqrt(1.-r));
- float tilt=.18; n.yz=mat2(cos(tilt),-sin(tilt),sin(tilt),cos(tilt))*n.yz;
- vec3 v=n; v.xz=mat2(cos(angle),-sin(angle),sin(angle),cos(angle))*n.xz;
- vec2 t=vec2(.5+atan(v.x,v.z)/6.283185,.5-asin(v.y)/3.141593);
- vec3 col=texture2D(earth,t).rgb;
- float land=smoothstep(.42,.7,col.r);
- float grain=sin(t.x*760.)*sin(t.y*590.)*.025;
- col+=grain;
- float light=.46+.54*max(0.,dot(n,normalize(vec3(-.5,.7,1.))));
- col*=light;
- float rim=pow(1.-sqrt(1.-r),2.5);
- col=mix(col,vec3(.7,.94,1.),rim*.8);
- float grid=step(.978,fract(t.x*24.))+step(.978,fract(t.y*12.));
- col+=vec3(.2,.6,1.)*grid*.13;
- float city=pow(max(0.,sin(t.x*1741.)*sin(t.y*2161.)),20.)*land;
- col+=vec3(1.,.85,.48)*city*.65;
- float cloud=sin(t.x*51.+sin(t.y*27.))*sin(t.y*43.+sin(t.x*31.));
- col=mix(col,vec3(.89,.97,1.),smoothstep(.56,.95,cloud)*.26);
+ vec2 p=uv*1.08; float r=dot(p,p);
+ if(r>1.){float a=exp(-26.*(sqrt(r)-1.))*.28;gl_FragColor=vec4(.35,.75,1.,a);return;}
+ vec3 n=vec3(p.x,p.y,sqrt(1.-r)); vec3 viewNormal=n;
+ float tilt=.4; n.yz=mat2(cos(tilt),-sin(tilt),sin(tilt),cos(tilt))*n.yz;
+ n.xz=mat2(cos(angle),-sin(angle),sin(angle),cos(angle))*n.xz;
+ vec2 t=vec2(.5+atan(n.x,n.z)/6.283185,.5-asin(n.y)/3.141593);
+ vec3 surface=texture2D(earth,t).rgb;
+ float light=.35+.65*max(0.,dot(viewNormal,normalize(vec3(-.45,.7,.8))));
+ vec3 col=surface*vec3(.38,.55,1.12)*light;
+ vec3 cities=texture2D(night,t).rgb;
+ col+=cities*vec3(2.1,1.65,.9)*(1.2-light*.38);
+ float cloud=texture2D(clouds,vec2(fract(t.x+angle*.012),t.y)).r;
+ col=mix(col,vec3(.89,.96,1.)*max(.7,light),smoothstep(.16,.85,cloud)*.5);
+ float rim=pow(1.-viewNormal.z,3.);
+ col=mix(col,vec3(.55,.85,1.),rim*.72);
  gl_FragColor=vec4(col,1.);
 }`;
 
@@ -51,7 +46,7 @@ function Earth() {
       raf = 0,
       visible = false,
       last = 0,
-      angle = 1.7,
+      angle = 0.65,
       loaded = false;
     const shaders: WebGLShader[] = [];
     const compile = (kind: number, source: string) => {
@@ -82,17 +77,25 @@ function Earth() {
     const position = gl.getAttribLocation(program, "position");
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const textures = [0, 1, 2].map((unit) => {
+      const texture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(
+        gl.getUniformLocation(program, ["earth", "night", "clouds"][unit]),
+        unit,
+      );
+      return texture;
+    });
     const angleLocation = gl.getUniformLocation(program, "angle");
     const draw = () => {
       if (!loaded || disposed || gl.isContextLost()) return;
       const size = Math.max(
         1,
-        Math.round(canvas.clientWidth * Math.min(devicePixelRatio || 1, 1.5)),
+        Math.round(canvas.clientWidth * Math.min(devicePixelRatio || 1, 1.25)),
       );
       if (canvas.width !== size) {
         canvas.width = size;
@@ -112,8 +115,8 @@ function Earth() {
     const tick = (time: number) => {
       raf = 0;
       if (!canAnimate() || disposed) return;
-      if (time - last >= 32) {
-        angle += Math.min(64, time - last) * 0.000065;
+      if (time - last >= 40) {
+        angle += Math.min(64, time - last) * 0.000025;
         last = time;
         draw();
       }
@@ -129,30 +132,40 @@ function Earth() {
         raf = requestAnimationFrame(tick);
       }
     };
-    const image = new Image();
-    image.onload = () => {
-      if (disposed) return;
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        image,
-      );
-      loaded = true;
-      canvas.dataset.renderer = "webgl";
-      sync();
-    };
-    image.onerror = () => {
-      canvas.dataset.renderer = "fallback";
-      sync();
-    };
-    image.src = new URL(
-      "../../assets/luminous-earth.svg",
-      import.meta.url,
-    ).href;
+    let remaining = 3;
+    const sources = [
+      new URL("../../assets/luminous-earth-day-v2.jpg", import.meta.url).href,
+      new URL("../../assets/luminous-earth-night-v2.jpg", import.meta.url).href,
+      new URL("../../assets/luminous-earth-clouds-v2.jpg", import.meta.url)
+        .href,
+    ];
+    const images = sources.map((source, unit) => {
+      const image = new Image();
+      image.onload = () => {
+        if (disposed || gl.isContextLost()) return;
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, textures[unit]);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          image,
+        );
+        if (--remaining === 0) {
+          loaded = true;
+          canvas.dataset.renderer = "webgl";
+          sync();
+        }
+      };
+      image.onerror = () => {
+        canvas.dataset.renderer = "fallback";
+        sync();
+      };
+      image.src = source;
+      return image;
+    });
     const observer = new IntersectionObserver((entries) => {
       visible = entries[0].isIntersecting;
       sync();
@@ -181,9 +194,11 @@ function Earth() {
       document.removeEventListener("visibilitychange", sync);
       window.removeEventListener(MOTION_EVENT, sync);
       canvas.removeEventListener("webglcontextlost", onLost);
-      image.onload = null;
-      image.onerror = null;
-      gl.deleteTexture(texture);
+      images.forEach((image) => {
+        image.onload = null;
+        image.onerror = null;
+      });
+      textures.forEach((texture) => gl.deleteTexture(texture));
       gl.deleteBuffer(buffer);
       shaders.forEach((s) => gl.deleteShader(s));
       gl.deleteProgram(program);
@@ -212,6 +227,10 @@ export default function LuminousScene({
       ".luminous-hero,.instance-topbar",
     );
     if (!surface) return;
+    const visibility = new IntersectionObserver((entries) => {
+      element.dataset.active = String(entries[0].isIntersecting);
+    });
+    visibility.observe(element);
     const reset = () => {
       element.style.setProperty("--scene-x", "0deg");
       element.style.setProperty("--scene-y", "0deg");
@@ -232,6 +251,7 @@ export default function LuminousScene({
     surface.addEventListener("pointerleave", reset);
     window.addEventListener(MOTION_EVENT, reset);
     return () => {
+      visibility.disconnect();
       surface.removeEventListener("pointermove", move);
       surface.removeEventListener("pointerleave", reset);
       window.removeEventListener(MOTION_EVENT, reset);
@@ -245,21 +265,52 @@ export default function LuminousScene({
       aria-hidden="true"
     >
       <div className="luminous-scene-light" />
-      <div className="luminous-city">
-        {Array.from({ length: 18 }, (_, i) => (
-          <i
-            key={i}
-            style={
-              {
-                "--i": i,
-                "--tower-height": 36 + ((i * 47) % 110) + "px",
-              } as CSSProperties
-            }
-          />
-        ))}
-      </div>
+      <img
+        className="luminous-environment"
+        src={
+          new URL("../../assets/luminous-environment-v2.png", import.meta.url)
+            .href
+        }
+        alt=""
+        draggable={false}
+      />
       <div className="luminous-world">
-        {variant === "server" ? <ServerSculpture /> : <Earth />}
+        {variant === "server" ? (
+          <img
+            className="luminous-hero-device"
+            src={
+              new URL(
+                "../../assets/luminous-hero-device-v2.png",
+                import.meta.url,
+              ).href
+            }
+            alt=""
+            draggable={false}
+          />
+        ) : (
+          <Earth />
+        )}
+        {variant !== "server" && (
+          <svg className="luminous-connection-arcs" viewBox="0 0 600 600">
+            {[
+              "M85,280 Q260,65 370,265",
+              "M120,150 Q300,50 440,205",
+              "M205,110 Q300,50 370,265",
+              "M370,265 Q525,95 520,320",
+              "M370,265 Q470,250 440,430",
+              "M85,280 Q300,170 520,320",
+            ].map((d, i) => (
+              <g key={i}>
+                <path d={d} />
+                <path
+                  d={d}
+                  className="luminous-connection-packet"
+                  style={{ animationDelay: i * -1.3 + "s" }}
+                />
+              </g>
+            ))}
+          </svg>
+        )}
         <div className="luminous-orbits">
           {[0, 1, 2].map((i) => (
             <div

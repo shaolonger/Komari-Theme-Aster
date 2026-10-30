@@ -25,7 +25,7 @@ import type { VpsRisk } from "@/utils/vpsRisk";
 import type { HomeNodeSummary } from "@/services/wsStore";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 
-export type GlacierStatus = "all" | "online" | "attention";
+export type GlacierStatus = "all" | "online" | "attention" | "offline" | "favorites";
 const views = [
   { value: "list", label: "列表", icon: List },
   { value: "compact", label: "紧凑卡片", icon: Rows3 },

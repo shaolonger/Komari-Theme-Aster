@@ -8,7 +8,111 @@ export async function checkLuminous({
   failGate,
   captureScreenshot,
   enableNetworkCards,
+  reference = Boolean(process.env.BROWSER_LUMINOUS_REFERENCE),
 }) {
+  if (reference) {
+    await cdp.call("Emulation.setDeviceMetricsOverride", {
+      width: 1672,
+      height: 941,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await cdp.call("Page.navigate", { url: origin });
+    await waitUntil(cdp, "document.querySelector('.app-shell')!==null", 10000);
+    await cdp.value(
+      "localStorage.clear();sessionStorage.clear();localStorage.setItem('appearance',JSON.stringify('luminous'));localStorage.setItem('luminous-motion','paused')",
+    );
+    await cdp.call("Page.reload");
+    const base =
+      process.env.BROWSER_LUMINOUS_SCREENSHOT_BASE || "/tmp/luminous-reference";
+    mkdirSync(dirname(base), { recursive: true });
+    const measurements = {};
+    for (const [name, path, ready, selectors] of [
+      [
+        "home",
+        "/",
+        "document.querySelectorAll('.luminous-reference-card').length===49 && document.querySelector('.luminous-earth canvas')?.dataset.renderer==='webgl'",
+        [
+          ".app-main",
+          ".luminous-hero",
+          ".luminous-global",
+          ".luminous-bandwidth",
+          ".luminous-hero-right",
+          ".luminous-notices",
+          ".luminous-toolbar",
+          ".luminous-reference-card",
+        ],
+      ],
+      [
+        "instance",
+        "/instance/node-0",
+        "document.querySelectorAll('.instance-chart-card .uplot').length===6",
+        [
+          ".instance-topbar",
+          ".luminous-instance-metrics",
+          ".instance-chart-workspace",
+          ".luminous-asset-panel",
+          ".instance-info-groups",
+        ],
+      ],
+      [
+        "ping",
+        "/instance/node-0?focus=ping",
+        "document.querySelectorAll('.instance-ping-task').length===6 && document.querySelector('.orbital-event-timeline')!==null",
+        [
+          ".instance-topbar",
+          ".luminous-ping-summary",
+          ".instance-ping-panel>.instance-uplot-wrap",
+          ".instance-ping-task-groups",
+          ".luminous-event-cards",
+          ".glacier-anomaly-summary",
+        ],
+      ],
+    ]) {
+      await cdp.call("Page.navigate", { url: origin + path });
+      await waitUntil(cdp, ready, 15000);
+      await cdp.value(
+        "document.fonts.ready.then(()=>new Promise(r=>setTimeout(r,600)))",
+      );
+      await cdp.value(
+        "window.scrollTo(0,0);if(document.activeElement instanceof HTMLElement)document.activeElement.blur()",
+      );
+      await captureScreenshot(cdp, base + "-" + name + ".png");
+      measurements[name] = await cdp.value(
+        `Object.fromEntries(${JSON.stringify(selectors)}.map(s=>{const e=document.querySelector(s),r=e?.getBoundingClientRect();return [s,r?{x:r.x,y:r.y,width:r.width,height:r.height}:null]}))`,
+      );
+    }
+    failGate(
+      await cdp.value(
+        "document.querySelectorAll('.luminous-network-node-label').length===1",
+      ),
+      "Diagnostic scene must have one node label",
+    );
+    const home = measurements.home,
+      detail = measurements.instance,
+      ping = measurements.ping;
+    failGate(
+      Math.abs(home[".luminous-reference-card"].y - 428) <= 2 &&
+        home[".luminous-reference-card"].height === 236,
+      "Reference card geometry drifted",
+    );
+    failGate(
+      Math.abs(home[".luminous-global"].x - 203) <= 2 &&
+        Math.abs(home[".luminous-global"].y - 73) <= 2,
+      "Reference hero geometry drifted",
+    );
+    failGate(
+      Math.abs(detail[".luminous-instance-metrics"].width - 822) <= 2 &&
+        Math.abs(detail[".instance-chart-workspace"].y - 334) <= 2,
+      "Reference instance geometry drifted",
+    );
+    failGate(
+      Math.abs(ping[".luminous-ping-summary"].y - 193) <= 2 &&
+        Math.abs(ping[".instance-ping-task-groups"].x - 1175) <= 3,
+      "Reference diagnostic columns drifted",
+    );
+    return { luminousReference: measurements };
+  }
   const base = process.env.BROWSER_LUMINOUS_SCREENSHOT_BASE;
   const shot = async (name) => {
     if (base) {
@@ -43,7 +147,7 @@ export async function checkLuminous({
     );
   const view = async (label, selector) => {
     await cdp.value(
-      `document.querySelector('.luminous-view-switch [aria-label="${label}"]').click()`,
+      `(()=>{const s=document.querySelector('.luminous-view-switch select');s.value=${JSON.stringify({ 标准卡片: "standard", 紧凑卡片: "compact", 大卡片: "large", 列表: "list" }[label])};s.dispatchEvent(new Event('change',{bubbles:true}));})()`,
     );
     await waitUntil(cdp, `document.querySelector('${selector}')!==null`, 6000);
   };
@@ -71,7 +175,7 @@ export async function checkLuminous({
   );
   failGate(
     await cdp.value(
-      "getComputedStyle(document.querySelector('.luminous-cube')).transform !== 'none'",
+      "getComputedStyle(document.querySelector('.luminous-device-float')).transform !== 'none'",
     ),
     "Luminous device lost its 3D transform",
   );
@@ -207,7 +311,49 @@ export async function checkLuminous({
     "document.querySelector('.home-overview-panel')===null",
     3000,
   );
+  await cdp.value("document.querySelector('.luminous-card-favorite').click()");
+  await cdp.value(
+    "document.querySelector('.luminous-status-filters button:last-child').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.luminous-reference-card').length===1",
+    4000,
+  );
+  failGate(
+    await cdp.value(
+      "JSON.parse(localStorage.getItem('aster-luminous-favorites')).length===1",
+    ),
+    "Favorite did not persist",
+  );
+  await cdp.value(
+    "document.querySelector('.luminous-status-filters button').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.luminous-reference-card').length===15",
+    4000,
+  );
+  await cdp.value("document.querySelector('.luminous-card-expand').click()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-expanded-card .metric-detail')!==null",
+    6000,
+  );
+  failGate(
+    await cdp.value(
+      "document.querySelector('.luminous-expanded-card').textContent.includes('CPU')",
+    ),
+    "Full card contents unavailable",
+  );
+  await cdp.value("document.querySelector('.luminous-card-expand').click()");
   await fits("overview");
+  await cdp.call("Emulation.setDeviceMetricsOverride", {
+    width: 2048,
+    height: 600,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
   await cdp.value("window.scrollTo(0,1000)");
   await waitUntil(
     cdp,
@@ -225,6 +371,7 @@ export async function checkLuminous({
     ),
     "Offscreen Earth kept rendering",
   );
+  await width(2048);
   await cdp.value("window.scrollTo(0,0)");
   await waitUntil(
     cdp,
@@ -269,6 +416,11 @@ export async function checkLuminous({
   );
   await cdp.value(
     `document.querySelector('.luminous-status-filters button').click()`,
+  );
+  await waitUntil(
+    cdp,
+    "!new URLSearchParams(location.search).has('status') && document.querySelectorAll('.luminous-reference-card').length===15",
+    4000,
   );
   await cdp.value(
     `(()=>{const s=document.querySelector('[aria-label="光域未来地区筛选"]');s.value='HK';s.dispatchEvent(new Event('change',{bubbles:true}));})()`,
@@ -376,6 +528,15 @@ export async function checkLuminous({
     );
   }
   await width(2048);
+  await navigate("/compare");
+  await waitUntil(cdp, "document.querySelector('.compare-page')!==null", 8000);
+  failGate(
+    await cdp.value(
+      "document.querySelector('.compare-page').getBoundingClientRect().top>=75",
+    ),
+    "Compare overlaps the masthead",
+  );
+  await fits("comparison workspace");
   await navigate("/?view=theme-manage");
   await waitUntil(
     cdp,
@@ -445,6 +606,18 @@ export async function checkLuminous({
   await navigate();
   await waitUntil(
     cdp,
+    "document.querySelector('.luminous-view-switch select')!==null",
+    8000,
+  );
+  await view("标准卡片", ".luminous-reference-card");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.luminous-card-expand')!==null",
+    8000,
+  );
+  await cdp.value("document.querySelector('.luminous-card-expand').click()");
+  await waitUntil(
+    cdp,
     "document.querySelector('.server-card .carrier-routes')!==null && document.querySelector('.server-card .carrier-speeds')!==null",
     10000,
   );
@@ -456,6 +629,10 @@ export async function checkLuminous({
       ["大卡片", ".server-card"],
     ]) {
       await view(label, selector);
+      if (label === "标准卡片")
+        await cdp.value(
+          "if(document.querySelector('.luminous-card-expand')?.getAttribute('aria-expanded')==='false')document.querySelector('.luminous-card-expand').click()",
+        );
       await waitUntil(
         cdp,
         `document.querySelector('${selector} .carrier-routes')!==null && document.querySelector('${selector} .carrier-speeds')!==null`,
@@ -500,10 +677,13 @@ export async function checkLuminous({
     20000,
   );
   await cdp.call("Network.setBlockedURLs", { urls: [] });
-  await cdp.call("Page.addScriptToEvaluateOnNewDocument", {
-    source:
-      "const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){return kind==='webgl'?null:original.call(this,kind,...args)}",
-  });
+  const noWebglScript = await cdp.call(
+    "Page.addScriptToEvaluateOnNewDocument",
+    {
+      source:
+        "const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(kind,...args){return kind==='webgl'?null:original.call(this,kind,...args)}",
+    },
+  );
   await navigate();
   await waitUntil(
     cdp,
@@ -511,6 +691,9 @@ export async function checkLuminous({
     10000,
   );
   await fits("WebGL fallback");
+  await cdp.call("Page.removeScriptToEvaluateOnNewDocument", {
+    identifier: noWebglScript.identifier,
+  });
   return {
     luminous:
       "independent light palette, animated WebGL Earth/3D devices, pause/offscreen/reduced-motion/context-loss/WebGL fallback, four full card views, six plots, real Ping timeline, Studio persistence/preview, 320–2048px, all network modules, original themes and unavailable-rate fallback",

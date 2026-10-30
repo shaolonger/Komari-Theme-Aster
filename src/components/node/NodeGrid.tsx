@@ -1,3 +1,4 @@
+import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { matchesNodeSearch } from "@/utils/nodeSearch";
 import {
   lazy,
@@ -86,15 +87,16 @@ import {
 import { Spinner } from "@/components/ui/Spinner";
 import { CompactNodeCard } from "./CompactNodeCard";
 import { CostSummary } from "./CostSummary";
-import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { DailyTrafficProvider } from "./DailyTrafficContext";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import type { HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
+const NodeCard = lazy(() => import("./NodeCard").then(module => ({ default: module.NodeCard })));
 const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
-const renderGlacierCard = (uuid: string) => <NodeCard uuid={uuid} density="expanded" />;
+const renderGlacierCard = (uuid: string) => <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density="expanded" /></Suspense>;
+const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
 const GlacierHome = lazy(() => import("@/components/glacier/GlacierHome"));
@@ -822,9 +824,14 @@ export function NodeGrid() {
   const OrbitalWorkspace = appearance === "luminous" ? LuminousHome : OrbitalHome;
   const [orbitalParams, setOrbitalParams] = useSearchParams();
   const orbitalRegion = orbitalParams.get("region") ?? "";
+  const favoriteUuids = useLuminousFavorites(appearance === "luminous");
   const [orbitalGroup, setOrbitalGroup] = useState("");
   const [glacierTools, setGlacierTools] = useState(false);
-  const [glacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention">("all");
+  const [storedGlacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention" | "offline" | "favorites">("all");
+  const luminousStatus = orbitalParams.get("status");
+  const glacierStatus = appearance === "luminous"
+    ? luminousStatus === "online" || luminousStatus === "attention" || luminousStatus === "offline" || luminousStatus === "favorites" ? luminousStatus : "all"
+    : storedGlacierStatus;
   const { mode } = useViewMode();
   const [selectedFacetDimension, setSelectedFacetDimension] = useState(HOME_FACET_LEGACY_GROUP);
   const [facetFilters, setFacetFilters] = useState<HomeFacetFilters>({});
@@ -1255,7 +1262,7 @@ export function NodeGrid() {
     const facetFiltered = visibleNodes.filter((node) =>
       facetFilteredUuidSet.has(node.uuid) &&
       (!(glacier || orbital) || glacierStatus === "all" ||
-        (glacierStatus === "online" ? node.online === true : risksByUuid.has(node.uuid))) &&
+        (glacierStatus === "online" ? node.online === true : glacierStatus === "offline" ? node.online === false : glacierStatus === "favorites" ? favoriteUuids.includes(node.uuid) : risksByUuid.has(node.uuid))) &&
       (!orbital || (!orbitalRegion || getDisplayRegionCode(node.region) === orbitalRegion) && (!orbitalGroup || node.group === orbitalGroup)),
     );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
@@ -1354,6 +1361,7 @@ export function NodeGrid() {
     orbitalRegion,
     orbitalGroup,
     glacierStatus,
+    favoriteUuids,
     facetSearchTextByUuid,
     visibleNodes,
     selectedRiskFilter,
@@ -1440,10 +1448,10 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} />}
+        {appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
-  }, [uuidsKey, mode]);
+  }, [uuidsKey, mode, appearance]);
   const listUuids = useMemo(() => {
     const liveUuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     if (!listInteractionActive || !frozenListOrderRef.current) return liveUuids;
@@ -1599,6 +1607,11 @@ export function NodeGrid() {
       {orbital ? (
         <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
           <OrbitalWorkspace
+            facets={facetRows}
+            selectedFacets={facetFilters}
+            onFacet={(dimension,value)=>{setActiveSavedViewId("");setFacetFilters(prev=>({...prev,[dimension]:value?[value]:[]}));}}
+            sortKey={workbenchSort}
+            onSort={setWorkbenchSort}
             region={orbitalRegion}
             onRegion={(region) => setOrbitalParams((current) => { const next = new URLSearchParams(current); if (region) next.set("region", region); else next.delete("region"); return next; })}
             group={orbitalGroup}
@@ -1611,7 +1624,14 @@ export function NodeGrid() {
             toolsOpen={glacierTools}
             onToggleTools={() => setGlacierTools(v => !v)}
             status={glacierStatus}
-            onStatus={setGlacierStatus}
+            onStatus={(value) => {
+              if (appearance === "luminous") setOrbitalParams(previous => {
+                const next = new URLSearchParams(previous);
+                if (value === "all") next.delete("status"); else next.set("status", value);
+                return next;
+              });
+              else setGlacierStatus(value);
+            }}
             todayTraffic={todayTraffic}
             costSummary={costSummary}
             costLoading={costLoading}

@@ -32,6 +32,7 @@ const mime = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".webp": "image/webp",
+  ".jpg": "image/jpeg",
   ".ico": "image/x-icon",
 };
 const BACKEND_PROFILES = Object.freeze({
@@ -190,7 +191,14 @@ function nodeList(size) {
     ["多伦多 Backup", "北美", "CA", "Oracle Cloud"],
   ];
   return Array.from({ length: size }, (_, index) => {
-    const docsNode = docsNames[index % docsNames.length];
+    const referenceNames = [
+      ["hkcloudx-hk.mini.v6", "香港", "HK", "HKCloud"], ["hytron-hk.0.74", "香港", "HK", "Hytron"],
+      ["hytron-hk.0.63", "香港", "HK", "Hytron"], ["hosuyun-la.pro.a", "美国", "US", "Hosuyun"],
+      ["t2", "新加坡", "SG", "Oracle"], ["mac mini m4 16g", "日本", "JP", "Apple"],
+      ["wawo-creator.300r", "香港", "HK", "Wawo"], ["joysol-hk.bgp.no2", "香港", "HK", "Joysol"],
+      ["vps.taxi-jp.mini", "日本", "JP", "VPS Taxi"], ["vps.taxi-la.mini", "美国", "US", "VPS Taxi"]
+    ];
+    const docsNode = activeFixture.luminousReference ? (referenceNames[index] || ["cloud-node-"+index, docsNames[index%8][1], docsNames[index%8][2], docsNames[index%8][3]]) : docsNames[index % docsNames.length];
     return {
     uuid: `node-${index}`,
     name: activeFixture.docs ? docsNode[0] : `Scale Node ${index}`,
@@ -201,7 +209,7 @@ function nodeList(size) {
     cpu_name: index % 2 === 0 ? "AMD EPYC 7B13" : "Intel Xeon Platinum",
     cpu_cores: 2 + (index % 4) * 2,
     mem_total: 2_147_483_648,
-    disk_total: 21_474_836_480,
+    disk_total: activeFixture.luminousReference ? 4.85*1024**3 : 21_474_836_480,
     weight: index,
     os: "linux",
     arch: "amd64",
@@ -217,6 +225,14 @@ function nodeList(size) {
     tags: activeFixture.docs ? ["production", "edge", "backup"][index % 3] : "",
     traffic_limit: activeFixture.clearSky && index === 6 ? 0 : 1_000_000_000_000,
     traffic_limit_type: "sum",
+    ...(activeFixture.luminousReference ? {
+      ipv4: `103.82.12.${18+index}`, ipv6:`2602:f506::${index+1}`, os:index===5?"macOS":index===4?"Windows":"Debian GNU/Linux 12", cpu_cores:1,
+      mem_total: 973*1024*1024, disk_total:4.85*1024**3, version:"1.5.11",
+      price:5,billing_cycle:"yearly",expired_at:new Date(Date.now()+(index>9?120+index:[358,18,22,10,36,5,20,18,12,28][index])*86400000).toISOString(),
+      tags:index===0?"1C/1.5G/500M;CN2/10099/CMI":index<3?"512M/3G/1000M":"512M/10G/100M",
+      traffic_limit: index===0?2.93*1024**4:100*1024**3,
+      created_at:"2023-11-05T00:00:00Z"
+    } : {}),
   };
   });
 }
@@ -248,24 +264,24 @@ function legacyReport(index, sequence) {
 function officialLatestStatus(index, sequence) {
   const docsOffline = activeFixture.docs && !activeFixture.slate && index === 0;
   return {
-    online: !docsOffline,
-    cpu: (index + sequence) % 100,
-    ram: 536_870_912 + ((index + sequence) % 100) * 1_048_576,
-    ram_total: 2_147_483_648,
+    online: activeFixture.luminousReference ? index < 42 : !docsOffline,
+    cpu: activeFixture.luminousReference ? [1.51,.3,0,.1,30,5.6,1,1.1,1.8,.3][index%10] : (index + sequence) % 100,
+    ram: activeFixture.luminousReference ? (973*1024*1024)*[.175,.24,.24,.073,.77,.76,.16,.16,.21,.24][index%10] : 536_870_912 + ((index + sequence) % 100) * 1_048_576,
+    ram_total: activeFixture.luminousReference ? 973*1024*1024 : 2_147_483_648,
     swap: 0,
     swap_total: 0,
-    disk: 5_368_709_120,
-    disk_total: 21_474_836_480,
+    disk: activeFixture.luminousReference ? (4.85*1024**3)*[.738,.38,.38,.084,.32,.43,.26,.22,.33,.35][index%10] : 5_368_709_120,
+    disk_total: activeFixture.luminousReference ? 4.85*1024**3 : 21_474_836_480,
     load: 0.5,
     load5: 0.4,
     load15: 0.3,
-    net_in: sequence * 120 + index,
-    net_out: sequence * 100 + index,
-    net_total_up: (activeFixture.dailyVisual ? 200_000_000_000 : activeFixture.clearSky ? index === 7 ? 600_000_000_000 : 20_000_000_000 * (index + 1) : 0) + sequence * 1_000 + index,
-    net_total_down: (activeFixture.dailyVisual ? 300_000_000_000 : activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
+    net_in: activeFixture.luminousReference ? 2048+index*973 : sequence * 120 + index,
+    net_out: activeFixture.luminousReference ? 506+index*120 : sequence * 100 + index,
+    net_total_up: activeFixture.luminousReference ? (index===0?180:7+index)*1024**3 : (activeFixture.dailyVisual ? 200_000_000_000 : activeFixture.clearSky ? index === 7 ? 600_000_000_000 : 20_000_000_000 * (index + 1) : 0) + sequence * 1_000 + index,
+    net_total_down: activeFixture.luminousReference ? (index===0?185:12+index)*1024**3 : (activeFixture.dailyVisual ? 300_000_000_000 : activeFixture.clearSky ? index === 7 ? 650_000_000_000 : 40_000_000_000 * (index + 1) : 0) + sequence * 2_000 + index,
     connections: 12,
     connections_udp: 2,
-    uptime: (activeFixture.slate || activeFixture.glacier) ? 6 * 86400 : sequence,
+    uptime: activeFixture.luminousReference ? (index===0?358:20+index)*86400 : (activeFixture.slate || activeFixture.glacier) ? 6 * 86400 : sequence,
     process: 20,
     time: docsOffline ? Math.floor((Date.now() - 3 * 60 * 60 * 1_000) / 1_000) : (activeFixture.slate || activeFixture.glacier) ? Math.floor(Date.now() / 1000) : 1_700_000_000 + sequence,
   };
@@ -293,7 +309,7 @@ function officialPingMetricSeries(params, fixture) {
   // The interactive Ping regression run must exercise the long-history parser
   // and uPlot path with the same density requested in production. Scale tests
   // keep their compact response so the gate remains focused on node volume.
-  const pointCount = Math.min(fixture.comprehensive ? 480 : fixture.ui ? 4_320 : 24, requestedPointCount);
+  const pointCount = fixture.luminousReference ? 150 : Math.min(fixture.comprehensive ? 480 : fixture.ui ? 4_320 : 24, requestedPointCount);
   const series = [];
 
   for (const metricKey of metricKeys) {
@@ -307,7 +323,7 @@ function officialPingMetricSeries(params, fixture) {
         const count = hasLoss ? 2 : 1;
         return {
           time: new Date(windowStart + (end - windowStart) * fraction).toISOString(),
-          value: fixture.comprehensive && metricKey === "cpu.usage" && [201, 203].includes(point) ? null : metricKey === "ping.latency_ms"
+          value: fixture.luminousReference && metricKey=== "cpu.usage" ? 1+Math.sin(point/9)*.12+Math.exp(-Math.pow((point-22)/9,2))*2.1+Math.exp(-Math.pow((point-128)/10,2))*1.15 : fixture.comprehensive && metricKey === "cpu.usage" && [201, 203].includes(point) ? null : metricKey === "ping.latency_ms"
             ? 20 + ((index + point) % 30)
             : metricKey === "ping.loss"
               ? hasLoss ? 0.5 : 0
@@ -347,7 +363,7 @@ function officialPingStats(params, fixture) {
   return {
     start,
     end,
-    stats: entityIds.flatMap((uuid, index) => (fixture.slate ? [1,2,3,4] : [1]).map(id => ({
+    stats: entityIds.flatMap((uuid, index) => (fixture.luminousReference ? [1,2,3,4,5,6] : fixture.slate ? [1,2,3,4] : [1]).map(id => ({
       entity_id: uuid,
       task_id: String(id),
       name: "edge",
@@ -431,7 +447,7 @@ const server = createServer(async (request, response) => {
         // Use an absolute URL: production correctly rejects relative rate
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
-        homepagePingBindings: Object.fromEntries((fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
+        homepagePingBindings: Object.fromEntries((fixture.luminousReference ? [1,2,3,4,5,6] : fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
       },
@@ -452,7 +468,7 @@ const server = createServer(async (request, response) => {
     return sendJson(response, { logged_in: Boolean(fixture.ui), username: "test", uuid: "test" });
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
-  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
@@ -556,7 +572,7 @@ const server = createServer(async (request, response) => {
         return sendRpcResult(response, payload.id, reports);
       }
       if (payload.method === "public:getPublicPingTasks") {
-        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
+        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : fixture.slate ? ["电信", "联通", "移动", "国际", "Task 5", "Task 6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
         return sendRpcResult(response, payload.id, [{
           id: 1,
           weight: 1,
@@ -1992,9 +2008,15 @@ try {
   }
   if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
-    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 15, soak: false, run: "luminous", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: process.env.BROWSER_LUMINOUS_REFERENCE ? 49 : 15, luminousReference: Boolean(process.env.BROWSER_LUMINOUS_REFERENCE), soak: false, run: "luminous", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
+    if (!process.env.BROWSER_LUMINOUS_REFERENCE) {
+      await clearFixturePage(cdp);
+      activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 49, luminousReference: true, run: "luminous-reference", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+      savedUiSettings = null;
+      results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, reference: true }));
+    }
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {
