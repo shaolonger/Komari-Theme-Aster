@@ -143,6 +143,70 @@ export async function checkLuminous({
     "document.querySelector('.luminous-earth canvas').dataset.running==='true'",
     3000,
   );
+  await cdp.call("Network.enable");
+  await cdp.call("Network.setCacheDisabled", { cacheDisabled: true });
+  await cdp.call("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 500,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  });
+  await cdp.value("document.querySelector('.luminous-global').click()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.home-overview-panel[role=status]')!==null",
+    3000,
+  );
+  await cdp.call("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Escape",
+    code: "Escape",
+    windowsVirtualKeyCode: 27,
+  });
+  await waitUntil(
+    cdp,
+    "document.querySelector('.home-overview-panel')===null",
+    3000,
+  );
+  await cdp.call("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  });
+  await cdp.call("Network.setCacheDisabled", { cacheDisabled: false });
+  await cdp.value("document.querySelector('.luminous-global').click()");
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.home-overview-panel.show .home-overview-row').length===15",
+    6000,
+  );
+  const trigger = await cdp.value(
+    "(()=>{const r=document.querySelector('.luminous-global').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()",
+  );
+  await cdp.call("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    ...trigger,
+    button: "left",
+    clickCount: 1,
+  });
+  await cdp.call("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    ...trigger,
+    button: "left",
+    clickCount: 1,
+  });
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.home-overview-panel.show .home-overview-row').length===15",
+    3000,
+  );
+  await cdp.value("document.querySelector('.home-overview-close').click()");
+  await waitUntil(
+    cdp,
+    "document.querySelector('.home-overview-panel')===null",
+    3000,
+  );
   await fits("overview");
   await cdp.value("window.scrollTo(0,1000)");
   await waitUntil(

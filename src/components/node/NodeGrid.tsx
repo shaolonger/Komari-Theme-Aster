@@ -90,9 +90,10 @@ import { NodeCard } from "./NodeCard";
 import { NodeList } from "./NodeList";
 import { DailyTrafficProvider } from "./DailyTrafficContext";
 import { VpsListSortPanel } from "./VpsListSortPanel";
-import { HomeMetricSummary, type HomeMetricPanel } from "./HomeMetricSummary";
+import type { HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
+const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
 const renderGlacierCard = (uuid: string) => <NodeCard uuid={uuid} density="expanded" />;
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
@@ -845,6 +846,13 @@ export function NodeGrid() {
   const [workbenchOpen, setWorkbenchOpen] = useState(readStoredWorkbenchOpen);
   const [costSummaryOpen, setCostSummaryOpen] = useState(false);
   const [overviewPanel, setOverviewPanel] = useState<HomeMetricPanel | null>(null);
+  // The summary's lazy chunk may still be loading when Escape is pressed.
+  useEffect(() => {
+    if (!overviewPanel) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setOverviewPanel(null); };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [overviewPanel]);
   const [trafficTab, setTrafficTab] = useState<"today" | "month" | "total">("today");
   const [trafficClock, setTrafficClock] = useState(() => Date.now());
   const seededHomeViewRef = useRef(false);
@@ -1574,6 +1582,7 @@ export function NodeGrid() {
         />
       )}
       {appearance === "clearsky" && <Suspense fallback={null}><ClearSkyHomeHeading count={nodes.length} /></Suspense>}
+      {overviewPanel != null && <Suspense fallback={<section className="home-overview-panel show" role="status"><header className="home-overview-header"><h3>正在加载总览明细…</h3><button type="button" className="home-overview-close" aria-label="关闭总览明细" onClick={() => setOverviewPanel(null)}><X size={18} /></button></header></section>}>
       <HomeMetricSummary
         open={overviewPanel != null}
         panel={overviewPanel}
@@ -1586,6 +1595,7 @@ export function NodeGrid() {
           if (!open) setOverviewPanel(null);
         }}
       />
+      </Suspense>}
       {orbital ? (
         <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
           <OrbitalWorkspace

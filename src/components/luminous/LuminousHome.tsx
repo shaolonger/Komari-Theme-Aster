@@ -112,6 +112,7 @@ export default function LuminousHome(
           <div className="luminous-hero-left">
             <button
               className="luminous-glass luminous-global"
+              data-home-overview-trigger
               onClick={() => onOpenMetric("status")}
             >
               <span>
@@ -134,7 +135,10 @@ export default function LuminousHome(
               </span>
             </button>
             <div className="luminous-glass luminous-bandwidth">
-              <button onClick={() => onOpenMetric("bandwidth")}>
+              <button
+                data-home-overview-trigger
+                onClick={() => onOpenMetric("bandwidth")}
+              >
                 <small>实时总带宽</small>
                 <strong>{formatByteRateLabel(up + down)}</strong>
               </button>
@@ -169,6 +173,7 @@ export default function LuminousHome(
             <button
               className="luminous-glass luminous-total"
               title={todayTraffic.detail}
+              data-home-overview-trigger
               onClick={() => onOpenMetric("traffic")}
             >
               <small>今日流量</small>
@@ -267,7 +272,10 @@ export default function LuminousHome(
               {!expiring.length && (
                 <p className="luminous-clear">近期没有到期事项</p>
               )}
-              <button onClick={() => onOpenMetric("expiry")}>
+              <button
+                data-home-overview-trigger
+                onClick={() => onOpenMetric("expiry")}
+              >
                 查看全部续费信息 <ChevronRight size={12} />
               </button>
             </section>

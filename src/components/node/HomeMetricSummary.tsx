@@ -207,3 +207,5 @@ export function HomeMetricSummary({
     </section>
   );
 }
+
+export default HomeMetricSummary;
