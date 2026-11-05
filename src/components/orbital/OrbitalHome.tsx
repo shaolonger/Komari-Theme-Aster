@@ -23,6 +23,9 @@ import { regionLabel } from "@/components/glacier/regionLabel";
 import type { CSSProperties } from "react";
 
 type Props = ComponentProps<typeof GlacierHome> & {
+  searchTexts?: ReadonlyMap<string, string>;
+  searchResultCount?: number;
+  searchHasFilters?: boolean;
   region: string;
   onRegion: (value: string) => void;
   group: string;

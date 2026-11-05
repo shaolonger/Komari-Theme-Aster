@@ -1,5 +1,5 @@
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
-import { matchesNodeSearch } from "@/utils/nodeSearch";
+import { matchesNodeSearch, splitNodeSearchGroups } from "@/utils/nodeSearch";
 import {
   lazy,
   Suspense,
@@ -1022,7 +1022,7 @@ export function NodeGrid() {
       if (!facetNode) continue;
       next.set(
         node.uuid,
-        getHomeFacetSearchText(
+        [getHomeFacetSearchText(
           meta ?? {
             uuid: node.uuid,
             name: node.uuid,
@@ -1034,7 +1034,7 @@ export function NodeGrid() {
             public_remark: "",
           },
           facetNode.facets,
-        ),
+        ), meta?.os, meta?.version, meta?.ipv4, meta?.ipv6].join(" "),
       );
     }
     return next;
@@ -1266,10 +1266,11 @@ export function NodeGrid() {
       (!orbital || (!orbitalRegion || getDisplayRegionCode(node.region) === orbitalRegion) && (!orbitalGroup || node.group === orbitalGroup)),
     );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
+    const searchGroups = appearance === "luminous" ? splitNodeSearchGroups(normalizedSearch) : [normalizedSearch];
     const searchFiltered = normalizedSearch
       ? facetFiltered.filter((node) => {
           const meta = workbenchMetaByUuid.get(node.uuid);
-          return matchesNodeSearch(normalizedSearch, node.uuid, node.group, node.region, facetSearchTextByUuid.get(node.uuid), meta?.os, meta?.version);
+          return !searchGroups.length || searchGroups.some(query => matchesNodeSearch(query, node.uuid, node.group, node.region, facetSearchTextByUuid.get(node.uuid), meta?.os, meta?.version));
         })
       : facetFiltered;
     const riskFiltered =
@@ -1356,6 +1357,7 @@ export function NodeGrid() {
     ];
   }, [
     facetFilteredUuidSet,
+    appearance,
     glacier,
     orbital,
     orbitalRegion,
@@ -1621,6 +1623,9 @@ export function NodeGrid() {
             risks={operationRisks}
             search={nodeSearch}
             onSearch={setNodeSearch}
+            searchTexts={facetSearchTextByUuid}
+            searchResultCount={filteredNodes.length}
+            searchHasFilters={glacierStatus !== "all" || Boolean(orbitalRegion || orbitalGroup) || mobileFilterCount > 0}
             toolsOpen={glacierTools}
             onToggleTools={() => setGlacierTools(v => !v)}
             status={glacierStatus}

@@ -206,6 +206,7 @@ function nodeList(size) {
     region: activeFixture.docs ? docsNode[2] : `R${index % 16}`,
     hidden: false,
     ...(activeFixture.slate ? {ipv4:"8.8.8.8",ipv6:"2001:4860:4860::8888",os:"debian"} : {}),
+    ...(activeFixture.run === "luminous" ? {ipv4:`192.0.2.${index+1}`,ipv6:`2001:db8::${index+1}`} : {}),
     cpu_name: index % 2 === 0 ? "AMD EPYC 7B13" : "Intel Xeon Platinum",
     cpu_cores: 2 + (index % 4) * 2,
     mem_total: 2_147_483_648,

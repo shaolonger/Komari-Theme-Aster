@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { checkLuminousSearch } from "./luminous-search-browser-gates.mjs";
 
 export async function checkLuminous({
   cdp,
@@ -439,6 +440,7 @@ export async function checkLuminous({
     "document.querySelectorAll('.server-card').length===15",
     4000,
   );
+  await checkLuminousSearch({ cdp, waitUntil, failGate, width, fits, captureScreenshot });
   await cdp.value(
     `document.querySelector('.luminous-status-filters button:nth-child(2)').click()`,
   );
@@ -936,6 +938,6 @@ export async function checkLuminous({
   });
   return {
     luminous:
-      "independent light palette, animated WebGL Earth/3D devices, pause/offscreen/reduced-motion/context-loss/WebGL fallback, four full card views, six plots, real Ping timeline, Studio persistence/preview, 320–2048px, all network modules, original themes and unavailable-rate fallback",
+      "independent light palette, animated WebGL Earth/3D devices, pause/offscreen/reduced-motion/context-loss/WebGL fallback, multi-VPS token search/IME/paste/IP/filter context, four full card views, six plots, real Ping timeline, Studio persistence/preview, 320–2048px, all network modules, original themes and unavailable-rate fallback",
   };
 }

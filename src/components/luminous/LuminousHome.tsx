@@ -30,6 +30,7 @@ import { formatCnyMoney } from "@/utils/cost";
 import { regionLabel } from "@/components/glacier/regionLabel";
 import type { WorkbenchSortKey } from "@/utils/vpsWorkbench";
 import LuminousScene from "./LuminousScene";
+import LuminousSearch from "./LuminousSearch";
 const views = [
   { value: "standard", label: "标准卡片" },
   { value: "compact", label: "紧凑卡片" },
@@ -45,6 +46,9 @@ export default function LuminousHome(
     risks,
     search,
     onSearch,
+    searchTexts,
+    searchResultCount,
+    searchHasFilters,
     toolsOpen,
     onToggleTools,
     status,
@@ -70,16 +74,6 @@ export default function LuminousHome(
   const favorites = useLuminousFavorites();
   const [params] = useSearchParams();
   const searchInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        searchInput.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, []);
   const groupRequest = useRef(false);
   useEffect(() => {
     if (params.get("filters") === "groups" && !groupRequest.current) {
@@ -110,18 +104,7 @@ export default function LuminousHome(
   return (
     <>
       <header className="luminous-home-heading">
-        <label className="luminous-search">
-          <Search size={17} />
-          <input
-            ref={searchInput}
-            aria-label="搜索 VPS"
-            type="search"
-            placeholder="搜索 VPS、名称、IP、标签…"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-          />
-          <kbd>⌘ K</kbd>
-        </label>
+        <LuminousSearch value={search} onChange={onSearch} texts={searchTexts} resultCount={searchResultCount} hasFilters={searchHasFilters} inputRef={searchInput} />
       </header>
       {showOverview && (
         <section className="luminous-hero" aria-label="全网运行状态">
