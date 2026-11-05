@@ -1391,11 +1391,10 @@ try {
   await cdp.call("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 3 && document.querySelectorAll('.ping-task-lane').length === 9 && document.querySelectorAll('.ping-task-overflow').length === 3`, 6_000);
   failGate(await cdp.value(`Array.from(document.querySelectorAll('.ping-task-overflow')).every(button => button.getBoundingClientRect().height <= 30 && button.getAttribute('aria-label').includes('监控任务'))`), 'Ping overflow control is not compact or accessible');
-  await waitUntil(cdp, `document.querySelectorAll('.daily-traffic-trend').length === 3`, 6_000);
-  await waitUntil(cdp, `document.querySelector('.compact-node-quota-pill .daily-traffic-line') !== null`, 6_000);
-  failGate(await cdp.value(`Array.from(document.querySelectorAll('.daily-traffic-trend')).every(svg => svg.closest('.compact-node-quota-pill') && svg.parentElement.getBoundingClientRect().height <= 24 && svg.querySelector('title'))`), 'daily traffic trend must be contained in the existing quota pill');
-  failGate(await cdp.value(`!document.querySelector('.compact-node-live-traffic > .daily-traffic-trend') && document.querySelector('.compact-node-quota-content strong')?.textContent.includes('/')`), 'quota trend added a row or obscured the usage label');
-  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.daily-traffic.png`);
+  await waitUntil(cdp, `document.querySelectorAll('.compact-node-quota-fill').length === 3`, 6_000);
+  failGate(await cdp.value(`!document.querySelector('.daily-traffic-trend,.compact-node-quota-trend') && Array.from(document.querySelectorAll('.compact-node-quota-pill')).every(pill => { const fill=pill.querySelector('.compact-node-quota-fill'),expected=parseFloat(getComputedStyle(pill).getPropertyValue('--compact-traffic-fill'));return Math.abs(fill.getBoundingClientRect().width-pill.clientWidth*expected/100)<2 && getComputedStyle(fill,'::after').display!=='none'; })`), 'quota must show used-fraction progress without a daily trend');
+  failGate(await cdp.value(`document.querySelector('.compact-node-quota-content strong')?.textContent.includes('/')`), 'quota lost the used/limit label');
+  if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.traffic-quota.png`);
   await cdp.value(`document.querySelector('input[aria-label="搜索 VPS"]').focus()`);
   await cdp.call('Input.insertText',{text:'2 scale'});
   await waitUntil(cdp, `document.querySelectorAll('.home-node-card-slot').length === 1 && document.querySelector('.home-node-card-slot').textContent.includes('Scale Node 2')`, 2_000);

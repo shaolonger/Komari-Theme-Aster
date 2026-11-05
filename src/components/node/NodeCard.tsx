@@ -37,7 +37,6 @@ import { joinTagTitle, nodeDetailLinkLabels, pingEmptyLabels } from "./nodeCardS
 import { getHostHealthStatus, getNetworkHealthStatus, NodeStatusSummary, type HostHealthStatus } from "./NodeStatusSummary";
 import { TrafficSparkline } from "./TrafficSparkline";
 import { TrafficQuotaDetails } from "./TrafficQuotaDetails";
-import { DailyTrafficTrend } from "./LazyDailyTrafficTrend";
 import { getDisplayRegionCode } from "@/utils/geo";
 import { clsx } from "clsx";
 import type { NodeInfo, NodeMetrics, PingOverviewItem, TrafficTrendSample } from "@/types/komari";
@@ -145,7 +144,7 @@ export const NodeCard = memo(function NodeCard({
             reference={slate}
           />
 
-          {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} uuid={uuid} /> : <NodeTrafficQuota traffic={traffic} uuid={uuid} uptime={slate ? `${uptime.value}${uptime.unit}` : undefined} />}
+          {appearance === "clearsky" ? <TrafficQuotaDetails traffic={traffic} /> : <NodeTrafficQuota traffic={traffic} uptime={slate ? `${uptime.value}${uptime.unit}` : undefined} />}
 
           {showExtended && showConnections && (
             <div className="card-metric-section card-metric-divided server-card-meta-grid">
@@ -359,7 +358,7 @@ const TRAFFIC_QUOTA_SEGMENTS = 18;
 // 下面是 18 个独立 segment。每个 segment 按它的绝对位置上色(绿→黄→红,见
 // trafficQuotaSegmentColor),只要 used fraction 到达就点亮,否则用中性轨道色 ——
 // 于是点亮区段呈现整条渐变,前沿就能看出离用满还有多远。
-function NodeTrafficQuota({ traffic, uptime, uuid }: { traffic: TrafficDisplay; uptime?: string; uuid: string }) {
+function NodeTrafficQuota({ traffic, uptime }: { traffic: TrafficDisplay; uptime?: string }) {
   return (
     <div
       className="card-metric-section traffic-quota"
@@ -374,7 +373,7 @@ function NodeTrafficQuota({ traffic, uptime, uuid }: { traffic: TrafficDisplay; 
         {uptime && <span className="slate-quota-uptime">在线：{uptime}</span>}
         <span className="traffic-quota-usage">{traffic.detail}</span>
       </div>
-      <div className="traffic-quota-track">
+      <div className="traffic-quota-track" aria-hidden>
         {Array.from({ length: TRAFFIC_QUOTA_SEGMENTS }, (_, i) => {
           const pos = (i + 0.5) / TRAFFIC_QUOTA_SEGMENTS;
           const lit = pos <= traffic.fraction;
@@ -386,7 +385,6 @@ function NodeTrafficQuota({ traffic, uptime, uuid }: { traffic: TrafficDisplay; 
             />
           );
         })}
-        <div className="traffic-quota-trend" style={{ width: `${traffic.remainingLabel === "∞" ? 100 : traffic.fraction * 100}%` }}><DailyTrafficTrend uuid={uuid} /></div>
       </div>
     </div>
   );

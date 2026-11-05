@@ -491,6 +491,9 @@ export async function checkLuminous({
     ]) {
       await view(label, selector);
       await fits(`${label} ${w}`);
+      failGate(await cdp.value("!document.querySelector('.daily-traffic-trend,.compact-node-quota-trend,.traffic-quota-trend')"), "Card quota must not render a daily trend");
+      if (label === "紧凑卡片") failGate(await cdp.value("[...document.querySelectorAll('.compact-node-quota-pill')].every(pill=>{const fill=pill.querySelector('.compact-node-quota-fill'),expected=parseFloat(getComputedStyle(pill).getPropertyValue('--compact-traffic-fill'));return Math.abs(fill.getBoundingClientRect().width-pill.clientWidth*expected/100)<2 && getComputedStyle(fill,'::after').display!=='none'})"), "Luminous compact quota lost its progress fill");
+      if (label === "大卡片") failGate(await cdp.value("[...document.querySelectorAll('.traffic-quota-track')].every(track=>track.querySelectorAll('.traffic-quota-segment').length===18)"), "Large cards lost their segmented quota progress");
       if (label === "标准卡片" || label === "大卡片")
         failGate(
           await cdp.value(

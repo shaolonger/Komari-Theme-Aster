@@ -23,6 +23,7 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
   const view = async (mode) => {
     await cdp.value(`document.querySelector('.clear-sky-view-switch button${{ compact: ':nth-child(1)', standard: ':nth-child(2)', large: ':nth-child(3)', list: ':nth-child(4)' }[mode]}').click()`);
     await waitUntil(cdp, mode === "compact" ? "document.querySelector('.compact-node-card .sky-traffic-quota-foot') !== null" : mode === "list" ? "document.querySelector('.node-list-row') !== null" : "document.querySelector('.server-card .sky-traffic-quota-foot') !== null", 6_000);
+    if (mode !== "list") failGate(await cdp.value("!document.querySelector('.daily-traffic-trend,.sky-traffic-trend') && [...document.querySelectorAll('.sky-traffic-quota-track')].every(track=>{const fill=track.querySelector('i'),expected=parseFloat(fill.style.getPropertyValue('--sky-quota-fill'));return Math.abs(fill.getBoundingClientRect().width-track.clientWidth*expected/100)<2})"), "Clear Sky quota must show used-fraction progress without a daily trend");
   };
   const fits = async (label) => failGate(await cdp.value("document.documentElement.scrollWidth <= innerWidth + 1"), `Clear Sky ${label} overflows`);
   await width(1440);
@@ -32,8 +33,6 @@ export async function checkClearSky({ cdp, origin, waitUntil, failGate, captureS
   await waitUntil(cdp, "document.documentElement?.dataset.themeStyle === 'clearsky' && document.querySelector('.clear-sky-view-switch') !== null", 8_000);
   failGate(await cdp.value("document.documentElement.dataset.appearance === 'light' && document.documentElement.style.colorScheme === 'light' && document.querySelector('meta[name=theme-color]').content === '#e7f1fc'"), "Clear Sky failed to restore its light palette and browser chrome");
   await view("compact");
-  await waitUntil(cdp, "document.querySelector('.compact-node-card .sky-traffic-quota .daily-traffic-trend') !== null", 6_000);
-  failGate(await cdp.value("!document.querySelector('.compact-node-live-traffic > .daily-traffic-trend') && Array.from(document.querySelectorAll('.sky-traffic-trend')).every(n => n.closest('.sky-traffic-quota'))"), "Clear Sky daily trend must stay inside the quota");
   failGate(await cdp.value("document.querySelectorAll('.compact-node-card .sky-traffic-quota').length === document.querySelectorAll('.compact-node-card').length && document.querySelector('.sky-traffic-quota-foot').textContent.includes('剩余') && document.querySelector('.sky-traffic-quota-foot').textContent.includes('已用')"), "Compact cards lost quota totals or percentage");
   failGate(await cdp.value("Array.from(document.querySelectorAll('.sky-traffic-quota-foot')).some(n=>n.textContent.includes('未设限')) && Array.from(document.querySelectorAll('.sky-traffic-quota-foot')).some(n=>/已用 125/.test(n.textContent))"), "Unlimited or over-quota billing was lost");
   await waitUntil(cdp, "!Array.from(document.querySelectorAll('.home-fleet-metric strong')).some(n=>n.textContent.includes('计算中'))", 8_000);

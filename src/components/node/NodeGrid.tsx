@@ -88,7 +88,6 @@ import { Spinner } from "@/components/ui/Spinner";
 import { CompactNodeCard } from "./CompactNodeCard";
 import { CostSummary } from "./CostSummary";
 import { NodeList } from "./NodeList";
-import { DailyTrafficProvider } from "./DailyTrafficContext";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import type { HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
@@ -1880,16 +1879,14 @@ export function NodeGrid() {
         mode === "list" ? (
           glacier ? (
             <Suspense fallback={<Spinner />}>
-              <DailyTrafficProvider records={trafficHistoryQuery.data} now={trafficClock} timeZone={themeSettings.displayTimeZone}>
-                <GlacierList
-                  renderCard={renderGlacierCard}
-                  uuids={listUuids}
-                  attentionUuids={new Set(risksByUuid.keys())}
-                  sorts={listSorts}
-                  onSort={handleListSort}
-                  onInteractionChange={handleListInteractionChange}
-                />
-              </DailyTrafficProvider>
+              <GlacierList
+                renderCard={renderGlacierCard}
+                uuids={listUuids}
+                attentionUuids={new Set(risksByUuid.keys())}
+                sorts={listSorts}
+                onSort={handleListSort}
+                onInteractionChange={handleListInteractionChange}
+              />
             </Suspense>
           ) : (<NodeList
             uuids={listUuids}
@@ -1903,7 +1900,7 @@ export function NodeGrid() {
             data-view-mode={mode}
             style={{ gridTemplateColumns: diagnosticAppearance && mode === "standard" ? "repeat(auto-fit, minmax(min(100%, 340px), min(100%, 400px)))" : gridColumns }}
           >
-            <DailyTrafficProvider records={trafficHistoryQuery.data} now={trafficClock} timeZone={themeSettings.displayTimeZone}>{cards}</DailyTrafficProvider>
+            {cards}
           </div>
         )
       ) : (
