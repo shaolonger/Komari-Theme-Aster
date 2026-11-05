@@ -26,3 +26,21 @@ test('upstream absence or malformed sections fail without fabricating images',as
     await assert.rejects(()=>client.collect('https://tcpquality.ibsgss.uk/r/example'));
   }
 });
+test('NodeQuality requests the same public signed archive as its report page',async()=>{
+ const crypto=require('node:crypto'),calls=[];
+ const client=createReportAssets({fetcher:async(url,options)=>{
+  calls.push({url,options});
+  return {ok:true,text:async()=>JSON.stringify(url.endsWith('/ipinfo')?{ip:'192.0.2.1',ts:1793836800000}:{success:true,data:{result:'UEsDBA=='}})};
+ }});
+ assert.equal(reportToken('https://www.nodequality.com/r/node','nodequality-full'),'node');
+ assert.equal(reportToken('https://nodequality.com.evil/r/node','nodequality-full'),'');
+ assert.deepEqual(await client.collect('https://nodequality.com/r/node','nodequality-full'),{nodeArchive:'UEsDBA=='});
+ assert.deepEqual(calls.map(c=>c.url),['https://api.nodequality.com/api/v1/ipinfo','https://api.nodequality.com/api/v1/record/node']);
+ const headers=calls[1].options.headers;
+ const expected=crypto.createHash('sha1').update(['GET',calls[1].url,headers['user-agent'],'192.0.2.1'+'1793836800000',''].join('\n\n')).digest('hex');
+ assert.equal(headers['x-dynamic-sign-v'],expected);assert(calls.every(c=>c.options.redirect==='error'));
+});
+test('NodeQuality missing or blocked upstream never substitutes local JSON as an original report',async()=>{
+ const client=createReportAssets({fetcher:async()=>({ok:false,status:403})});
+ await assert.rejects(()=>client.collect('https://nodequality.com/r/node','nodequality-full'),/HTTP 403/);
+});

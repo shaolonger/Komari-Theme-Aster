@@ -83,14 +83,14 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         return;
       if (event.data.type === "aster-report-original-request") {
         const result = report?.model.fullResults?.find(result => result.id === event.data.resultId);
-        if (!result || result.module !== "tcpquality-full") return;
+        if (!result || !["tcpquality-full", "nodequality-full"].includes(result.module)) return;
         const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
         const source = event.source as Window;
         void (async () => {
           try {
-            const pages = await loadReportOriginalImages(meta.uuid, result.roundId, controller.signal);
-            const clean = redactReport({ ...report!.model, metrics: [], pings: [], network: [], fullResults: [{ ...result, originalPages: pages }] });
-            source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, pages: clean.fullResults![0]!.originalPages }, "*");
+            const assets = await loadReportOriginalImages(meta.uuid, result.roundId, controller.signal);
+            const clean = redactReport({ ...report!.model, metrics: [], pings: [], network: [], fullResults: [{ ...result, originalPages: assets.pages, originalSections: assets.sections }] });
+            source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, pages: clean.fullResults![0]!.originalPages, sections: clean.fullResults![0]!.originalSections }, "*");
           } catch (error) {
             source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, error: error instanceof Error ? error.message : String(error) }, "*");
           } finally { clearTimeout(timer); }

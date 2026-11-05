@@ -123,6 +123,7 @@ export interface ReportFullResult {
   sections: { name: string; title: string; format: "csv" | "json" | "terminal"; text: string }[];
   coverage?: { ok: number; failed: number; skipped: number; unknown: number };
   originalPages?: { title: string; svg: string }[];
+  originalSections?: { name: string; title: string; format: "terminal"; text: string }[];
   originalError?: string;
 }
 export interface MetricStats {

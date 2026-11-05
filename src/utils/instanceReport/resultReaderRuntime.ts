@@ -9,7 +9,8 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
   let selected = new Set(stored.selectedResultIds || latest()), page = 0, query = "", generation = 0;
   let mode: "original" | "unified" = model.resultStyle === "original" ? "original" : "unified";
   let busy = false;
-  const cache = new Map<string, string[]>(), pending = new Map<string, { resolve: (pages: { title: string; svg: string }[]) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  type OriginalAssets = { pages?: ReportFullResult["originalPages"]; sections?: ReportFullResult["originalSections"] };
+  const cache = new Map<string, string[]>(), pending = new Map<string, { resolve: (assets: OriginalAssets) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const list = document.querySelector<HTMLElement>("[data-result-list]"), images = document.querySelector<HTMLElement>("[data-result-images]");
   const status = document.querySelector<HTMLElement>("[data-results-status]");
   const date = (t: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: model.range.timeZone, dateStyle: "medium", timeStyle: "short" }).format(t);
@@ -68,12 +69,12 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
     notify(selected.size ? `已选择 ${selected.size} 份，预览或导出时生成所选高清结果图片。` : "请选择要导出的检测结果。");
   }
   function originalPages(result: ReportFullResult) {
-    if (result.module !== "tcpquality-full" || result.originalPages?.length) return Promise.resolve();
+    if (result.originalPages?.length || result.originalSections?.length) return Promise.resolve();
     if (window.parent === window) return Promise.reject(new Error("这份离线文件未包含此轮原始图片，请在线选择原始版后重新导出。"));
     const requestId = `${model.reportId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { pending.delete(requestId); reject(new Error("上游原始图片读取超时，请稍后重试。")); }, 35000);
-      pending.set(requestId, { timer, resolve: pages => { result.originalPages = pages; resolve(); }, reject });
+      pending.set(requestId, { timer, resolve: assets => { result.originalPages = assets.pages; result.originalSections = assets.sections; resolve(); }, reject });
       window.parent.postMessage({ type: "aster-report-original-request", id: model.reportId, resultId: result.id, requestId }, "*");
     });
   }
@@ -82,7 +83,7 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
     if (event.data.type === "aster-report-original-response") {
       const request = pending.get(event.data.requestId); if (!request) return;
       pending.delete(event.data.requestId); clearTimeout(request.timer);
-      if (event.data.error || !Array.isArray(event.data.pages) || !event.data.pages.length) request.reject(new Error(event.data.error || "此轮没有原始图片")); else request.resolve(event.data.pages);
+      if (event.data.error || (!event.data.pages?.length && !event.data.sections?.length)) request.reject(new Error(event.data.error || "此轮没有上游原始报告")); else request.resolve({ pages: event.data.pages, sections: event.data.sections });
     }
     if (event.data.type === "aster-report-export-html") void saveHtml().catch(showError);
   });
@@ -103,7 +104,7 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
         if (!cache.has(key)) {
           if (selectedMode === "original") await originalPages(result);
           let pages: string[];
-          try { pages = selectedMode === "original" ? tools.original(result) : tools.unified(result, model.node.name, model.range.timeZone); }
+          try { pages = selectedMode === "original" ? await tools.original(result) : tools.unified(result, model.node.name, model.range.timeZone); }
           catch (error) { throw new Error(`${tools.title(result)} · ${date(result.time)}：${error instanceof Error ? error.message : error} 可取消选择此轮，或切换到统一图表版。`); }
           const urls: string[] = [];
           for (const svg of pages) {
@@ -158,6 +159,8 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
     root.querySelectorAll<HTMLElement>("[data-result-figure]").forEach(figure => { if (!selected.has(figure.dataset.resultFigure || "") || figure.dataset.mode !== mode) figure.remove(); });
     root.querySelectorAll(".chart-tip").forEach(tip => tip.remove());
     root.querySelectorAll(".report-image-modal").forEach(dialog => dialog.remove());
+    root.querySelectorAll(".report-print-pages").forEach(pages => pages.remove());
+    root.querySelectorAll("[data-has-print-pages]").forEach(image => image.removeAttribute("data-has-print-pages"));
     const html = "<!doctype html>" + root.outerHTML;
     if (new TextEncoder().encode(html).length > 128 * 1024 * 1024) throw new Error("HTML 超过 128 MiB，请减少所选结果。");
     download(new Blob([html], { type: "text/html;charset=utf-8" }), `Aster-${safeName(model.node.name)}-${safeName(model.reportId)}.html`);
@@ -165,7 +168,23 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
   async function print() {
     await prepare();
     const all = [...document.querySelectorAll<HTMLImageElement>(".full-result-image")];
-    for (const image of all) { image.loading = "eager"; await image.decode(); }
+    for (const image of all) {
+      image.loading = "eager"; await image.decode();
+      // Print pagination is separate from the intact preview/download image.
+      if (image.naturalHeight <= image.naturalWidth * 1.25) continue;
+      const pages = document.createElement("div"); pages.className = "report-print-pages";
+      const step = Math.floor(image.naturalWidth * 1.25), width = Math.min(1800, image.naturalWidth);
+      if (Math.ceil(image.naturalHeight / step) > 100) throw new Error("所选长图超过 100 个打印页，请分批选择结果。");
+      for (let top = 0; top < image.naturalHeight; top += step) {
+        const height = Math.min(step, image.naturalHeight - top), canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = Math.ceil(height / image.naturalWidth * width);
+        const context = canvas.getContext("2d"); if (!context) throw new Error("浏览器无法准备长图打印");
+        context.drawImage(image, 0, top, image.naturalWidth, height, 0, 0, canvas.width, canvas.height);
+        const page = document.createElement("img"); page.src = await inline(await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("打印图片编码失败")), "image/png")));
+        page.alt = `${image.alt} · 打印页 ${Math.floor(top / step) + 1}`; await page.decode(); pages.append(page); canvas.width = canvas.height = 1;
+      }
+      image.after(pages); image.dataset.hasPrintPages = "true";
+    }
     window.print();
   }
   document.querySelector<HTMLInputElement>("[data-result-search]")?.addEventListener("input", event => { query = (event.target as HTMLInputElement).value; page = 0; renderList(); });

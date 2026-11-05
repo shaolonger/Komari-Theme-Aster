@@ -10,7 +10,9 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+
+const originalNodeArchive = execFileSync("python3", ["-c", "import io,zipfile,base64\nb=io.BytesIO()\nwith zipfile.ZipFile(b,'w',compression=8) as z:\n z.writestr('header_info.log','### NodeQuality UPSTREAM_ONLY ###\\n')\n z.writestr('hardware_quality.log','\\x1b[41;97m硬件质量报告\\x1b[0m\\nCPU AMD EPYC\\n内存 1024 MB')\n z.writestr('ip_quality.log','\\x1b[32mIP 质量正常\\x1b[0m\\nIPv4: 203.0.113.19')\n z.writestr('net_quality.log','\\x1b[43;30m网络质量报告\\x1b[0m\\n'+'\\n'.join('UPSTREAM-ROW-%d'%i for i in range(150)))\n z.writestr('backroute_trace.log','上游回程路由\\nEND_OF_UPSTREAM')\n z.writestr('net_quality.json','{\"Head\":{\"IP\":\"null\"}}')\nprint(base64.b64encode(b.getvalue()).decode())"], {encoding:"utf8"}).trim();
 
 const ROOT = new URL("../dist/", import.meta.url).pathname;
 const chromeCandidates = [
@@ -498,7 +500,7 @@ const server = createServer(async (request, response) => {
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
     if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:fixture.planCards?Array.from({length:7},(_,i)=>({id:'plan-'+i,name:['测速-v4','测速-v6','国际线路','大陆线路-v4','大陆线路-v6','TcpQuality','NodeQuality'][i],clients:i===3?[]:['node-0'],groups:i===3?['Group 0']:[],inherit:true,enabled:i!==6,trafficAccepted:true,modules:[reportRoundData.international.parameters],catalogVersion:reportCatalogVersion})):reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails});
     if(/^nodes\/[^/]+\/(?:rounds|history-summary)$/.test(suffix)){const module=url.searchParams.get('module');const r=fixtureReportRound(module);return sendJson(response,{rounds:fixture.comprehensive?[r,fixtureReportRound(module,true)]:[r],nextCursor:null});}
-    if(/^nodes\/[^/]+\/rounds\/[^/]+\/original-images$/.test(suffix)) return sendJson(response,{pages:[{title:'IPv4 回程',svg:'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1400" viewBox="0 0 1000 1400"><rect width="1000" height="1400" fill="#181713"/><text x="40" y="90" fill="#eee8d0" font-size="30">TcpQuality Original Report</text><text x="40" y="150" fill="#87d88d" font-size="22">Shanghai 24ms / Beijing 31ms</text></svg>'}]});
+    if(/^nodes\/[^/]+\/rounds\/[^/]+\/original-images$/.test(suffix)) return sendJson(response,suffix.includes('nodequality-full') ? {nodeArchive: process.env.BROWSER_REPORT_NODE_ARCHIVE ? readFileSync(process.env.BROWSER_REPORT_NODE_ARCHIVE,'utf8') : originalNodeArchive} : {pages:[{title:'国际互联',svg:process.env.BROWSER_REPORT_TCP_SVG ? readFileSync(process.env.BROWSER_REPORT_TCP_SVG,'utf8') : '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="3000" viewBox="0 0 1000 3000"><rect width="100%" height="100%" fill="#1f1e2a"/><text x="40" y="90" fill="#eee8d0" font-size="30">TcpQuality Original Report</text><text x="40" y="2900" fill="#87d88d" font-size="22">LAST_ROW_OF_INTERNATIONAL</text></svg>'}]});
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1), prior=id.endsWith('-older'), base=prior?id.slice(0,-6):id;const module=Object.keys(reportRoundData).find(key=>reportRoundData[key].id===base);return sendJson(response,fixtureReportRound(module,prior));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
     if(/^nodes\/[^/]+\/card-check$/.test(suffix)) {
@@ -782,7 +784,7 @@ class CDP {
     });
   }
   async value(expression, contextId, sessionId) {
-    const result = await this.call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, ...(contextId ? { contextId } : {}) }, sessionId);
+    const result = await this.call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, ...(contextId ? { contextId } : {}) }, sessionId).catch(error => { throw new Error(`${error.message}: ${expression.slice(0, 250)}`); });
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result.value;
   }

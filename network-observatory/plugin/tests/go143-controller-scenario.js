@@ -1,4 +1,6 @@
 async function runControllerScenario() {
+  const originalAssets = await require("./src/report-assets.js").createReportAssets({fetcher:async url=>({ok:true,text:async()=>JSON.stringify(url.endsWith("/ipinfo")?{ip:"192.0.2.1",ts:1793836800000}:{success:true,data:{result:"UEsDBA=="}})})}).collect("https://nodequality.com/r/runtime", "nodequality-full");
+  if (originalAssets.nodeArchive !== "UEsDBA==") throw Error("Runtime NodeQuality original archive fetch failed");
   var scheduleModel = require("./src/native-model.js");
   var schedule = scheduleModel.timing({type:"rules",rules:[{type:"interval",minutes:120,anchor:Date.parse("2026-10-28T00:00:00Z")},{type:"every-days",days:2,startDate:"2026-10-28",time:"09:00",timezone:"Asia/Shanghai"},{type:"weekly",weekdays:[1,5],time:"21:00",timezone:"Asia/Shanghai"}]},"nodequality-full");
   if (scheduleModel.next(schedule, Date.parse("2026-10-28T00:00:00Z")) !== Date.parse("2026-10-28T01:00:00Z") || scheduleModel.next(schedule, Date.parse("2026-10-28T01:00:00Z")) !== Date.parse("2026-10-28T02:00:00Z")) throw new Error("Runtime combined schedule calculation failed");

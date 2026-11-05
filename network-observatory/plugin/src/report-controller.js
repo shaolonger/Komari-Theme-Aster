@@ -930,9 +930,9 @@ function registerReportController(ctx, native) {
       // Release the store lock before waiting for the upstream network.
       const round = await native.lock(() => store.get(part(req, 2), part(req, 4)));
       if (!round || round.detailAvailable === false) { ctx.respond(res, 404, { error: "原报告明细不可用或已过期" }); return; }
-      if (round.module !== "tcpquality-full") { ctx.respond(res, 400, { error: "此接口仅用于 TcpQuality 原始矢量图片" }); return; }
+      if (!["tcpquality-full", "nodequality-full"].includes(round.module)) { ctx.respond(res, 400, { error: "此接口仅用于完整检测原始报告" }); return; }
       const url = round.measurements?.[0]?.data?.reportUrl;
-      ctx.respond(res, 200, await reportAssets.collect(url));
+      ctx.respond(res, 200, await reportAssets.collect(url, round.module));
     } catch (error) { ctx.respond(res, 502, { error: String(error.message || error) }); }
   });
   route("DELETE", "/nodes/:uuid/rounds/:id", (req, res, s) => {

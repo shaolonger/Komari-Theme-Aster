@@ -1,11 +1,11 @@
 import type { ReportFullResult } from "./model";
 
 /** Embedded verbatim in offline reports; all helpers intentionally live inside. */
-export function resultToolkit() {
+export function resultToolkit(TerminalConstructor?: typeof import("@xterm/xterm").Terminal) {
   const xmlText = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, "");
   const escape = (value: unknown) => xmlText(String(value ?? "")).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
   // OSC titles/hyperlinks and other terminal commands are not printable XML.
-  const terminal = (value: string) => value.replace(/(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)/g, "").replace(/\x1b[PX^_][\s\S]*?(?:\x1b\\|$)/g, "").replace(/\r/g, "");
+  const terminal = (value: string, preserveCR = false) => value.replace(/(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)/g, "").replace(/\x1b[PX^_][\s\S]*?(?:\x1b\\|$)/g, "").replace(/\r/g, preserveCR ? "\r" : "");
   const strip = (value: string) => xmlText(terminal(value).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""));
   const colors = ["#236bfe", "#00ad92", "#8b5cf6", "#f59e0b", "#ef5276"];
   function csv(value: string) {
@@ -100,69 +100,76 @@ export function resultToolkit() {
     }
     return pages;
   }
-  function original(result: ReportFullResult) {
-    if (result.originalPages?.length) return result.originalPages.flatMap(page => {
+  async function original(result: ReportFullResult) {
+    if (result.originalPages?.length) return result.originalPages.map(page => {
       const root = page.svg.match(/<svg\b[^>]*>/i)?.[0];
       if (!root) throw new Error("上游原始图片缺少 SVG 根元素");
-      const viewBox = root.match(/\bviewBox=["']([^"']+)["']/i)?.[1]?.trim().split(/[\s,]+/).map(Number);
-      const [x, y, width, height] = viewBox?.length === 4 ? viewBox : [0, 0, Number(root.match(/\bwidth=["']([\d.]+)/i)?.[1]), Number(root.match(/\bheight=["']([\d.]+)/i)?.[1])];
-      if (![x, y, width, height].every(n => Number.isFinite(n)) || width! <= 0 || height! <= 0) throw new Error("上游原始图片尺寸无效");
-      const pageHeight = width! * 1.28, pages: string[] = [];
-      for (let offset = 0; offset < height!; offset += pageHeight) {
-        const h = Math.min(pageHeight, height! - offset);
-        const replacement = root.replace(/\s(?:width|height|viewBox)=["'][^"']*["']/gi, "").replace(/>$/, ` width="${width}" height="${h}" viewBox="${x} ${y! + offset} ${width} ${h}">`);
-        pages.push(page.svg.replace(root, replacement));
-      }
-      return pages;
+      const box = root.match(/\bviewBox=["']([^"']+)["']/i)?.[1]?.trim().split(/[\s,]+/).map(Number);
+      const dimensions = box?.length === 4 ? box : [0, 0, Number(root.match(/\bwidth=["']([\d.]+)/i)?.[1]), Number(root.match(/\bheight=["']([\d.]+)/i)?.[1])];
+      if (!dimensions.every(Number.isFinite) || dimensions[2]! <= 0 || dimensions[3]! <= 0) throw new Error("上游原始图片尺寸无效");
+      // One upstream section is one complete image. Never change its viewBox.
+      return page.svg;
     });
-    if (result.module === "tcpquality-full") throw new Error(result.originalError || "此轮上游原始图片尚未取得，请在生成选项中选择原始版后重新生成。");
-    const logs = result.sections.filter(section => section.format === "terminal");
-    if (!logs.length) throw new Error("此轮未保留上游终端输出，无法生成原始版图片。");
+    if (result.module === "tcpquality-full") throw new Error(result.originalError || "此轮尚未取得上游原始图片，请在线重新预览后导出。");
+    if (!TerminalConstructor) throw new Error("原始报告终端渲染器未加载");
+    const source = result.originalSections;
+    if (!source?.length) throw new Error("此轮尚未取得上游真实终端报告，不能用 JSON 代替原始版。请在线重新预览。");
+    const choose = (...names: string[]) => names.map(name => source.find(section => section.name === name)?.text).find(Boolean);
+    const logs = [choose("header_info.log"), choose("hardware_quality.log", "basic_info.log", "yabs.log"), choose("ip_quality.log"), choose("net_quality.log"), choose("backroute_trace.log")].filter((value): value is string => Boolean(value));
+    if (!logs.length || logs.some(log => /^\s*[\[{]/.test(log))) throw new Error("上游未提供可显示的原始终端日志，不能用 JSON 代替。");
     const palette = ["#050404", "#bd0013", "#4ab118", "#e7741e", "#0f4ac6", "#665993", "#70a598", "#f8dcc0", "#4e7cbf", "#fc5f5a", "#9eff6e", "#efc11a", "#1997c6", "#9b5953", "#c8faf4", "#f6f5fb"];
-    const pages: string[] = [];
-    for (const section of logs) {
-      const lines = terminal(section.text).replace(/\x1b\[(?![0-9;]*m)[0-?]*[ -/]*[@-~]/g, "").split("\n");
-      let color = "#f8dcc0", bold = false;
-      const styled: { char: string; column: number; color: string; bold: boolean }[][] = [];
-      for (const line of lines) {
-        let column = 0; let row: typeof styled[number] = [];
-        for (const token of line.split(/(\x1b\[[0-9;]*m)/)) {
-          if (token.startsWith("\x1b[")) {
-            const codes = token.slice(2, -1).split(";").map(v => Number(v || 0));
-            for (let i = 0; i < codes.length; i++) {
-              const c = codes[i]!;
-              if (c === 0) { color = "#f8dcc0"; bold = false; }
-              else if (c === 1) bold = true; else if (c === 22) bold = false; else if (c === 39) color = "#f8dcc0";
-              else if (c >= 30 && c <= 37) color = palette[c - 30]!;
-              else if (c >= 90 && c <= 97) color = palette[c - 90 + 8]!;
-              else if (c === 38 && codes[i + 1] === 2 && codes.length >= i + 5) { color = `rgb(${codes.slice(i + 2, i + 5).map(n => Math.max(0, Math.min(255, n))).join(",")})`; i += 4; }
-              else if (c === 38 && codes[i + 1] === 5 && codes.length >= i + 3) {
-                const n = Math.max(0, Math.min(255, codes[i + 2]!));
-                if (n < 16) color = palette[n]!;
-                else if (n >= 232) { const gray = 8 + (n - 232) * 10; color = `rgb(${gray},${gray},${gray})`; }
-                else { const v = n - 16, component = (n: number) => n === 0 ? 0 : 55 + n * 40; color = `rgb(${component(Math.floor(v / 36))},${component(Math.floor(v / 6) % 6)},${component(v % 6)})`; }
-                i += 2;
-              }
-            }
-          } else for (const char of Array.from(xmlText(token))) {
-            if (char === "\t") { column += 8 - column % 8; continue; }
-            const size = /\p{Mark}/u.test(char) ? 0 : /[^\x00-\xff]/.test(char) && !/[\u2500-\u259f]/.test(char) ? 2 : 1;
-            if (column + size > 130) { styled.push(row); row = []; column = 0; }
-            row.push({ char, column, color, bold }); column += size;
-          }
+    const paletteColor = (n: number) => {
+      if (n < 16) return palette[n]!;
+      if (n >= 232) { const v = 8 + (n - 232) * 10; return `rgb(${v},${v},${v})`; }
+      const value = n - 16, component = (n: number) => n === 0 ? 0 : 55 + n * 40;
+      return `rgb(${component(Math.floor(value / 36))},${component(Math.floor(value / 6) % 6)},${component(value % 6)})`;
+    };
+    const term = new TerminalConstructor({ cols: 114, rows: 2, scrollback: 30000, convertEol: true, allowProposedApi: true });
+    try {
+      for (const log of logs) {
+        const printable = terminal(log, true).replace(/\x1b\[(?:3;?J|H|2J)/g, "").trim() + "\r\n\r\n";
+        await new Promise<void>(resolve => term.write(printable, resolve));
+        if (term.buffer.active.length >= 30000) throw new Error("上游终端报告超过 30000 行，无法完整导出；请直接查看原报告。");
+      }
+      const buffer = term.buffer.active;
+      let rows = buffer.length;
+      while (rows > 1 && !buffer.getLine(rows - 1)?.translateToString(true).trim()) rows--;
+      const top = 212, lineHeight = 18, cellWidth = 8.4, left = 232;
+      const height = top + rows * lineHeight + 118;
+      let content = `<defs><linearGradient id="node-page" x2="0" y2="1"><stop stop-color="#0d0d18"/><stop offset=".7" stop-color="#170d31"/><stop offset="1" stop-color="#412084"/></linearGradient></defs><rect width="1420" height="${height}" fill="url(#node-page)"/><rect x="210" y="148" width="1000" height="${rows * lineHeight + 91}" rx="10" fill="#ffffff" fill-opacity=".1"/><path d="M554 36v46" stroke="#37ff8b" stroke-width="6"/>`;
+      content += text(566, 73, "NodeQuality", 46, "#fff", "600").replace("font-size=", 'font-family="Arial,sans-serif" font-size=');
+      const actions = (y: number) => ["复制文本", "复制为NodeSeek格式", "复制为通用Markdown", "提交"].map((label, i) => {
+        const widths = [88, 154, 154, 62], x = 210 + widths.slice(0, i).reduce((n, w) => n + w + 7, 0);
+        return `<rect x="${x}" y="${y}" width="${widths[i]}" height="27" fill="none" stroke="${i === 3 ? "#37ff8b" : "#777"}"/>` + text(x + 11, y + 18, label, 12, i === 3 ? "#37ff8b" : "#aaa");
+      }).join("");
+      content += actions(112) + `<rect x="231" y="158" width="500" height="34" rx="7" fill="#111" fill-opacity=".5"/><rect x="237" y="163" width="81" height="24" rx="6" fill="#888" fill-opacity=".4"/>`;
+      ["全部", "基本信息", "IP质量", "网络质量", "回程路由"].forEach((label, i) => { content += text(266 + i * 97, 181, label, 12, "#00ef80", "700"); });
+      for (let row = 0; row < rows; row++) {
+        const line = buffer.getLine(row); if (!line) continue;
+        let run = "", runStart = 0, runWidth = 0, prior = "", fg = "", bg = "", weight = "", decoration = "", opacity = "1", italic = "normal";
+        const flush = () => {
+          if (!run) return;
+          const x = left + runStart * cellWidth, y = top + row * lineHeight;
+          if (bg) content += `<rect x="${x}" y="${y - 14}" width="${runWidth * cellWidth}" height="18" fill="${bg}"/>`;
+          if (run.trim()) content += `<text x="${x}" y="${y}" fill="${fg}" font-size="14" font-weight="${weight}" font-style="${italic}" opacity="${opacity}" text-decoration="${decoration}" xml:space="preserve" textLength="${runWidth * cellWidth}" lengthAdjust="spacingAndGlyphs">${escape(run)}</text>`;
+          run = ""; runWidth = 0;
+        };
+        for (let column = 0; column < term.cols; column++) {
+          const cell = line.getCell(column); if (!cell || !cell.getWidth()) continue;
+          let foreground = cell.isFgRGB() ? `#${cell.getFgColor().toString(16).padStart(6, "0")}` : cell.isFgPalette() ? paletteColor(cell.getFgColor() + (cell.isBold() && cell.getFgColor() < 8 ? 8 : 0)) : "#f8dcc0";
+          let background = cell.isBgRGB() ? `#${cell.getBgColor().toString(16).padStart(6, "0")}` : cell.isBgPalette() ? paletteColor(cell.getBgColor()) : "";
+          if (cell.isInverse()) [foreground, background] = [background || "#22212c", foreground];
+          const next = [foreground, background, cell.isBold() ? "700" : "400", cell.isUnderline() ? "underline" : cell.isStrikethrough() ? "line-through" : "none", cell.isDim() ? ".5" : "1", cell.isItalic() ? "italic" : "normal"];
+          const key = next.join("|");
+          if (key !== prior) { flush(); [fg, bg, weight, decoration, opacity, italic] = next as [string, string, string, string, string, string]; runStart = column; prior = key; }
+          if (!run) runStart = column;
+          run += cell.isInvisible() ? " " : cell.getChars() || " "; runWidth += cell.getWidth();
         }
-        styled.push(row);
+        flush();
       }
-      const columns = Math.max(60, ...styled.map(row => row.length ? row.at(-1)!.column + 2 : 0));
-      const width = Math.ceil((columns + 10) * 8.4 + 40);
-      for (let offset = 0; offset < styled.length; offset += 55) {
-        const height = Math.min(55, styled.length - offset) * 18 + 40;
-        let content = `<rect width="${width}" height="${height}" fill="#1d1d1e"/>`;
-        styled.slice(offset, offset + 55).forEach((row, index) => { for (const cell of row) content += text(20 + cell.column * 8.4, 34 + index * 18, cell.char, 14, cell.color, cell.bold ? "700" : "400"); });
-        pages.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Consolas,'xyBarMono','Courier New',monospace">${content}</svg>`);
-      }
-    }
-    return pages;
+      content += actions(height - 57) + text(1038, height - 16, "Powered By NodeSeek", 12, "#c5c5dc");
+      return [`<svg xmlns="http://www.w3.org/2000/svg" width="1420" height="${height}" viewBox="0 0 1420 ${height}" font-family="Consolas,'Courier New',monospace">${content}</svg>`];
+    } finally { term.dispose(); }
   }
   async function png(svg: string, scale = 2) {
     const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
@@ -170,11 +177,13 @@ export function resultToolkit() {
     const image = new Image(); image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
     try { await image.decode(); } catch { throw new Error("结果图片无法解码，请重新生成报告后重试。"); }
     const width = image.naturalWidth, height = image.naturalHeight;
-    scale = Math.max(scale, 2400 / width);
-    if (!width || !height || width * height * scale * scale > 64000000) throw new Error("单张原始图片尺寸过大，请使用上游分区报告。");
+    scale = Math.min(Math.max(scale, 2400 / width), Math.sqrt(64000000 / (width * height)), 32760 / Math.max(width, height));
+    if (!width || !height || scale <= 0 || width * height * scale * scale > 64000001) throw new Error("单张原始图片尺寸过大，请使用上游分区报告。");
     const canvas = document.createElement("canvas"); canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
     const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("浏览器无法创建高清图片");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const background = parsed.documentElement.querySelector("rect")?.getAttribute("fill") || "";
+    ctx.fillStyle = /^(?:#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\))$/i.test(background) ? background : "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("PNG 编码失败")), "image/png"));
     canvas.width = canvas.height = 1;
     return blob;
