@@ -33,6 +33,7 @@ function shareJob(job, candidate, plannedAt) {
 function registerReportController(ctx, native) {
   const store = roundStore(ctx.storageDir, ctx.isMissingFile);
   const bgp = B.createBgpCollector(ctx.bgpOptions);
+  const reportAssets = require("./report-assets.js").createReportAssets(ctx.reportAssetOptions);
   const homeRoutes = require("./home-routes.js").homeRouteStore(ctx.storageDir, ctx.isMissingFile);
   const homeSpeeds = require("./home-speeds.js").homeSpeedStore(ctx.storageDir, ctx.isMissingFile);
   const speedHistoryChecked = new Set();
@@ -921,6 +922,17 @@ function registerReportController(ctx, native) {
       result ? 200 : 404,
       result || { error: "轮次不存在或已超过保留期" },
     );
+  });
+  ctx.server.route("GET", BASE + "/nodes/:uuid/rounds/:id/original-images", async (req, res) => {
+    if (!ctx.authorized(req, res)) return;
+    try {
+      // Release the store lock before waiting for the upstream network.
+      const round = await native.lock(() => store.get(part(req, 2), part(req, 4)));
+      if (!round || round.detailAvailable === false) { ctx.respond(res, 404, { error: "原报告明细不可用或已过期" }); return; }
+      if (round.module !== "tcpquality-full") { ctx.respond(res, 400, { error: "此接口仅用于 TcpQuality 原始矢量图片" }); return; }
+      const url = round.measurements?.[0]?.data?.reportUrl;
+      ctx.respond(res, 200, await reportAssets.collect(url));
+    } catch (error) { ctx.respond(res, 502, { error: String(error.message || error) }); }
   });
   route("DELETE", "/nodes/:uuid/rounds/:id", (req, res, s) => {
     const node = part(req, 2), id = part(req, 4);

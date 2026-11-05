@@ -2,6 +2,9 @@ import { CHAPTERS, METRIC_FIELDS } from "./model";
 import type { EvidenceValue, ReportMetric, ReportModel } from "./model";
 import { readerRuntime } from "./readerRuntime";
 import { reportCss } from "./reportCss";
+import { fullResultGallery, networkVisualSummary, resourceRings, trendExplorer, reportDonut, pingComparison } from "./visuals";
+import { resultToolkit } from "./resultToolkit";
+import { resultReaderRuntime } from "./resultReaderRuntime";
 
 export const escapeHtml = (v: unknown) =>
   String(v ?? "").replace(
@@ -107,7 +110,7 @@ export function renderReportHtml(model: ReportModel) {
     model.stats[key]
       ? `${((model.stats[key]!.coveredMs / (model.range.end - model.range.start)) * 100).toFixed(1)}%`
       : "—";
-  const kpis = `<div class="kpis">${stat("CPU · 返回点时间加权均值", value("cpu"), metric("cpu")?.precision ?? "未采集")}${stat("内存 · 返回点时间加权均值", value("ram"), "容量配置为生成时快照")}${stat("期间已观测总流量", model.traffic.up != null && model.traffic.down != null ? f(model.traffic.up + model.traffic.down, "B") : "—", "计数器差分 · 可能低估")}${stat("可见 Ping 任务", String(model.pings.length), "各任务独立统计")}</div>`;
+  const kpis = `<div class="kpis">${stat("平均 CPU 使用", value("cpu"), "所选期间的资源负载")}${stat("平均内存使用", value("ram"), "所选期间的容量占用")}${stat("已观测流量", model.traffic.up != null && model.traffic.down != null ? f(model.traffic.up + model.traffic.down, "B") : "—", "上传与下载合计")}${stat("网络探测任务", String(model.pings.length), "延迟与丢包分别呈现")}</div>`;
   const findings = (limit: number) =>
     model.findings
       .slice(0, limit)
@@ -136,12 +139,12 @@ export function renderReportHtml(model: ReportModel) {
   const overviewPing = model.pings.find(p => p.points.some(point => point.v != null));
   const overview =
     summary(
-      model.stats.cpu?.count
-        ? `已观测到的 CPU 均值为 ${value("cpu")}。`
-        : "这份档案保留了所选日期内可读取的数据。",
-      "先看趋势与线索，再查看每个章节。未采集、过期、无权限与查询失败均单独列明；配置与当前状态是生成时快照。",
+      model.findings.some(item => item.severity === "warning")
+        ? `有 ${model.findings.filter(item => item.severity === "warning").length} 项变化值得留意。`
+        : "回顾这段时间的运行变化。",
+      "从资源负载、流量变化和网络体验开始，快速找到值得关注的时刻；完整检测结果可按需选择、放大与导出。",
     ) +
-    kpis +
+    kpis + resourceRings(model) +
     `<div class="charts">${chart("cpu", "CPU 使用趋势")}${overviewPing ? chart(`ping:${overviewPing.id}`, overviewPing.name) : chart("ram", "内存使用趋势")}</div>` +
     div +
     "<h3>值得留意的发现</h3>" +
@@ -161,6 +164,7 @@ export function renderReportHtml(model: ReportModel) {
       "资源使用、容量与连接数一并回顾。",
       "均值按推断采样间距加权且不跨缺口；分位数和峰值只描述返回点或桶均值，无法还原原始瞬时分布。",
     ) +
+    resourceRings(model) +
     (gauges.length
       ? `<div class="charts">${gauges
           .filter(
@@ -173,7 +177,7 @@ export function renderReportHtml(model: ReportModel) {
           )
           .map((m) => chart(m.key))
           .join("")}</div>` +
-        table(
+        '<details class="technical-details"><summary>资源统计与采样明细</summary>' + table(
           ["指标", "有效点", "加权均值", "返回点峰值", "返回点 P95", "精度"],
           gauges.map((m) => [
             m.label,
@@ -184,7 +188,7 @@ export function renderReportHtml(model: ReportModel) {
             m.precision,
           ]),
         ) +
-        gauges.map(chartTable).join("")
+        gauges.map(chartTable).join("") + '</details>'
       : note(noData)) +
     note(
       `GPU、温度、Swap、IO/IOPS、硬盘健康、容器、每进程资源和应用日志仅在数据源明确提供时可分析。本次${model.node.swap === 0 ? "容量快照显示 Swap 为 0，不能据此断言历史一直没有 Swap。" : "Swap 容量仅代表生成时配置。"}`,
@@ -204,13 +208,14 @@ export function renderReportHtml(model: ReportModel) {
   });
   const pingCharts = model.pings
     .filter(p => p.points.some(point => point.v != null))
+    .slice(0, 1)
     .map((p) => chart(`ping:${p.id}`, `${p.name} · ${p.protocol}`))
     .join("");
-  const networkModules = [...new Set(model.network.map((n) => n.module))];
+  const networkModules = [...new Set(model.network.map((n) => n.module))].filter(module => !["tcpquality-full", "nodequality-full"].includes(module));
   const networkDetail = networkModules
     .map((module) => {
       const rows = model.network.filter((n) => n.module === module);
-      const visible = rows.slice(0, 100);
+      const visible = rows.slice(0, 10);
       return (
         `<h3>${e(networkLabel(module))}</h3>` +
         (rows.length > visible.length ? note(`此处展示最近 ${visible.length} 条，全部 ${rows.length} 条已保存在报告数据 JSON。`) : "") +
@@ -354,69 +359,38 @@ export function renderReportHtml(model: ReportModel) {
       );
     })
     .join(div);
-  const priority = ["routes", "china-speed", "international", "tcp-quality", "international-speed", "idc", "bgp"];
-  const trendModules = [...new Set(model.networkTrends.map(t => t.module))].sort((a, b) => {
-    const x = priority.indexOf(a), y = priority.indexOf(b);
-    return (x < 0 ? priority.length : x) - (y < 0 ? priority.length : y) || a.localeCompare(b);
-  });
-  const networkCharts = trendModules.map(module => {
-    const trends = model.networkTrends.map((trend, index) => ({ trend, index })).filter(row => row.trend.module === module);
-    return `<section class="network-trend-group"><h3>${e(networkLabel(module))} · 历史趋势</h3><div class="charts">${trends.map(({ trend, index }) =>
-      `<figure><figcaption>${e(trend.title)}</figcaption><div class="chart" data-chart="${trend.kind === "category" ? "network-category:" : "network:"}${index}"><p class="muted">正在准备历史趋势…</p></div><p class="muted">${trend.kind === "category" ? "每个标记代表实际观测；同位置可有多条" : "按测点、方向和协议分别显示，缺测不连接"} · ${trend.points.length} 条观测</p><details class="chart-tables"><summary>查看观测数据</summary>${trend.points.length > 50 ? note("展示最近 50 条，全部观测保存在数据 JSON。") : ""}${table(["时间", "观测值", "状态"], trend.points.slice(-50).reverse().map(p => [date(p.t), p.label || f(p.v, trend.unit), measurementLabels[p.state] || p.state]))}</details></figure>`).join("")}</div></section>`;
-  }).join("");
   const network =
-    summary(
-      "网络质量按任务、方向、协议和来源分别呈现。",
-      "报告仅汇总已有检测，不发起新的探测或测速。失败探测不进入成功时延均值；不同测量方法不混算。",
-    ) +
-    (model.pings.length
-      ? table(
-          [
-            "Ping 任务",
-            "协议",
-            "目标",
-            "成功时延加权均值",
-            "失败探测 / 总探测",
-          ],
-          pingRows,
-        ) + `<div class="charts">${pingCharts}</div>`
-      : note("没有可见 Ping 任务或样本；这不代表线路无丢包。")) +
-    model.pings
-      .map(
-        (p) =>
-          `<details class="chart-tables"><summary>${e(p.name)} · 探测桶数据表（${p.points.length} 点）</summary>${note("展示前 200 点；完整桶数据、样本数与失败数保存在数据 JSON。")} ${table(
-            ["时间", "成功时延", "失败 / 总数"],
-            p.points
-              .slice(0, 200)
-              .map((v) => [date(v.t), f(v.v, "ms"), `${v.lost} / ${v.sent}`]),
-          )}</details>`,
-      )
-      .join("") +
-    div +
-    "<h3>网络观测历史趋势</h3>" +
-    note("线路名称是观察到的网络标识，不代表商业产品认证。测速按 VPS 方向、连接数和测点分开；空白不代表 0。明细过期后仅展示仍保留的摘要。") +
-    (networkCharts || note("当前范围内没有可绘制的网络观测数据。")) +
-    div +
-    "<h3>既有网络检测档案</h3>" +
-    (networkDetail ||
-      note("所选期间没有可纳入的网络检测记录；接口状态与保留限制见数据口径。"));
+    summary("看清网络体验与每轮检测结果。", "先了解整体完成情况，再选择测点查看延迟、丢包与速度变化。") +
+    networkVisualSummary(model) +
+    (model.pings.length ?
+      '<div class="section-heading"><div><h3>线路体验</h3><p class="muted">按独立任务回顾成功时延；失败样本另计。</p></div></div>' +
+      `<label class="ping-picker">探测任务<select data-ping-picker aria-label="报告中的 Ping 任务">${model.pings.filter(p => p.points.some(point => point.v != null)).map(p => `<option value="${p.id}">${e(p.name)}</option>`).join("")}</select></label><div class="charts ping-charts">${pingCharts}${pingComparison(model)}</div>` +
+      '<details class="technical-details"><summary>Ping 统计与探测明细</summary>' +
+      table(["任务", "协议", "目标", "平均成功时延", "失败 / 总数"], pingRows) +
+      model.pings.map(p => `<details><summary>${e(p.name)} · ${p.points.length} 个返回点</summary>${table(["时间", "成功时延", "失败 / 总数"], p.points.slice(0, 200).map(v => [date(v.t), f(v.v, "ms"), `${v.lost} / ${v.sent}`]))}</details>`).join("") + '</details>'
+      : note("当前没有可见的 Ping 样本。")) +
+    fullResultGallery(model) + trendExplorer(model) +
+    '<details class="technical-details"><summary>查看网络检测的详细证据与原始数据</summary>' +
+    (networkDetail || note("当前范围内没有可纳入的详细记录。")) + '</details>';
 
   const traffic =
     summary(
       "期间流量是已观测计数器增量，套餐用量单独归档。",
       "不把当前累计值当成所选期间用量。计数器回退段不累加，边界缺样与缺测使结果可能低估。",
     ) +
-    `<div class="kpis">${stat("期间已观测上传", f(model.traffic.up, "B"), "VPS 发出")}${stat("期间已观测下载", f(model.traffic.down, "B"), "VPS 接收")}${stat("当前套餐配额", model.node.trafficLimit > 0 ? f(model.node.trafficLimit, "B") : "未配置", "生成时快照")}${stat("计数器回退", String(model.traffic.resets), "回退段未纳入用量")}</div><div class="charts">${chart("net_in")}${chart("net_out")}</div>` +
+    `<div class="kpis">${stat("期间已观测上传", f(model.traffic.up, "B"), "VPS 发出")}${stat("期间已观测下载", f(model.traffic.down, "B"), "VPS 接收")}${stat("当前套餐配额", model.node.trafficLimit > 0 ? f(model.node.trafficLimit, "B") : "未配置", "生成时快照")}${stat("计数器回退", String(model.traffic.resets), "回退段未纳入用量")}</div>` +
+    (model.traffic.up != null && model.traffic.down != null ? reportDonut("上传与下载的用量构成", [{ label: "上传", value: model.traffic.up }, { label: "下载", value: model.traffic.down }], f(model.traffic.up + model.traffic.down, "B"), "已观测合计", value => f(value, "B")) : note("上下行数据不足，暂不绘制流量占比；已取得的用量分别保留。")) +
+    `<div class="charts">${chart("net_in")}${chart("net_out")}</div>` +
     (model.traffic.daily.length
       ? '<figure><figcaption>每日已观测流量 · 蓝色 ↓ 下载 / 紫色 ↑ 上传</figcaption><div class="chart" data-chart="traffic-daily"></div></figure>' +
-        table(
+        '<details class="technical-details"><summary>每日流量明细</summary>' + table(
           ["增量归属日期", "上传", "下载"],
           model.traffic.daily.map((d) => [
             d.date,
             f(d.up, "B"),
             f(d.down, "B"),
           ]),
-        )
+        ) + '</details>'
       : note(noData)) +
     note(
       `流量质量：${model.traffic.partial ? "部分覆盖 / 仅观测增量" : "边界完整"}。跨午夜采样的增量归入后一观测点日期，不能精确拆分自然日账单。当前配额规则：${model.node.trafficRule || "未提供"}；仅为生成时配置。`,
@@ -449,14 +423,14 @@ export function renderReportHtml(model: ReportModel) {
     `<div class="kpis">${stat("当前状态", model.node.snapshot.online == null ? "未知" : model.node.snapshot.online ? "在线" : "离线", "生成时快照")}${stat("当前 uptime", model.node.snapshot.uptime == null ? "—" : f(model.node.snapshot.uptime / 86400, "天"), "生成时快照")}${stat("CPU 估计采集覆盖", coverage("cpu"), "按返回点间距估计")}${stat("历史在线率", "不可计算", "缺少可靠历史事件")}</div>` +
     (cpu
       ? `<h3>CPU 有效采集估计覆盖</h3><div class="coverage" role="img" aria-label="CPU 估计采集覆盖 ${e(coverage("cpu"))}"><span style="width:${Math.max(0, Math.min(100, (cpu.coveredMs / (model.range.end - model.range.start)) * 100))}%"></span></div><p class="muted">覆盖 ${e(coverage("cpu"))} · 其余为未知时间；估计依据不代表采集 SLA</p>` +
-        table(
+        '<details class="technical-details"><summary>查看采集缺口明细</summary>' + table(
           ["未知时段开始", "结束", "时长"],
           cpu.gaps.map((g) => [
             date(g.start),
             date(g.end),
             f((g.end - g.start) / 60000, "分钟"),
           ]),
-        )
+        ) + '</details>'
       : note(noData)) +
     note(
       "重启、磁盘故障、服务异常或应用不可用需要独立事件、日志或服务级探测证明。本报告不会将资源指标自动转写为故障根因。",
@@ -467,14 +441,16 @@ export function renderReportHtml(model: ReportModel) {
       "保存这一刻的节点配置与资产信息。",
       "这些信息为生成时快照，无法还原所选日期内曾发生的扩容、迁移、价格或操作系统变化。",
     ) +
-    definitions([
+    `<div class="kpis">${stat("处理器", String(model.node.cores || "—"), "vCPU")}${stat("内存容量", f(model.node.memory || null, "B"), "当前配置")}${stat("磁盘容量", f(model.node.disk || null, "B"), "当前配置")}${stat("当前状态", model.node.snapshot.online == null ? "未知" : model.node.snapshot.online ? "在线" : "离线", "生成时快照")}</div>` +
+    definitions(model.node.fields.filter(([key]) => ["厂商", "地区", "系统", "用途"].includes(key))) +
+    '<details class="technical-details"><summary>完整配置、续费与系统资料</summary>' + definitions([
       ...model.node.fields,
       ["公网地址", model.node.ip.join(" / ") || "未提供"],
       ["内存容量", f(model.node.memory || null, "B")],
       ["磁盘容量", f(model.node.disk || null, "B")],
       ["Swap 容量", f(model.node.swap, "B")],
       ["最近上报", date(model.node.snapshot.updatedAt)],
-    ]) +
+    ]) + '</details>' +
     note(
       "续费配置不等于实际支出账单。不同币种不默认相加，也不自动获取汇率。历史内存与磁盘百分比若换算，只能使用当前容量分母。完整地址显示由本次生成选项决定。",
     );
@@ -552,7 +528,7 @@ export function renderReportHtml(model: ReportModel) {
           ]),
         )
       : "";
-  const sources =
+  const sourceDetails =
     summary(
       "报告的来源、精度与缺项一并保存在本地。",
       "统计仅基于本次实际取得的输入；后端已聚合的数据不能命名为全部原始样本。",
@@ -609,6 +585,7 @@ export function renderReportHtml(model: ReportModel) {
       "未提供的项目：历史在线/重启事件、硬盘健康、磁盘 IO/IOPS、每进程资源、容器、应用日志、漏洞与安全扫描。这份报告不声称已审计这些方面。完整返回输入与派生统计已封装在数据 JSON 中。",
     );
 
+  const sources = `<div class="source-cards">${model.sources.map(source => `<div><span class="tag${source.state === "available" ? "" : " warning"}">${e(stateLabels[source.state] || source.state)}</span><strong>${e(source.name)}</strong><p>${e(source.detail)}</p></div>`).join("")}</div><details class="technical-details"><summary>查看完整的数据口径、采样精度和比较依据</summary>${sourceDetails}</details>`;
   const contents = [
     overview,
     resources,
@@ -629,7 +606,7 @@ export function renderReportHtml(model: ReportModel) {
     ) ||
     (cpu && cpu.gaps.length > 0);
   const payload = safeJson(model);
-  const html = `<!doctype html><html lang="zh-CN" data-theme="${model.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><title>${e(model.node.name)} · VPS 全面报告 · Aster</title><style>${reportCss}</style></head><body><header class="masthead"><div><div class="kicker">Aster · VPS Comprehensive Report</div><div class="title-line"><h1>${e(model.node.name)}</h1><span class="tag${limited || !history ? " warning" : ""}">${history ? (limited ? "已生成 · 部分覆盖" : "已生成 · 详见数据覆盖") : "无历史数据 · 仅配置快照"}</span></div><p class="period">${e(date(model.range.start))} — ${e(date(model.range.end))}<br>${e(model.range.timeZone)} · 生成于 ${e(date(model.generatedAt))}</p></div><div class="toolbar"><button type="button" data-print>打印 / 存为 PDF</button><button type="button" data-json>数据 JSON</button></div></header><div class="workspace"><nav aria-label="报告章节">${CHAPTERS.map(([key, name], i) => `<button type="button" data-chapter="${key}"${i === 0 ? ' aria-current="page"' : ""}><small>${String(i + 1).padStart(2, "0")}</small>${name}</button>`).join("")}<div class="nav-foot">独立快照 · 断网可读<br>${e(model.showAddresses ? "完整地址已包含" : "地址已脱敏")}<br>${e(model.reportId)}</div></nav><article class="paper">${CHAPTERS.map(([key, name], i) => `<section id="${key}" class="chapter"${i ? " hidden" : ""}><header class="chapter-head"><div><h2>${name}</h2><p>${e(model.node.name)} · 所选日期范围的已授权数据</p></div><span class="page-number">${String(i + 1).padStart(2, "0")} / 08</span></header><div class="chapter-body">${contents[i]}</div></section>`).join("")}<footer class="footer"><span>Aster · VPS 全面报告 · 格式版本 1</span><span>${e(model.node.name)} · ${e(date(model.generatedAt))}</span></footer></article></div><script id="report-data" type="application/json">${payload}</script><script>(${readerRuntime.toString()})();</script></body></html>`;
+  const html = `<!doctype html><html lang="zh-CN" data-theme="${model.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><title>${e(model.node.name)} · VPS 全面报告 · Aster</title><style>${reportCss}</style></head><body><header class="masthead"><div><div class="kicker">Aster · VPS Comprehensive Report</div><div class="title-line"><h1>${e(model.node.name)}</h1><span class="tag${limited || !history ? " warning" : ""}">${history ? (limited ? "已生成 · 部分覆盖" : "已生成 · 详见数据覆盖") : "无历史数据 · 仅配置快照"}</span></div><p class="period">${e(date(model.range.start))} — ${e(date(model.range.end))}<br>${e(model.range.timeZone)} · 生成于 ${e(date(model.generatedAt))}</p></div><div class="toolbar"><button type="button" data-save-html>下载 HTML</button><button type="button" data-print>打印 / 存为 PDF</button><button type="button" data-json>数据 JSON</button><span class="export-status" role="status" data-export-status></span></div></header><div class="workspace"><nav aria-label="报告章节">${CHAPTERS.map(([key, name], i) => `<button type="button" data-chapter="${key}"${i === 0 ? ' aria-current="page"' : ""}><small>${String(i + 1).padStart(2, "0")}</small>${name}</button>`).join("")}<div class="nav-foot">独立快照 · 断网可读<br>${e(model.showAddresses ? "完整地址已包含" : "地址已脱敏")}<br>${e(model.reportId)}</div></nav><article class="paper">${CHAPTERS.map(([key, name], i) => `<section id="${key}" class="chapter"${i ? " hidden" : ""}><header class="chapter-head"><div><h2>${name}</h2><p>${e(model.node.name)} · 所选日期范围的已授权数据</p></div><span class="page-number">${String(i + 1).padStart(2, "0")} / 08</span></header><div class="chapter-body">${contents[i]}</div></section>`).join("")}<footer class="footer"><span>Aster · VPS 全面报告 · 格式版本 1</span><span>${e(model.node.name)} · ${e(date(model.generatedAt))}</span></footer></article></div><script id="report-data" type="application/json">${payload}</script><script>(${readerRuntime.toString()})(${resultReaderRuntime.toString()},(${resultToolkit.toString()})());</script></body></html>`;
   if (new TextEncoder().encode(html).byteLength > 128 * 1024 * 1024)
     throw new Error("完整报告文件超过 128 MiB，请缩小日期范围后重新生成。");
   return html;

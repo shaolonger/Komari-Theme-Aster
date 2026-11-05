@@ -44,6 +44,7 @@ export type Appearance = "system" | "light" | "dark" | "diagnostic" | "clearsky"
 export type NodeViewMode = "large" | "standard" | "compact" | "list";
 
 export interface ResolvedThemeSettings {
+  reportResultStyle: "unified" | "original";
   defaultAppearance: Appearance;
   displayTimeZone: DisplayTimeZone;
   desktopNodeViewMode: NodeViewMode;
@@ -88,6 +89,7 @@ export interface ResolvedThemeSettings {
 }
 
 export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
+  reportResultStyle: "unified",
   defaultAppearance: "system",
   displayTimeZone: SYSTEM_DISPLAY_TIME_ZONE,
   desktopNodeViewMode: "standard",
@@ -170,6 +172,7 @@ export function normalizeThemeSettings(
 
   return {
     defaultAppearance: normalizeAppearance(settings?.defaultAppearance),
+    reportResultStyle: settings?.reportResultStyle === "original" ? "original" : "unified",
     displayTimeZone: normalizeDisplayTimeZone(settings?.displayTimeZone),
     desktopNodeViewMode: normalizeNodeViewMode(
       settings?.desktopNodeViewMode,

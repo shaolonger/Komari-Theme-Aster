@@ -4,6 +4,7 @@ import { checkGlacier } from "./glacier-browser-gates.mjs";
 import { checkSlate } from "./slate-browser-gates.mjs";
 import { checkClearSky } from "./clear-sky-browser-gates.mjs";
 import { checkCardObservations } from "./card-observation-browser-gates.mjs";
+import { checkReportExports } from "./report-export-browser-gates.mjs";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -110,11 +111,11 @@ const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module
  const config={module,preset:reportPresets.find(p=>p.module===module).id,endpoints:[],family:'4',protocols:['tcp','icmp'],sources:[],publicSources:true,seconds:10,warmupSeconds:2,streams:[1,4],enabled:true,timing:{type:'interval',minutes:30},nextAt:Date.now()+60000};
  if (module === 'nodequality-full') {
    const at = new Date().toISOString(), slot={id:module,jobId:'job-nodequality',target:'localhost',direction:'VPS→NodeQuality 测点',source:{provider:'runner'},endpoint:null,options:{},state:'ok',missingReason:''};
-   return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',plannedAt:at,startedAt:at,completedAt:at,state:'complete',counts:{expected:1,completed:1,ok:1,partial:0,failed:0,missing:0,cancelled:0},detailAvailable:true,parameters:{...config,family:'auto'},catalogVersion:reportCatalogVersion,slots:[slot],measurements:[{id:'job-nodequality',roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:'localhost',direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:{},startedAt:at,completedAt:at,data:{kind:module,state:'ok',family:'auto',reportUrl:'https://nodequality.com/r/fixture',sections:{'ip_quality.json':'{"fixture":true}'},cleanLog:'NodeQuality 执行完成'}}]}];
+   return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',plannedAt:at,startedAt:at,completedAt:at,state:'complete',counts:{expected:1,completed:1,ok:1,partial:0,failed:0,missing:0,cancelled:0},detailAvailable:true,parameters:{...config,family:'auto'},catalogVersion:reportCatalogVersion,slots:[slot],measurements:[{id:'job-nodequality',roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:'localhost',direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:{},startedAt:at,completedAt:at,data:{kind:module,state:'ok',family:'auto',reportUrl:'https://nodequality.com/r/fixture',sections:{'ip_quality.json':'{"ipv4":{"risk_score":12,"latency_ms":24,"provider":"Fixture Cloud"},"streaming":{"available":true}}','ip_quality.log':'\u001b[32mIP 质量检测\u001b[0m\nIPv4: 203.0.113.19\n网络质量：正常\n','net_quality.log':'\u001b[36m网络质量检测\u001b[0m\n电信 24 ms\n联通 31 ms\n移动 19 ms'},cleanLog:'NodeQuality 执行完成'}}]}];
  }
  if (module === 'tcpquality-full') {
    const at = new Date().toISOString(), slot={id:'tcpquality-full',jobId:'job-full',target:'localhost',direction:'VPS→TcpQuality 测点',source:{provider:'runner'},endpoint:null,options:{},state:'partial',missingReason:''};
-   return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',plannedAt:at,startedAt:at,completedAt:at,state:'partial',counts:{expected:1,completed:1,ok:0,partial:1,failed:0,missing:0,cancelled:0},detailAvailable:true,parameters:{...config,profile:'LOWMEM',timeoutMinutes:120},catalogVersion:reportCatalogVersion,slots:[slot],measurements:[{id:'job-full',roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:'localhost',direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:{},startedAt:at,completedAt:at,data:{kind:module,state:'partial',profile:'LOWMEM',diagnostic:'在线报告上传失败；已保留 CSV',reportUrl:'https://tcpquality.ibsgss.uk/r/fixture',cleanLog:'TcpQuality 测试报告示例',csv:'node,latency\nfixture,20',coverage:{state:'partial',ok:4,failed:1,skipped:2,unknown:0,total:7,ipv4:'available',ipv6:'unavailable',sections:[{name:'回程',ok:4,failed:1,skipped:2,unknown:0,total:7}]}}}]}];
+   return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',plannedAt:at,startedAt:at,completedAt:at,state:'partial',counts:{expected:1,completed:1,ok:0,partial:1,failed:0,missing:0,cancelled:0},detailAvailable:true,parameters:{...config,profile:'LOWMEM',timeoutMinutes:120},catalogVersion:reportCatalogVersion,slots:[slot],measurements:[{id:'job-full',roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:'localhost',direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:{},startedAt:at,completedAt:at,data:{kind:module,state:'partial',profile:'LOWMEM',diagnostic:'在线报告上传失败；已保留 CSV',reportUrl:'https://tcpquality.ibsgss.uk/r/fixture',cleanLog:'TcpQuality 测试报告示例',csv:'测点,运营商,地区,状态,平均延迟ms,丢包率(%)\n上海,电信,中国,OK,24,0\n北京,联通,中国,OK,31,0\n广州,移动,中国,FAIL,180,12',coverage:{state:'partial',ok:4,failed:1,skipped:2,unknown:0,total:7,ipv4:'available',ipv6:'unavailable',sections:[{name:'回程',ok:4,failed:1,skipped:2,unknown:0,total:7}]}}}]}];
  }
  const selected=module==='international'?reportEndpoints.filter(e=>['aws','websites','cdn','telegram'].includes(e.category)&&e.family!=='6'):module==='idc'?reportEndpoints.filter(e=>e.category==='idc'):(module==='routes'||module==='tcp-quality')?reportEndpoints.filter(e=>e.category==='china-route'&&e.family==='4').slice(0,9):module==='bgp'?[reportEndpoints[0]]:reportEndpoints.filter(e=>e.category==='speed').slice(0,module==='china-speed'?9:10);
  const slots=selected.map((e,i)=>({id:e.id,jobId:'job-'+i,target:e.address,direction:module==='routes'?'VPS→大陆':'VPS↔端点',source:{provider:e.provider,city:module==='china-speed'?['北京','上海','广州'][Math.floor(i/3)]:e.city||'北京',carrier:module==='china-speed'?['电信','联通','移动'][i%3]:e.carrier||'电信'},endpoint:e,options:{protocol:'tcp',port:e.port},state:i===1?'missing':'ok',missingReason:i===1?'此地区尚未配置授权端点':'',metrics:{medianMs:20+i}}));
@@ -497,6 +498,7 @@ const server = createServer(async (request, response) => {
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
     if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:fixture.planCards?Array.from({length:7},(_,i)=>({id:'plan-'+i,name:['测速-v4','测速-v6','国际线路','大陆线路-v4','大陆线路-v6','TcpQuality','NodeQuality'][i],clients:i===3?[]:['node-0'],groups:i===3?['Group 0']:[],inherit:true,enabled:i!==6,trafficAccepted:true,modules:[reportRoundData.international.parameters],catalogVersion:reportCatalogVersion})):reportSavedSuite?[reportSavedSuite]:[],revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails});
     if(/^nodes\/[^/]+\/(?:rounds|history-summary)$/.test(suffix)){const module=url.searchParams.get('module');const r=fixtureReportRound(module);return sendJson(response,{rounds:fixture.comprehensive?[r,fixtureReportRound(module,true)]:[r],nextCursor:null});}
+    if(/^nodes\/[^/]+\/rounds\/[^/]+\/original-images$/.test(suffix)) return sendJson(response,{pages:[{title:'IPv4 回程',svg:'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1400" viewBox="0 0 1000 1400"><rect width="1000" height="1400" fill="#181713"/><text x="40" y="90" fill="#eee8d0" font-size="30">TcpQuality Original Report</text><text x="40" y="150" fill="#87d88d" font-size="22">Shanghai 24ms / Beijing 31ms</text></svg>'}]});
     if(/^nodes\/[^/]+\/rounds\/[^/]+$/.test(suffix)){const id=suffix.split('/').at(-1), prior=id.endsWith('-older'), base=prior?id.slice(0,-6):id;const module=Object.keys(reportRoundData).find(key=>reportRoundData[key].id===base);return sendJson(response,fixtureReportRound(module,prior));}
     let raw='';for await(const part of request)raw+=part;const body=raw?JSON.parse(raw):{};
     if(/^nodes\/[^/]+\/card-check$/.test(suffix)) {
@@ -752,6 +754,7 @@ class CDP {
     this.socket = new WebSocket(url);
     this.nextId = 0;
     this.pending = new Map();
+    this.contexts = new Map();
   }
   async open() {
     await new Promise((resolve, reject) => {
@@ -760,6 +763,9 @@ class CDP {
     });
     this.socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data));
+      if (message.method === "Runtime.executionContextCreated") this.contexts.set(`${message.sessionId || ""}:${message.params.context.id}`, { ...message.params.context, sessionId: message.sessionId });
+      if (message.method === "Runtime.executionContextDestroyed") this.contexts.delete(`${message.sessionId || ""}:${message.params.executionContextId}`);
+      if (message.method === "Runtime.executionContextsCleared") for (const [key, context] of this.contexts) if (context.sessionId === message.sessionId) this.contexts.delete(key);
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
@@ -767,16 +773,16 @@ class CDP {
       else pending.resolve(message.result);
     });
   }
-  call(method, params = {}) {
+  call(method, params = {}, sessionId) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP ${method} timed out`)); }, method === 'Page.printToPDF' ? 45000 : 30000);
       this.pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
-  async value(expression) {
-    const result = await this.call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  async value(expression, contextId, sessionId) {
+    const result = await this.call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, ...(contextId ? { contextId } : {}) }, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result.value;
   }
@@ -1320,6 +1326,7 @@ try {
   await cdp.value(`document.querySelectorAll('.studio-network-strategy input')[1].click()`);
   await cdp.value(`(() => { const select = document.querySelector('select[aria-label="设置 Scale Node 0 的首页 Ping 主任务"]'); select.value = '6'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await cdp.value(`(() => { const input = document.querySelector('input[aria-label="设置 Task 6 的展示分组"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '国际线路'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await cdp.value(`(()=>{const select=document.querySelector('[aria-label="报告结果图片样式"]');select.value='original';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   rejectNextStudioSave = true;
   await cdp.value(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '保存设置').click()`);
   await waitUntil(cdp, `document.body.innerText.includes('草稿已保留')`, 4_000);
@@ -1358,6 +1365,7 @@ try {
   await waitUntil(cdp, `document.querySelector('.aster-studio-nav button') !== null`, 6_000);
   await cdp.value(`Array.from(document.querySelectorAll('.aster-studio-nav button')).find(b => b.textContent.includes('网络观测')).click()`);
   await waitUntil(cdp, `document.querySelector('input[aria-label="搜索要配置的 VPS"]') !== null && document.body.innerText.includes('Task 4 → Task 6 → Task 5')`, 6_000);
+  failGate(await cdp.value(`document.querySelector('[aria-label="报告结果图片样式"]').value==='original'`), 'report style preference did not survive save/reload');
   failGate(await cdp.value(`document.querySelector('input[aria-label="今日流量 第 2 级名称"]').value === '日常负载'`), 'rating label did not survive reload');
   failGate(await cdp.value(`document.querySelector('.studio-saved-view summary').textContent.includes('日常巡检') && document.querySelector('.studio-saved-view summary').textContent.includes('1 台指定节点')`), 'saved view summary did not recover');
 
@@ -1765,14 +1773,14 @@ try {
     failGate(await cdp.value(`document.querySelector('.instance-report-presets button[aria-pressed="true"]')?.textContent.includes('全部历史') && document.querySelector('.instance-report-options input[type="checkbox"]').disabled`), 'all-history preset or comparison behavior missing');
     console.log(`  ${backend.label}: generating all-history report`);
     await cdp.value(`document.querySelector('.instance-report-generate').click()`);
-    await waitUntil(cdp, `document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null`, 15000);
+    await waitUntil(cdp, `(document.querySelector('.instance-report-frame')!==null && document.querySelector('.instance-report-frame').style.display!=='none' && document.querySelector('.instance-report-progress')===null) || document.querySelector('.instance-report-error')!==null`, 15000);
     console.log(`  ${backend.label}: all-history generated`);
     failGate(await cdp.value(`!document.querySelector('.instance-report-error') && JSON.parse(new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html').getElementById('report-data').textContent).range.allHistory===true`), 'all-history generation failed');
     failGate(rpcRequests(activeFixture.run, backend.id === BACKEND_PROFILES.official.id ? 'public:queryMetrics' : 'common:getRecords').some(r=>r.params.start==='1970-01-01T00:00:00.000Z'), 'all-history query did not cover the epoch');
     await cdp.value(`document.querySelector('.instance-report-page-actions button').click()`);
     await cdp.value(`document.querySelector('.instance-report-presets button:nth-child(3)').click()`);
     await cdp.value(`document.querySelector('.instance-report-generate').click()`);
-    await waitUntil(cdp, `document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null`, 15000);
+    await waitUntil(cdp, `(document.querySelector('.instance-report-frame')!==null && document.querySelector('.instance-report-frame').style.display!=='none' && document.querySelector('.instance-report-progress')===null) || document.querySelector('.instance-report-error')!==null`, 15000);
     failGate(await cdp.value(`!document.querySelector('.instance-report-error')`), 'report generation failed: '+await cdp.value(`document.querySelector('.instance-report-error')?.textContent`));
     failGate(await cdp.value(`(()=>{const trigger=document.querySelector('.floating-controls-trigger').getBoundingClientRect();return Array.from(document.querySelectorAll('.instance-report-page-actions button')).every(button=>{const r=button.getBoundingClientRect();return r.right<=trigger.left||r.top>=trigger.bottom||r.bottom<=trigger.top})})()`), 'report actions overlap the floating controls');
     console.log(`  ${backend.label}: reading 30-day report`);
@@ -1785,6 +1793,7 @@ try {
     const archive = html.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/);
     failGate(Boolean(archive), 'report archive missing');
     const model = JSON.parse(archive[1]);
+    await checkReportExports({ cdp, model, profile, backend: backend.id, waitUntil, failGate });
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-online.png`, { waitForImages: false });
     failGate(model.metrics.some(m => m.key === 'cpu') && model.network.length > 0, 'report omitted resource or network evidence: '+JSON.stringify(model.sources));
     failGate(model.networkTrends.some(t=>t.module==='routes' && t.unit==='线路' && t.points.length>=2) && model.networkTrends.some(t=>t.module==='china-speed' && t.unit==='Mbps' && t.points.length>=2), 'report omitted route or speed history trends');
@@ -1829,12 +1838,13 @@ try {
     for (const appearance of ['light','dark']) {
       await cdp.value(`document.documentElement.dataset.theme='${appearance}'`);
       if (process.env.BROWSER_GATE_SCREENSHOT) await captureScreenshot(cdp, `${process.env.BROWSER_GATE_SCREENSHOT}.comprehensive-${backend.id}-${appearance}.png`, { waitForImages: false });
-      if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-${appearance}.png`, { waitForImages: false });
+      if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) { await cdp.value('window.scrollTo(0,0)');await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-${appearance}.png`, { waitForImages: false }); }
     }
     await cdp.call('Emulation.setEmulatedMedia', { media: 'print' });
     failGate(await cdp.value(`Array.from(document.querySelectorAll('.chapter')).every(s=>getComputedStyle(s).display!=='none')`), 'print omitted a hidden chapter');
     const printed = await cdp.call('Page.printToPDF', { printBackground: true, preferCSSPageSize: true, generateTaggedPDF: false, generateDocumentOutline: false });
     failGate(printed.data.length > 10000, 'report print PDF is empty');
+    if (process.env.BROWSER_REPORT_PDF_BASE) writeFileSync(`${process.env.BROWSER_REPORT_PDF_BASE}-${backend.id}.pdf`,Buffer.from(printed.data,'base64'));
     await cdp.call('Emulation.setEmulatedMedia', { media: '' });
     await cdp.call('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     results.push({ comprehensiveReport: backend.label, verified: 'detail entry, 30-day exact query, worker statistics, all network evidence, redaction, same archived ID, offline charts/navigation, 1024/390/320px, both appearances, PDF all chapters' });

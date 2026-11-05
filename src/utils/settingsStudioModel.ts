@@ -9,6 +9,7 @@ function canonicalize(value: unknown): unknown {
 
 export function pickManagedThemeSettings(settings: ResolvedThemeSettings): ThemeSettings {
   return {
+    reportResultStyle: settings.reportResultStyle,
     defaultAppearance: settings.defaultAppearance,
     displayTimeZone: settings.displayTimeZone,
     desktopNodeViewMode: settings.desktopNodeViewMode,
@@ -62,6 +63,7 @@ export function buildStudioPayload(server: ThemeSettings & Record<string, unknow
 }
 
 const settingLabels: Partial<Record<keyof ThemeSettings, string>> = {
+  reportResultStyle: '报告结果图片样式',
   defaultAppearance: '默认外观', displayTimeZone: '显示时区', desktopNodeViewMode: '桌面布局', mobileNodeViewMode: '移动布局',
   homepagePingBindings: '节点探测任务', homepagePingTaskOrder: '探测任务顺序', homepagePingAggregationStrategy: '网络汇总策略', homepagePingPrimaryTasks: '主线路', homepagePingTaskGroups: '探测分组',
   showHomeOverview: '首页总览', showGroupTabs: '分组导航', homeGroupOrder: '分组顺序', homeFacetDimensions: '分类维度', homeNodeFacets: '节点标签', homeDefaultFacetDimension: '默认分类', homeSelectedNodeUuids: '首页节点范围', homeSavedViews: '保存视图', homeDefaultSavedViewId: '默认视图', moveOfflineNodesBack: '离线节点位置',

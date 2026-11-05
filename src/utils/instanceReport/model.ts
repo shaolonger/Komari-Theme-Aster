@@ -102,12 +102,28 @@ export interface ReportInput {
   metrics: ReportMetric[];
   pings: ReportPing[];
   network: NetworkEvidence[];
+  fullResults?: ReportFullResult[];
+  resultStyle?: "unified" | "original";
   previous?: {
     range: ReportRange;
     metrics: ReportMetric[];
     pings: ReportPing[];
     sources: ReportSource[];
   };
+}
+export interface ReportFullResult {
+  id: string;
+  roundId: string;
+  module: "tcpquality-full" | "nodequality-full";
+  time: number;
+  state: string;
+  url: string;
+  profile: string;
+  truncated: boolean;
+  sections: { name: string; title: string; format: "csv" | "json" | "terminal"; text: string }[];
+  coverage?: { ok: number; failed: number; skipped: number; unknown: number };
+  originalPages?: { title: string; svg: string }[];
+  originalError?: string;
 }
 export interface MetricStats {
   count: number;

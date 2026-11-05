@@ -18,32 +18,23 @@ import {
 } from "@/utils/timeDisplay";
 import { collectReportInput } from "@/services/instanceReport";
 import { computeReport } from "@/utils/instanceReport/compute";
-import {
-  renderReportHtml,
-  reportFilename,
-} from "@/utils/instanceReport/render";
+import { renderReportHtml } from "@/utils/instanceReport/render";
 import type { ReportModel } from "@/utils/instanceReport/model";
 import { throwIfReportAborted } from "@/utils/instanceReport/model";
 import type { NodeInfo } from "@/types/komari";
 import { Spinner } from "@/components/ui/Spinner";
 import { parseReportDate } from "@/utils/instanceReport/dates";
 import { overlayConfiguredNodeMeta } from "@/utils/nodeMetaOverlay";
+import { redactReport } from "@/utils/instanceReport/privacy";
 import "@/styles/instance-report.css";
-
-function saveFile(content: string, name: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: mime }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
   const current = useNodeMetrics(meta.uuid);
   const { resolvedAppearance } = usePreferences();
   const { data: auth } = useAuth();
   const { data: config } = usePublicConfig();
+  const settings = useThemeSettings();
+  const [resultStyle, setResultStyle] = useState<"unified" | "original">(settings.reportResultStyle);
   const [search, setSearch] = useSearchParams();
   const frame = useRef<HTMLIFrameElement>(null),
     pending = useRef<AbortController | null>(null);
@@ -68,6 +59,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
   const [busy, setBusy] = useState(false),
     [phase, setPhase] = useState("");
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [report, setReport] = useState<{
     model: ReportModel;
     html: string;
@@ -85,17 +77,38 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
     const resize = (event: MessageEvent) => {
       if (
         event.source !== frame.current?.contentWindow ||
-        event.data?.type !== "aster-report-size" ||
-        event.data.id !== report?.model.reportId
+        event.data?.id !== report?.model.reportId
       )
         return;
+      if (event.data.type === "aster-report-original-request") {
+        const result = report?.model.fullResults?.find(result => result.id === event.data.resultId);
+        if (!result || result.module !== "tcpquality-full") return;
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
+        const source = event.source as Window;
+        void (async () => {
+          try {
+            const response = await fetch(`/api/aster-network-observatory/v3/nodes/${encodeURIComponent(meta.uuid)}/rounds/${encodeURIComponent(result.roundId)}/original-images`, { credentials: "same-origin", signal: controller.signal });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || (response.status === 404 ? "请升级网络观测插件，以读取上游原始图片。" : "上游原始图片读取失败。"));
+            if (!Array.isArray(data.pages) || !data.pages.length || data.pages.length > 12 || data.pages.some((page: { svg?: unknown }) => typeof page.svg !== "string" || page.svg.length > 2 * 1024 * 1024)) throw new Error("原始图片响应无效");
+            const clean = redactReport({ ...report!.model, metrics: [], pings: [], network: [], fullResults: [{ ...result, originalPages: data.pages }] });
+            source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, pages: clean.fullResults![0]!.originalPages }, "*");
+          } catch (error) {
+            source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, error: error instanceof Error ? error.message : String(error) }, "*");
+          } finally { clearTimeout(timer); }
+        })();
+        return;
+      }
+      if (event.data.type === "aster-report-export-error") { setError(String(event.data.error)); return; }
+      if (event.data.type === "aster-report-export-state") { setExporting(event.data.busy === true); return; }
+      if (event.data.type !== "aster-report-size") return;
       const height = event.data.height;
       if (typeof height === "number" && Number.isFinite(height))
         setFrameHeight(Math.max(600, Math.min(200000, height + 8)));
     };
     window.addEventListener("message", resize);
     return () => window.removeEventListener("message", resize);
-  }, [report?.model.reportId]);
+  }, [report, meta.uuid]);
 
   function preset(days: number | "month" | "all") {
     const now = Date.now();
@@ -145,6 +158,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
           theme: resolvedAppearance === "dark" ? "dark" : "light",
           showAddresses,
           compare,
+          resultStyle,
           loggedIn: auth?.logged_in === true,
         },
         controller.signal,
@@ -205,21 +219,17 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  saveFile(
-                    report.html,
-                    reportFilename(report.model, "html"),
-                    "text/html;charset=utf-8",
-                  )
-                }
+                disabled={exporting}
+                onClick={() => frame.current?.contentWindow?.postMessage({ type: "aster-report-export-html", id: report.model.reportId }, "*")}
               >
                 <Download size={14} />
-                下载原格式 HTML
+                {exporting ? "正在准备图片…" : "下载含图片 HTML"}
               </button>
             </>
           )}
         </div>
       </header>
+      {!editing && error && <p className="instance-report-error" role="alert">{error}</p>}
       {editing && (
         <section
           className="instance-report-form"
@@ -227,10 +237,10 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         >
           <p className="instance-report-kicker">ASTER · COMPREHENSIVE REPORT</p>
           <h1 id="instance-report-form-title">
-            为 {meta.name} 留下一份完整记录
+            为 {meta.name} 生成一份可视化报告
           </h1>
           <p>
-            选择日期，一键汇总资源、流量、Ping、既有网络检测、配置与资产信息。生成后可原样离线保存。
+            用图表回顾资源、流量和网络体验，自选完整检测结果，导出可离线阅读的 HTML、PDF 与高清图片。
           </p>
           <form
             onSubmit={(event) => {
@@ -284,6 +294,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
               <p className="instance-report-zone">
                 所有日期与图表使用 {zone} · 精确到分钟{allHistory ? " · 从最早可读取的数据开始展示" : ""}
               </p>
+              <label className="instance-report-result-style">结果图片样式<select aria-label="生成报告的结果图片样式" value={resultStyle} onChange={event => setResultStyle(event.target.value === "original" ? "original" : "unified")}><option value="unified">统一图表版（默认）</option><option value="original">上游原始版</option></select><small>生成后可逐轮选择导出结果；原始版保留上游内容与外观。</small></label>
               <details className="instance-report-options">
                 <summary>可选设置</summary>
                 <label>
@@ -366,14 +377,15 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
           </p>
         </section>
       )}
-      {report && !editing && (
+      {report && (
         <iframe
+          key={report.model.reportId}
           ref={frame}
           className="instance-report-frame"
           title={`${report.model.node.name} VPS 全面报告`}
-          sandbox="allow-scripts allow-downloads allow-modals"
+          sandbox="allow-scripts allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox"
           srcDoc={report.html}
-          style={{ height: frameHeight }}
+          style={{ height: frameHeight, display: editing ? "none" : undefined }}
         />
       )}
     </div>

@@ -1,8 +1,11 @@
+import type { ResultToolkit } from "./resultToolkit";
+import type { resultReaderRuntime } from "./resultReaderRuntime";
 /** Self-contained by design: this function is embedded in the downloaded HTML. */
-export function readerRuntime() {
+export function readerRuntime(installResults: typeof resultReaderRuntime, tools: ResultToolkit) {
   const archive = document.getElementById("report-data");
   if (!archive) return;
   const model = JSON.parse(archive.textContent || "{}");
+  const gallery = installResults(model, tools);
   const formatter = new Intl.DateTimeFormat("zh-CN", {
     timeZone: model.range.timeZone,
     month: "2-digit",
@@ -221,7 +224,12 @@ export function readerRuntime() {
         points.forEach((p, i) => { path += `${i ? "L" : "M"}${x(p.t).toFixed(2)},${y(p.v).toFixed(2)} `; });
       }
     }
-    node("path", { d: path, fill: "none", stroke: "var(--blue)", "stroke-width": 1.7, "stroke-linejoin": "round" });
+    const key = container.dataset.chart || "", color = /ram|swap/.test(key) ? "var(--purple)" : /net_out/.test(key) ? "#14b8a6" : "var(--blue)";
+    node("path", { d: path, fill: "none", stroke: color, "stroke-width": 2.3, "stroke-linejoin": "round" });
+    for (const points of reduced) if (points.length > 1) {
+      const area = `M${x(points[0]!.t)},${top + ph} ` + points.map(p => `L${x(p.t)},${y(p.v)}`).join(" ") + ` L${x(points.at(-1)!.t)},${top + ph} Z`;
+      node("path", { d: area, fill: color, opacity: .09, "pointer-events": "none" });
+    }
     const guide = node("line", {
       x1: 0,
       x2: 0,
@@ -429,12 +437,42 @@ export function readerRuntime() {
     );
     container.replaceChildren(svg);
   }
-  const charts = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chart]"),
-  );
-  function drawVisible() {
-    for (const el of charts) if (el.clientWidth > 0) draw(el);
+  function updateExplorer(reset = false) {
+    const module = document.querySelector<HTMLSelectElement>("[data-trend-module]")?.value;
+    const rows = (model.networkTrends || []).map((trend: { module: string; title: string; kind: string; unit: string; points: {t:number;v:number|null;label?:string;state:string}[] }, index: number) => ({ trend, index })).filter((row: {trend:{module:string}}) => row.trend.module === module);
+    const active: number[] = [];
+    for (const side of ["primary", "secondary"] as const) {
+      const select = document.querySelector<HTMLSelectElement>(`[data-trend-${side}]`); if (!select) continue;
+      const prior = select.value;
+      select.replaceChildren();
+      for (const row of rows) { const option = document.createElement("option"); option.value = String(row.index); option.textContent = row.trend.title; select.append(option); }
+      const initial = side === "primary" ? rows.find((row: {trend:{kind:string}}) => row.trend.kind === "number") || rows[0] : rows.find((row: {trend:{kind:string};index:number}) => row.trend.kind === "category" && row.index !== active[0]) || rows.find((row: {index:number}) => row.index !== active[0]);
+      select.value = !reset && rows.some((row: {index:number}) => String(row.index) === prior) ? prior : String(initial?.index ?? rows[0]?.index ?? "");
+      const index = Number(select.value), row = rows.find((row: {index:number}) => row.index === index), chart = document.querySelector<HTMLElement>(`[data-explorer-chart="${side}"]`), caption = document.querySelector(`[data-trend-caption="${side}"]`);
+      if (chart && row) { chart.dataset.chart = `${row.trend.kind === "category" ? "network-category:" : "network:"}${index}`; if (caption) caption.textContent = row.trend.title; chart.closest("figure")!.hidden = side === "secondary" && active.includes(index); active.push(index); }
+    }
+    const detail = document.querySelector("[data-trend-details]");
+    if (detail) {
+      detail.replaceChildren();
+      for (const index of new Set(active)) {
+        const trend = model.networkTrends[index], heading = document.createElement("h4"); heading.textContent = trend.title; detail.append(heading);
+        const list = document.createElement("ol");
+        for (const point of trend.points.slice(-50).reverse()) { const item = document.createElement("li"); item.textContent = `${date(point.t)} · ${point.label || (point.v == null ? "缺测" : number(point.v, trend.unit))} · ${point.state}`; list.append(item); }
+        detail.append(list);
+      }
+    }
   }
+  updateExplorer(true);
+  const charts = Array.from(document.querySelectorAll<HTMLElement>(".chart"));
+  function drawVisible() {
+    for (const el of charts) if (el.clientWidth > 0 && el.dataset.chart) draw(el);
+  }
+  document.querySelector("[data-trend-module]")?.addEventListener("change", () => { updateExplorer(true); drawVisible(); });
+  for (const side of ["primary", "secondary"]) document.querySelector(`[data-trend-${side}]`)?.addEventListener("change", () => { updateExplorer(); drawVisible(); });
+  document.querySelector<HTMLSelectElement>("[data-ping-picker]")?.addEventListener("change", event => {
+    const id = Number((event.target as HTMLSelectElement).value), chart = document.querySelector<HTMLElement>(".ping-charts [data-chart]"), ping = model.pings.find((p: { id: number }) => p.id === id);
+    if (chart && ping) { chart.dataset.chart = `ping:${id}`; const caption = chart.closest("figure")?.querySelector("figcaption"); if (caption) caption.textContent = `${ping.name} · ${ping.protocol}`; drawVisible(); }
+  });
   function chapter(id: string) {
     document.querySelectorAll<HTMLElement>(".chapter").forEach((el) => {
       el.hidden = el.id !== id;
@@ -444,6 +482,7 @@ export function readerRuntime() {
       else el.removeAttribute("aria-current");
     });
     drawVisible();
+    gallery.onChapter(id);
     window.parent.postMessage(
       {
         type: "aster-report-size",
@@ -466,7 +505,7 @@ export function readerRuntime() {
         )
         ?.scrollIntoView({ block: "start" });
     }
-    if (element.hasAttribute("data-print")) window.print();
+    if (element.hasAttribute("data-print")) void gallery.print().catch(error => { const status = document.querySelector("[data-results-status]"); if (status) status.textContent = String(error.message || error); });
     if (element.hasAttribute("data-json")) {
       const url = URL.createObjectURL(
           new Blob([JSON.stringify(model, null, 2)], {
@@ -480,22 +519,9 @@ export function readerRuntime() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   });
-  const details = Array.from(
-    document.querySelectorAll<HTMLDetailsElement>("details"),
-  );
-  let previouslyOpen: boolean[] = [];
   window.addEventListener("beforeprint", () => {
-    previouslyOpen = details.map((d) => d.open);
-    details.forEach((d) => {
-      d.open = true;
-    });
     drawVisible();
   });
-  window.addEventListener("afterprint", () =>
-    details.forEach((d, i) => {
-      d.open = previouslyOpen[i] || false;
-    }),
-  );
   const resize = new ResizeObserver(() => {
     drawVisible();
     window.parent.postMessage(

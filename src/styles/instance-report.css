@@ -4,3 +4,7 @@
 .instance-report-presets button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent-500);border-color:var(--accent-500)}
 
 @media(max-width:720px){.instance-report-page-top{padding-right:0}}
+
+.instance-report-result-style{display:grid;gap:7px;margin:15px 0;font-size:12px;color:var(--text-secondary)}
+.instance-report-result-style select{width:100%;max-width:420px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface-a);color:var(--text-primary)}
+.instance-report-result-style small{font-size:11px;color:var(--text-tertiary)}

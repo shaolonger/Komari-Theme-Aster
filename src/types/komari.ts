@@ -154,6 +154,7 @@ export interface NodeMetrics {
 }
 
 export interface ThemeSettings {
+  reportResultStyle?: "unified" | "original";
   defaultAppearance?: "system" | "light" | "dark" | "diagnostic" | "clearsky" | "slate" | "slate-light" | "glacier" | "orbital" | "luminous";
   displayTimeZone?: string;
   desktopNodeViewMode?: "large" | "standard" | "compact" | "list";

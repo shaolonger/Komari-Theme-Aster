@@ -3,7 +3,7 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 import './settings-studio.css';
 
 const sections = [
-  { id: 'appearance', title: '外观与布局', description: '为你的监控空间建立清晰的视觉秩序', keywords: '主题 颜色 light dark system 设备 桌面 移动 timezone 图片 壁纸 透明度', panels: ['默认外观', '显示时区', '默认卡片视图', '背景与透明度'] },
+  { id: 'appearance', title: '外观与布局', description: '为你的监控空间建立清晰的视觉秩序', keywords: '主题 颜色 light dark system 设备 桌面 移动 timezone 图片 壁纸 透明度 报告 导出 PDF TcpQuality NodeQuality', panels: ['默认外观', '显示时区', '默认卡片视图', '背景与透明度', '报告与导出'] },
   { id: 'overview', title: '巡检与指标', description: '决定首页首先呈现哪些信号', keywords: '指标 评级 流量 带宽 在线 连接 TCP UDP 排序', panels: ['首页巡检', '小卡片显示项'] },
   { id: 'views', title: '节点与视图', description: '把节点组织成适合日常工作的视图', keywords: '节点 VPS 标签 分组 厂商 地区 用途 筛选', panels: ['VPS 标签与视图'] },
   { id: 'assets', title: '资产与成本', description: '设定成本统计的范围与计算方式', keywords: '汇率 费用 计费 价格 排除 资产 成本', panels: ['服务器花费'] },

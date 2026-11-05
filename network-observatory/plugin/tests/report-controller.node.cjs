@@ -10,12 +10,13 @@ const G = require("../src/globalping.js");
 const A = "c388e74d-a922-4ae1-bd10-1fb30e2e53de",
   B = "59d6e276-1d4b-4657-9021-908460853ba3",
   token = "a".repeat(64);
-async function fixture(existingRoot, clients = [A]) {
+async function fixture(existingRoot, clients = [A], reportAssetOptions) {
   const root =
       existingRoot ||
       fs.mkdtempSync(path.join(os.tmpdir(), "aster-report-api-")),
     routes = new Map();
   const c = registerNativeController({
+    reportAssetOptions,
     server: {
       route: (m, p, f) => routes.set(m + " " + p, f),
       call: async () => clients.map(uuid => ({ uuid, name: "VPS", ipv4: "8.8.8.8" })),
@@ -1105,4 +1106,28 @@ test('multiple complete-test schedule rules persist and preserve independently a
   assert.equal(restarted.c.read().reportSuites[0].modules[0].nextAt,Date.parse('2026-10-28T04:00:00Z'));
   assert.equal(restarted.c.read().reportDispatch.filter(w=>w.module==='nodequality-full').length,2);
  } finally { Date.now=originalNow; f.close(); }
+});
+
+test('original report images require admin, bind node and round, and release storage lock before fetching', { timeout: 5000 }, async () => {
+ const calls=[];
+ const f=await fixture(undefined,[A,B],{fetcher:async url=>{
+  assert.equal(await f.c.lock(()=>true),true);
+  calls.push(url);
+  return {ok:true,text:async()=>url.endsWith('/test_ID')?'const reportSections = [{"id":"ipv4","label":"IPv4"}];':'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000"><text>actual</text></svg>'};
+ }});
+ try {
+  await f.invoke('POST',`${v2}/workers/node/${A}/heartbeat`,{version:'1.13.0',tools:[],features:['report-v3','tcpquality-full']},false,true);
+  const saved=await f.invoke('POST',v3+'/suites',{revision:0,clients:[A],modules:[{module:'tcpquality-full'}]});
+  const started=await f.invoke('POST',`${v3}/suites/${saved.body.suite.id}/run`);
+  const task=(await f.invoke('GET',`${v2}/workers/node/${A}/poll`,{},false,true)).body.task;
+  const data={kind:'tcpquality-full',state:'ok',profile:'AUTO',cleanLog:'结果',csv:'header,value\n',reportUrl:'https://tcpquality.ibsgss.uk/r/test_ID',exitCode:0};
+  assert.equal((await f.invoke('POST',`${v2}/workers/node/${A}/result`,{id:task.id,data},false,true)).status,200);
+  const suffix=`/rounds/${started.body.rounds[0]}/original-images`;
+  assert.equal((await f.invoke('GET',`${v3}/nodes/${A}${suffix}`,{},false)).status,403);
+  assert.equal((await f.invoke('GET',`${v3}/nodes/${B}${suffix}`)).status,404);
+  assert.equal(calls.length,0);
+  const response=await f.invoke('GET',`${v3}/nodes/${A}${suffix}?url=https://evil.invalid`);
+  assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(response.body.pages.length,1);
+  assert.deepEqual(calls,['https://tcpquality.ibsgss.uk/r/test_ID','https://tcpquality.ibsgss.uk/r/test_ID.svg?section=ipv4']);
+ } finally {f.close();}
 });

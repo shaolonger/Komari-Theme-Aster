@@ -1,3 +1,4 @@
+import { visualReportCss } from "./visualCss";
 export const reportCss = `
 :root{color-scheme:light;--bg:#f4f5f7;--paper:#fff;--ink:#20242c;--muted:#616b7a;--line:#e5e9ef;--soft:#f5f7fa;--blue:#376cda;--purple:#8c6ad2;--blue-soft:#edf3ff;--green:#267955;--green-soft:#edf7f1;--amber:#94621b;--amber-soft:#fcf4e6}
 :root[data-theme=dark]{color-scheme:dark;--bg:#0d0d10;--paper:#151518;--ink:#e5e8ef;--muted:#a8afbc;--line:#2c3039;--soft:#1e2128;--blue:#8cb0ff;--purple:#b29fe3;--blue-soft:#202d47;--green:#7dc7a5;--green-soft:#1d3029;--amber:#e1b573;--amber-soft:#31291e}
@@ -8,4 +9,4 @@ export const reportCss = `
 @media(pointer:coarse){button,summary{min-height:44px}}
 @page{size:A4;margin:14mm}
 @media print{:root,:root[data-theme=dark]{color-scheme:light;--bg:#fff;--paper:#fff;--ink:#20242c;--muted:#525c68;--line:#d8dee7;--soft:#f5f7fa;--blue:#376cda;--purple:#8c6ad2;--blue-soft:#edf3ff;--green:#267955;--amber:#94621b;--amber-soft:#fcf4e6}html,body{background:#fff;padding:0;font-size:11px}.toolbar,nav,.finding button,.event button,.chart-tip,.chart-tables,pre{display:none!important}.workspace{display:block;max-width:none}.paper{border:0;box-shadow:none}.chapter[hidden]{display:block!important}.chapter{break-before:page}.chapter:first-child{break-before:auto}.chapter-head{break-after:avoid;padding:10px 0}.chapter-body{padding:16px 0}.charts{grid-template-columns:repeat(2,minmax(0,1fr))}figure,.kpis,.summary,.event{break-inside:avoid}.table-wrap,pre{overflow:visible;max-height:none}pre{font-size:9px}thead{display:table-header-group}tr{break-inside:avoid}details{break-inside:auto}summary{color:var(--ink)}.footer{margin:0;padding:8px 0}.masthead{margin-bottom:16px}.kpi-value{font-size:20px}.note{break-inside:avoid}}
-`;
+` + visualReportCss;

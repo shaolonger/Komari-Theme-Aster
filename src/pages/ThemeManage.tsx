@@ -206,6 +206,7 @@ export function ThemeManage() {
   const { data: config, isLoading: configLoading } = usePublicConfig();
   const {
     draftAppearance, setDraftAppearance,
+    draftReportResultStyle, setDraftReportResultStyle,
     draftDisplayTimeZoneText, setDraftDisplayTimeZoneText,
     draftDesktopNodeViewMode, setDraftDesktopNodeViewMode,
     draftMobileNodeViewMode, setDraftMobileNodeViewMode,
@@ -433,6 +434,7 @@ export function ThemeManage() {
   const draftThemeSettings = useMemo<ThemeSettings>(
     () => ({
       defaultAppearance: draftAppearance,
+      reportResultStyle: draftReportResultStyle,
       displayTimeZone: normalizedDraftDisplayTimeZone,
       desktopNodeViewMode: draftDesktopNodeViewMode,
       mobileNodeViewMode: draftMobileNodeViewMode,
@@ -474,6 +476,7 @@ export function ThemeManage() {
     }),
     [
       draftAppearance,
+      draftReportResultStyle,
       draftPingTaskOrder,
       normalizedDraftDisplayTimeZone,
       draftDesktopNodeViewMode,
@@ -875,6 +878,11 @@ export function ThemeManage() {
       >
         <AppearanceEditor value={draftAppearance} onChange={setDraftAppearance} />
         <HomepagePreview settings={draftThemeSettings}/>
+      </StudioPanel>
+
+      <StudioPanel title="报告与导出" description="设置完整检测结果图片的默认呈现方式，生成每份报告时也可以单独调整。">
+        <label className="setting-select-label">结果图片样式<select aria-label="报告结果图片样式" value={draftReportResultStyle} onChange={event => setDraftReportResultStyle(event.target.value === "original" ? "original" : "unified")}><option value="unified">统一图表版（默认）</option><option value="original">上游原始版</option></select></label>
+        <p className="studio-help">统一图表版按真实结果重新排版；上游原始版保留 TcpQuality 的矢量分区，以及 NodeQuality 的原始终端颜色和布局。所选结果可打包下载高清图片，并嵌入 HTML / PDF。</p>
       </StudioPanel>
 
       <StudioPanel

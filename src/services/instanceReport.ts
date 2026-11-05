@@ -15,9 +15,11 @@ import type {
   ReportPing,
   ReportRange,
   ReportSource,
+  ReportFullResult,
 } from "@/utils/instanceReport/model";
 import { projectEvidence, redactReport } from "@/utils/instanceReport/privacy";
 import { overlayAdminClientMeta } from "@/utils/nodeMetaOverlay";
+import { projectFullResult } from "@/utils/instanceReport/fullResults";
 import { AdminClientSchema } from "@/types/komari";
 import type {
   NodeInfo,
@@ -540,7 +542,7 @@ async function networkV3(uuid: string, range: ReportRange, signal: AbortSignal) 
   const base = `/api/aster-network-observatory/v3`, nodePath = `${base}/nodes/${encodeURIComponent(uuid)}`;
   const caps = object(await readJson(`${base}/capabilities`, signal));
   if (!Array.isArray(caps.modules) || caps.schema !== 3) throw new Error("网络报告能力响应无效");
-  const evidence: NetworkEvidence[] = [], warnings: string[] = [];
+  const evidence: NetworkEvidence[] = [], fullResults: ReportFullResult[] = [], warnings: string[] = [];
   const targetRefs = new Map<string, string>();
   const targetCounts = new Map<string, number>();
   const targetRef = (module: string, source: Obj, target: unknown, family: string, direction: unknown, protocol: unknown) => {
@@ -597,6 +599,12 @@ async function networkV3(uuid: string, range: ReportRange, signal: AbortSignal) 
             const t = timestamp(measurement.completedAt), started = timestamp(measurement.startedAt);
             if (!Number.isFinite(t) || t < range.start || t >= range.end) continue;
             const source = object(measurement.source), options = object(measurement.options);
+            const snapshot = projectFullResult(module, str(round.id), measurement);
+            if (snapshot) {
+              const size = JSON.stringify(snapshot).length * 2;
+              if (bytes + size <= INPUT_LIMIT / 2) { fullResults.push(snapshot); bytes += size; }
+              else { partial = true; warnings.push("完整检测原始结果超过报告容量，部分结果未纳入。"); }
+            }
             append({ id: `v3:${str(round.id)}:${str(measurement.id)}`, module, time: t,
               startedAt: Number.isFinite(started) ? started : undefined, state: str(object(measurement.data).state),
               target: str(measurement.target), direction: str(measurement.direction),
@@ -631,11 +639,12 @@ async function networkV3(uuid: string, range: ReportRange, signal: AbortSignal) 
   }
   if (unavailableRounds) warnings.push(`${unavailableRounds} 个轮次明细不可用，保留可读取的轮次摘要。`);
   const retention = object(caps.retention);
-  return { evidence, source: { id: "network-v3", name: "网络报告 v3", state: partial ? "partial" : evidence.length ? "available" : "empty",
+  return { evidence, fullResults, source: { id: "network-v3", name: "网络报告 v3", state: partial ? "partial" : evidence.length ? "available" : "empty",
     detail: `只汇总既有测量；明细保留 ${num(retention.detailDays) ?? "未知"} 天，摘要 ${num(retention.summaryDays) ?? "未知"} 天。${partial ? "存在明细过期、查询失败或预算限制，不能保证全部证据完整。" : "已完成所有模块分页。"}${warnings.join(" ")}` } satisfies ReportSource };
 }
 
 export interface ReportRequest {
+  resultStyle?: "unified" | "original";
   meta: NodeInfo;
   current?: NodeMetrics;
   range: ReportRange;
@@ -658,6 +667,7 @@ export async function collectReportInput(
     metrics: ReportMetric[] = [],
     pings: ReportPing[] = [],
     network: NetworkEvidence[] = [],
+    fullResults: ReportFullResult[] = [],
     backend = "未识别";
   progress("正在识别后端与冻结节点资料…");
   try {
@@ -710,7 +720,7 @@ export async function collectReportInput(
       progress("正在读取网络观测的既有轮次…");
       try {
         const r = await networkV3(meta.uuid, range, signal);
-        network.push(...r.evidence); sources.push(r.source);
+        network.push(...r.evidence); fullResults = r.fullResults; sources.push(r.source);
       } catch (e) {
         check(signal); sources.push(sourceError("network-v3", "网络观测", e));
       }
@@ -749,6 +759,8 @@ export async function collectReportInput(
     theme: request.theme,
     showAddresses: request.showAddresses,
     backend,
+    resultStyle: request.resultStyle === "original" ? "original" : "unified",
+    fullResults: [...new Map(fullResults.map(result => [result.id, result])).values()].sort((a, b) => b.time - a.time),
     node,
     sources,
     metrics,

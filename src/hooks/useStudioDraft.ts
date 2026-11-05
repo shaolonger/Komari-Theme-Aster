@@ -3,6 +3,7 @@ import { normalizeThemeSettings, type ResolvedThemeSettings } from '@/utils/them
 
 function createStudioDraft(next: ResolvedThemeSettings) {
   return {
+    draftReportResultStyle: next.reportResultStyle,
     draftAppearance: next.defaultAppearance,
     draftDisplayTimeZoneText: next.displayTimeZone,
     draftDesktopNodeViewMode: next.desktopNodeViewMode,
@@ -56,6 +57,7 @@ export function useStudioDraft() {
     setDraft(previous => ({ ...previous, [key]: typeof action === 'function' ? (action as (value: StudioDraft[K]) => StudioDraft[K])(previous[key]) : action }));
   }
   return { ...draft, seedDrafts,
+    setDraftReportResultStyle: (action: SetStateAction<StudioDraft["draftReportResultStyle"]>) => update("draftReportResultStyle", action),
     setDraftAppearance: (action: SetStateAction<StudioDraft["draftAppearance"]>) => update("draftAppearance", action),
     setDraftDisplayTimeZoneText: (action: SetStateAction<StudioDraft["draftDisplayTimeZoneText"]>) => update("draftDisplayTimeZoneText", action),
     setDraftDesktopNodeViewMode: (action: SetStateAction<StudioDraft["draftDesktopNodeViewMode"]>) => update("draftDesktopNodeViewMode", action),
