@@ -124,7 +124,7 @@ function runBodyRegression() {
 			}
 
 			// Verify registration reached the final v3 routes, beyond the old crash.
-			if !routes.slots["GET /api/aster-network-observatory/v3/capabilities"] || !routes.slots["POST /api/aster-network-observatory/v2/workers/node/:id/heartbeat"] {
+			if !routes.slots["GET /api/aster-network-observatory/v3/capabilities"] || !routes.slots["POST /api/aster-network-observatory/v2/workers/node/:id/heartbeat"] || !routes.slots["GET /api/aster-network-observatory/v3/nodes/:uuid/rounds/:id/original-images"] {
 				panic("plugin registration stopped early")
 			}
 		}

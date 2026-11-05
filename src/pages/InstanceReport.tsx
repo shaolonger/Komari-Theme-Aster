@@ -17,6 +17,7 @@ import {
   getZonedDateTimeParts,
 } from "@/utils/timeDisplay";
 import { collectReportInput } from "@/services/instanceReport";
+import { loadReportOriginalImages } from "@/services/reportOriginalImages";
 import { computeReport } from "@/utils/instanceReport/compute";
 import { renderReportHtml } from "@/utils/instanceReport/render";
 import type { ReportModel } from "@/utils/instanceReport/model";
@@ -87,11 +88,8 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         const source = event.source as Window;
         void (async () => {
           try {
-            const response = await fetch(`/api/aster-network-observatory/v3/nodes/${encodeURIComponent(meta.uuid)}/rounds/${encodeURIComponent(result.roundId)}/original-images`, { credentials: "same-origin", signal: controller.signal });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || (response.status === 404 ? "请升级网络观测插件，以读取上游原始图片。" : "上游原始图片读取失败。"));
-            if (!Array.isArray(data.pages) || !data.pages.length || data.pages.length > 12 || data.pages.some((page: { svg?: unknown }) => typeof page.svg !== "string" || page.svg.length > 2 * 1024 * 1024)) throw new Error("原始图片响应无效");
-            const clean = redactReport({ ...report!.model, metrics: [], pings: [], network: [], fullResults: [{ ...result, originalPages: data.pages }] });
+            const pages = await loadReportOriginalImages(meta.uuid, result.roundId, controller.signal);
+            const clean = redactReport({ ...report!.model, metrics: [], pings: [], network: [], fullResults: [{ ...result, originalPages: pages }] });
             source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, pages: clean.fullResults![0]!.originalPages }, "*");
           } catch (error) {
             source.postMessage({ type: "aster-report-original-response", id: report!.model.reportId, requestId: event.data.requestId, error: error instanceof Error ? error.message : String(error) }, "*");
@@ -100,7 +98,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         return;
       }
       if (event.data.type === "aster-report-export-error") { setError(String(event.data.error)); return; }
-      if (event.data.type === "aster-report-export-state") { setExporting(event.data.busy === true); return; }
+      if (event.data.type === "aster-report-export-state") { setExporting(event.data.busy === true); if (event.data.busy === true) setError(""); return; }
       if (event.data.type !== "aster-report-size") return;
       const height = event.data.height;
       if (typeof height === "number" && Number.isFinite(height))

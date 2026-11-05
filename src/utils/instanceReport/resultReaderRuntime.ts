@@ -56,7 +56,7 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
       else { const missing = document.createElement("span"); missing.className = "muted"; missing.textContent = "未提供链接"; row.append(missing); }
       list.append(row);
     }
-    if (!visible.length) { const empty = document.createElement("p"); empty.textContent = "没有匹配的检测结果。"; list.append(empty); }
+    if (!visible.length) { const empty = document.createElement("p"); empty.textContent = results.length ? "没有匹配的检测结果，请清空搜索条件。" : "本份档案未保存完整检测结果。"; list.append(empty); }
     const count = document.querySelector("[data-results-count]"), counter = document.querySelector("[data-results-page]");
     if (count) count.textContent = `已选择 ${selected.size} / ${results.length} 份`;
     if (counter) counter.textContent = `${page + 1} / ${pages}`;
@@ -108,7 +108,10 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
           const urls: string[] = [];
           for (const svg of pages) {
             if (generation !== own) throw new Error("图片生成已取消。");
-            const blob = await tools.png(svg); bytes += blob.size;
+            let blob: Blob;
+            try { blob = await tools.png(svg); }
+            catch (error) { throw new Error(`${tools.title(result)} · ${date(result.time)}：${error instanceof Error ? error.message : error}`); }
+            bytes += blob.size;
             if (bytes > 80 * 1024 * 1024) throw new Error("所选图片超过 80 MiB，请减少结果数量或分批导出。");
             urls.push(await inline(blob)); await new Promise(resolve => setTimeout(resolve, 0));
           }
@@ -146,10 +149,12 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
   async function saveHtml() {
     await prepare(); persist();
     const root = document.documentElement.cloneNode(true) as HTMLElement;
-    const exported = { ...model, fullResults: chosen(), selectedResultIds: [...selected], resultStyle: mode };
+    // Selection controls image attachments, not the report's historical index.
+    const exported = { ...model, fullResults: results, selectedResultIds: [...selected], resultStyle: mode };
     const data = root.querySelector("#report-data");
     if (data) data.textContent = JSON.stringify(exported).replace(/[<>&\u2028\u2029]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
     root.querySelector("[data-result-list]")?.replaceChildren();
+    root.querySelector<HTMLInputElement>("[data-result-search]")?.removeAttribute("value");
     root.querySelectorAll<HTMLElement>("[data-result-figure]").forEach(figure => { if (!selected.has(figure.dataset.resultFigure || "") || figure.dataset.mode !== mode) figure.remove(); });
     root.querySelectorAll(".chart-tip").forEach(tip => tip.remove());
     root.querySelectorAll(".report-image-modal").forEach(dialog => dialog.remove());

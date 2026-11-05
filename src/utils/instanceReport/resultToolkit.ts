@@ -2,8 +2,11 @@ import type { ReportFullResult } from "./model";
 
 /** Embedded verbatim in offline reports; all helpers intentionally live inside. */
 export function resultToolkit() {
-  const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-  const strip = (value: string) => value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\r/g, "");
+  const xmlText = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, "");
+  const escape = (value: unknown) => xmlText(String(value ?? "")).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  // OSC titles/hyperlinks and other terminal commands are not printable XML.
+  const terminal = (value: string) => value.replace(/(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)/g, "").replace(/\x1b[PX^_][\s\S]*?(?:\x1b\\|$)/g, "").replace(/\r/g, "");
+  const strip = (value: string) => xmlText(terminal(value).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""));
   const colors = ["#236bfe", "#00ad92", "#8b5cf6", "#f59e0b", "#ef5276"];
   function csv(value: string) {
     const rows: string[][] = []; let row: string[] = [], field = "", quoted = false;
@@ -118,7 +121,7 @@ export function resultToolkit() {
     const palette = ["#050404", "#bd0013", "#4ab118", "#e7741e", "#0f4ac6", "#665993", "#70a598", "#f8dcc0", "#4e7cbf", "#fc5f5a", "#9eff6e", "#efc11a", "#1997c6", "#9b5953", "#c8faf4", "#f6f5fb"];
     const pages: string[] = [];
     for (const section of logs) {
-      const lines = section.text.replace(/\x1b\[(?![0-9;]*m)[0-?]*[ -/]*[@-~]/g, "").replace(/\r/g, "").split("\n");
+      const lines = terminal(section.text).replace(/\x1b\[(?![0-9;]*m)[0-?]*[ -/]*[@-~]/g, "").split("\n");
       let color = "#f8dcc0", bold = false;
       const styled: { char: string; column: number; color: string; bold: boolean }[][] = [];
       for (const line of lines) {
@@ -141,7 +144,7 @@ export function resultToolkit() {
                 i += 2;
               }
             }
-          } else for (const char of Array.from(token)) {
+          } else for (const char of Array.from(xmlText(token))) {
             if (char === "\t") { column += 8 - column % 8; continue; }
             const size = /\p{Mark}/u.test(char) ? 0 : /[^\x00-\xff]/.test(char) && !/[\u2500-\u259f]/.test(char) ? 2 : 1;
             if (column + size > 130) { styled.push(row); row = []; column = 0; }
@@ -162,8 +165,10 @@ export function resultToolkit() {
     return pages;
   }
   async function png(svg: string, scale = 2) {
+    const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+    if (parsed.querySelector("parsererror") || parsed.documentElement.localName !== "svg") throw new Error("结果图片包含无效的矢量内容，无法生成 PNG。");
     const image = new Image(); image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-    await image.decode();
+    try { await image.decode(); } catch { throw new Error("结果图片无法解码，请重新生成报告后重试。"); }
     const width = image.naturalWidth, height = image.naturalHeight;
     scale = Math.max(scale, 2400 / width);
     if (!width || !height || width * height * scale * scale > 64000000) throw new Error("单张原始图片尺寸过大，请使用上游分区报告。");

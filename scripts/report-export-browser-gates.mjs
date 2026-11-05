@@ -37,28 +37,42 @@ export async function checkReportExports({ cdp, model, profile, backend, waitUnt
   await childCdp.value("(()=>{const s=document.querySelector('[data-result-style]');s.value='unified';s.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('[data-results-clear]').click();document.querySelector('[data-result-list] input[data-result-id*=older]').click();window.__reportBlob=null;document.querySelector('[data-save-html]').click()})()");
   await waitUntil(childCdp, "window.__reportBlob?.type==='text/html;charset=utf-8'", 15000);
   const exported = await readBlob(false), match = exported.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/), payload = JSON.parse(match[1]);
-  failGate(payload.fullResults.length === 1 && payload.fullResults[0].roundId.endsWith("older") && payload.resultStyle === "unified", "HTML must archive only the chosen full result");
+  failGate(payload.fullResults.length === model.fullResults.length && payload.selectedResultIds.length === 1 && payload.selectedResultIds[0].includes("older") && payload.resultStyle === "unified", "HTML must retain history while attaching only chosen result images");
   failGate(exported.includes("data:image/png;base64,") && !exported.includes("203.0.113.19") && !exported.includes("8.8.8.8"), "Embedded image HTML omitted images or leaked an address");
   const selectedPath = join(profile, `selected-results-${backend}.html`);
   writeFileSync(selectedPath, exported);
-  const offlineTarget = (await cdp.call("Target.createTarget", { url: "about:blank" })).targetId;
-  try {
+  async function verifyOffline(path, selectedCount) {
+    const offlineTarget = (await cdp.call("Target.createTarget", { url: "about:blank" })).targetId;
+    try {
     const offlineSession = (await cdp.call("Target.attachToTarget", { targetId: offlineTarget, flatten: true })).sessionId;
     await cdp.call("Page.enable", {}, offlineSession); await cdp.call("Runtime.enable", {}, offlineSession);
     await cdp.call("Network.enable", {}, offlineSession);
     await cdp.call("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }, offlineSession);
-    await cdp.call("Page.navigate", { url: new URL(`file://${selectedPath}`).href }, offlineSession);
+    await cdp.call("Page.navigate", { url: new URL(`file://${path}`).href }, offlineSession);
     const offlineCdp = { value: expression => cdp.value(expression, undefined, offlineSession) };
     await waitUntil(offlineCdp, "document.querySelector('[data-chapter=network]')!==null", 5000);
     await offlineCdp.value("document.querySelector('[data-chapter=network]').click()");
-    await waitUntil(offlineCdp, "[...document.querySelectorAll('.full-result-image')].length>0 && [...document.querySelectorAll('.full-result-image')].every(image=>image.complete&&image.naturalWidth>=2400)", 5000);
-    await offlineCdp.value("document.querySelector('.full-result-image').click()");
-    failGate(await offlineCdp.value("document.querySelector('.report-image-modal')?.open && document.querySelectorAll('[data-result-list] input').length===1"), "Selected HTML must preserve offline images, zoom, downloads and chosen history");
-  } finally { await cdp.call("Target.closeTarget", { targetId: offlineTarget }); }
+    if (selectedCount) {
+      await waitUntil(offlineCdp, "[...document.querySelectorAll('.full-result-image')].length>0 && [...document.querySelectorAll('.full-result-image')].every(image=>image.complete&&image.naturalWidth>=2400)", 5000);
+      await offlineCdp.value("document.querySelector('.full-result-image').click()");
+      failGate(await offlineCdp.value("document.querySelector('.report-image-modal')?.open"), "Offline result image must remain interactive");
+    } else failGate(await offlineCdp.value("document.querySelectorAll('.full-result-image').length===0"), "Cleared image selection must omit image attachments");
+    failGate(await offlineCdp.value(`document.querySelectorAll('[data-result-list] input').length===${model.fullResults.length} && document.querySelectorAll('[data-result-list] input:checked').length===${selectedCount} && !document.querySelector('[data-result-list]').textContent.includes('没有匹配')`), "Offline HTML must retain complete detection history independently of image selection");
+    } finally { await cdp.call("Target.closeTarget", { targetId: offlineTarget }); }
+  }
+  await verifyOffline(selectedPath, 1);
   if (process.env.BROWSER_REPORT_EXPORT_BASE) {
     writeFileSync(`${process.env.BROWSER_REPORT_EXPORT_BASE}-${backend}.zip`, readFileSync(zipPath));
     writeFileSync(`${process.env.BROWSER_REPORT_EXPORT_BASE}-${backend}.html`, exported);
   }
+  // Empty image selection and an unmatched search must not erase offline history.
+  await childCdp.value("(()=>{document.querySelector('[data-results-clear]').click();const search=document.querySelector('[data-result-search]');search.value='no-match-archive-regression';search.dispatchEvent(new Event('input',{bubbles:true}));window.__reportBlob=null;document.querySelector('[data-save-html]').click()})()");
+  await waitUntil(childCdp, "window.__reportBlob?.type==='text/html;charset=utf-8'", 10000);
+  const withoutImages = await readBlob(false), emptyArchive = JSON.parse(withoutImages.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+  failGate(emptyArchive.fullResults.length === model.fullResults.length && emptyArchive.selectedResultIds.length === 0 && !withoutImages.includes('value="no-match-archive-regression"'), "Empty image selection or search erased exported detection history");
+  const emptyPath = join(profile, `without-images-${backend}.html`); writeFileSync(emptyPath, withoutImages);
+  await verifyOffline(emptyPath, 0);
+  await childCdp.value("(()=>{const search=document.querySelector('[data-result-search]');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}))})()");
   // Restore the latest two runs for the regular report/PDF regression.
   await childCdp.value("document.querySelector('[data-results-latest]').click();document.querySelector('[data-results-preview]').click()");
   await waitUntil(childCdp, "document.querySelector('[data-results-status]').textContent.includes('已准备')", 12000);

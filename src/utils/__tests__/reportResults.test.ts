@@ -40,6 +40,16 @@ describe("complete result archival and visual exports", () => {
     result.module = "nodequality-full"; result.sections = [{ name: "net_quality.log", title: "网络质量", format: "terminal", text: "\x1b[31mFAIL\x1b[0m\nOK" }];
     const pages = toolkit.original(result); expect(pages[0]).toContain('fill="#bd0013"'); expect(pages[0]).not.toContain("\x1b");
   });
+  it("removes terminal commands, XML control bytes and split surrogates from both image styles", () => {
+    const result = sample(); result.module = "nodequality-full";
+    result.sections = [{ name: "net_quality.log", title: "网络质量", format: "terminal", text: '\x1b]0;terminal title\x07\x1b]8;;https://example.com\x1b\\\x1b[32m真实结果😀\x1b[0m\x1b]8;;\x07\n\x00\x08\x0b\x0c\x1f\ud800末行' }];
+    for (const svg of [...toolkit.original(result), ...toolkit.unified(result, "node\x00", "UTC")]) {
+      expect(svg).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff]/u);
+      expect(svg).not.toContain("terminal title"); expect(svg).not.toContain("https://example.com");
+      expect(svg).toContain("末"); expect(svg).toContain("😀");
+    }
+    expect(toolkit.original(result)[0]).toContain('fill="#4ab118"');
+  });
   it("writes UTF-8 ZIP entries with bounded data and correct directory offsets", () => {
     const bytes = toolkit.zip([{ name: "检测/01.png", bytes: new Uint8Array([1, 2, 3]) }]), view = new DataView(bytes.buffer);
     expect(view.getUint32(0, true)).toBe(0x04034b50);

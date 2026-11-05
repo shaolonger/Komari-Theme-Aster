@@ -65,6 +65,7 @@ function registerReportController(ctx, native) {
     schema: 3,
     features: [
       "rounds",
+      "original-report-images",
       "latency-samples",
       "full-mtr",
       "bgp-rpki",
