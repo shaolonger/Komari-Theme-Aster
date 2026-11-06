@@ -8,9 +8,11 @@ export async function checkCupertino({
   failGate,
   captureScreenshot,
   enableNetworkCards,
+  appearance = "cupertino",
 }) {
+  const dark = appearance === "cupertino-dark";
   const base =
-    process.env.BROWSER_CUPERTINO_SCREENSHOT_BASE || "/tmp/cupertino-reference";
+    process.env.BROWSER_CUPERTINO_SCREENSHOT_BASE || `/tmp/${appearance}-reference`;
   mkdirSync(dirname(base), { recursive: true });
   await cdp.call("Emulation.setDeviceMetricsOverride", {
     width: 1672,
@@ -21,7 +23,7 @@ export async function checkCupertino({
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.querySelector('.app-shell')!==null", 10000);
   await cdp.value(
-    "localStorage.clear();sessionStorage.clear();localStorage.setItem('appearance',JSON.stringify('cupertino'))",
+    `localStorage.clear();sessionStorage.clear();localStorage.setItem('appearance',JSON.stringify(${JSON.stringify(appearance)}))`,
   );
   await cdp.call("Page.reload");
   const measurements = {};
@@ -77,10 +79,15 @@ export async function checkCupertino({
     if (name === "instance")
       failGate(
         await cdp.value(
-          "getComputedStyle(document.querySelector('.cupertino-switch-node')).backgroundColor==='rgb(255, 255, 255)'",
+          `getComputedStyle(document.querySelector('.cupertino-switch-node')).backgroundColor==='${dark ? "rgb(35, 35, 38)" : "rgb(255, 255, 255)"}'`,
         ),
         "Cupertino switch action must retain its neutral reference surface",
       );
+    if (name === "instance")
+      failGate(await cdp.value(`(()=>{
+        const tile=document.querySelector('[data-metric="uptime"]'),bounds=tile.getBoundingClientRect();
+        return [...tile.children].every(child=>{const r=child.getBoundingClientRect();return r.top>=bounds.top && r.bottom<=bounds.bottom;});
+      })()`), "Cupertino uptime label or last report time is clipped");
     measurements[name] = await cdp.value(
       `Object.fromEntries(${JSON.stringify(selectors)}.map(s=>{const r=document.querySelector(s)?.getBoundingClientRect();return[s,r?{x:r.x,y:r.y,width:r.width,height:r.height}:null]}))`,
     );
@@ -89,6 +96,15 @@ export async function checkCupertino({
       `Cupertino ${name}: horizontal overflow`,
     );
   }
+  const palette = await cdp.value(`(()=>{
+    const root=document.documentElement,styles=getComputedStyle(root);
+    return {style:root.dataset.themeStyle,appearance:root.dataset.appearance,scheme:styles.colorScheme,
+      canvas:styles.getPropertyValue('--bg-0').trim(),surface:styles.getPropertyValue('--surface').trim(),
+      accent:styles.getPropertyValue('--accent-500').trim(),text:styles.getPropertyValue('--text-primary').trim()};
+  })()`);
+  failGate(palette.style==='cupertino' && palette.appearance===(dark?'dark':'light') && palette.scheme===(dark?'dark':'light'), 'Native color scheme did not follow saved appearance');
+  failGate(palette.canvas===(dark?'#141416':'#f5f5f7') && palette.surface===(dark?'#232326':'#fff') && palette.accent===(dark?'#0a84ff':'#007aff'), 'Native reference palette drifted: '+JSON.stringify(palette));
+  measurements.palette=palette;
   const navigate = async (path = "/") => {
     await cdp.call("Page.navigate", { url: origin + path });
     await waitUntil(
@@ -157,7 +173,7 @@ export async function checkCupertino({
     await settle();
   };
   failGate(
-    Math.abs(measurements.home[".cupertino-node-card"].y - 382) < 5,
+    Math.abs(measurements.home[".cupertino-node-card"].y - (dark ? 376 : 382)) < 5,
     "Cupertino reference card position drifted",
   );
   failGate(
@@ -165,7 +181,7 @@ export async function checkCupertino({
     "Cupertino reference card density drifted",
   );
   failGate(
-    Math.abs(measurements.instance[".cupertino-instance-metrics"].y - 211) < 5,
+    Math.abs(measurements.instance[".cupertino-instance-metrics"].y - (dark ? 207 : 211)) < 5,
     "Cupertino reference metric row drifted",
   );
   failGate(
@@ -380,10 +396,10 @@ export async function checkCupertino({
   await navigate("/?view=theme-manage");
   await waitUntil(
     cdp,
-    "document.querySelector('input[value=cupertino]')!==null",
+    `document.querySelector('input[value="${appearance}"]')!==null`,
     10000,
   );
-  await cdp.value("document.querySelector('input[value=cupertino]').click()");
+  await cdp.value(`document.querySelector('input[value="${appearance}"]').click()`);
   await cdp.value(
     "[...document.querySelectorAll('.aster-studio-savebar button')].find(b=>b.textContent.includes('保存')).click()",
   );
@@ -408,6 +424,7 @@ export async function checkCupertino({
     "orbital",
     "luminous",
     "cupertino",
+    "cupertino-dark",
   ]) {
     await cdp.value(
       `localStorage.setItem('appearance',JSON.stringify('${theme}'))`,
@@ -415,16 +432,17 @@ export async function checkCupertino({
     await cdp.call("Page.reload");
     await waitUntil(
       cdp,
-      `document.documentElement.dataset.themeStyle==='${theme === "light" || theme === "dark" ? "default" : theme}'`,
+      `document.documentElement.dataset.themeStyle==='${theme.startsWith("cupertino") ? "cupertino" : theme === "light" || theme === "dark" ? "default" : theme}'`,
       10000,
     );
-    if (theme !== "cupertino")
+    if (!theme.startsWith("cupertino"))
       failGate(
         await cdp.value("document.querySelector('.cupertino-sidebar')===null"),
         "Cupertino shell leaked into " + theme,
       );
   }
   const styleIsolation = await checkCupertinoStyles({
+    appearance,
     cdp,
     origin,
     waitUntil,
@@ -467,6 +485,7 @@ export async function checkCupertino({
     JSON.stringify(measurements, null, 2),
   );
   return {
+    appearance,
     cupertino:
       "reference geometry, four full views, multi-search, favorites, metrics/settings, carrier modules, persistent tabs, unique search, offline report entry, Studio persistence, original themes, 320–1920px",
     measurements,

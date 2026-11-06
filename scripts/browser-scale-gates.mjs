@@ -2075,7 +2075,12 @@ try {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: "cupertino", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
-    results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,enableNetworkCards:()=>{activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
+    for (const appearance of process.env.BROWSER_CUPERTINO_APPEARANCE ? [process.env.BROWSER_CUPERTINO_APPEARANCE] : ["cupertino", "cupertino-dark"]) {
+      await clearFixturePage(cdp);
+      activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: appearance, ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+      savedUiSettings = null;
+      results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,appearance,enableNetworkCards:()=>{activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
+    }
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {

@@ -6,7 +6,7 @@ import {
 import { isAppearance, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
-  it.each(["slate", "slate-light", "glacier", "orbital", "luminous", "cupertino"] as const)("preserves the %s appearance", (appearance) => {
+  it.each(["slate", "slate-light", "glacier", "orbital", "luminous", "cupertino", "cupertino-dark"] as const)("preserves the %s appearance", (appearance) => {
     expect(isAppearance(appearance)).toBe(true);
     expect(normalizeThemeSettings({ defaultAppearance: appearance }).defaultAppearance).toBe(appearance);
   });

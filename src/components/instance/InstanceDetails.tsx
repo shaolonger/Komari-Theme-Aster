@@ -1,3 +1,4 @@
+import { isCupertinoAppearance } from "@/utils/themeSettings";
 import { lazy, Suspense, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { AlertCircle, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -379,7 +380,7 @@ export function InstanceDetails({
         </div>
       </div>
   );
-  if (appearance === "cupertino") return <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}><CupertinoInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>} navigation={navigation}>{children}</CupertinoInstanceSummary></Suspense>;
+  if (isCupertinoAppearance(appearance)) return <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}><CupertinoInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>} navigation={navigation}>{children}</CupertinoInstanceSummary></Suspense>;
   if (appearance === "luminous") return (
     <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}>
       <LuminousInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>}>

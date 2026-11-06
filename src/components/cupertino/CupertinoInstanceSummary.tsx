@@ -57,7 +57,7 @@ export default function CupertinoInstanceSummary({
       icon: Cpu,
       value: observed ? formatMetricPercent(node.cpuPct) : "—",
       suffix: "",
-      color: "#007aff",
+      color: "var(--accent-500)",
       values: samples.map((r) => r.cpu),
     },
     {
@@ -65,7 +65,7 @@ export default function CupertinoInstanceSummary({
       icon: MemoryStick,
       value: observed ? formatBytes(node.ramUsed) : "—",
       suffix: "/ " + formatBytes(node.ramTotal),
-      color: "#af52de",
+      color: "var(--speed-gb)",
       values: samples.map((r) =>
         r.ram_total ? (r.ram / r.ram_total) * 100 : NaN,
       ),
@@ -75,7 +75,7 @@ export default function CupertinoInstanceSummary({
       icon: HardDrive,
       value: observed ? formatBytes(node.diskUsed) : "—",
       suffix: "/ " + formatBytes(node.diskTotal),
-      color: "#34a853",
+      color: "var(--status-success)",
       values: samples.map((r) =>
         r.disk_total ? (r.disk / r.disk_total) * 100 : NaN,
       ),
@@ -86,7 +86,7 @@ export default function CupertinoInstanceSummary({
       value: loss == null ? "暂无观测" : formatMetricPercent(loss),
       suffix:
         loss == null ? "" : loss >= 20 ? "高丢包" : loss >= 5 ? "波动" : "正常",
-      color: loss != null && loss >= 5 ? "#ff3b30" : "#34c759",
+      color: loss != null && loss >= 5 ? "var(--status-error)" : "var(--status-success)",
       values: ping.samples.map((s) =>
         s.sampleCount ? ((s.lossCount || 0) / s.sampleCount) * 100 : NaN,
       ),

@@ -40,7 +40,11 @@ import {
   type DisplayTimeZone,
 } from "@/utils/timeDisplay";
 
-export type Appearance = "system" | "light" | "dark" | "diagnostic" | "clearsky" | "slate" | "slate-light" | "glacier" | "orbital" | "luminous" | "cupertino";
+export type Appearance = "system" | "light" | "dark" | "diagnostic" | "clearsky" | "slate" | "slate-light" | "glacier" | "orbital" | "luminous" | "cupertino" | "cupertino-dark";
+
+export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" {
+  return value === "cupertino" || value === "cupertino-dark";
+}
 export type NodeViewMode = "large" | "standard" | "compact" | "list";
 
 export interface ResolvedThemeSettings {
@@ -134,7 +138,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
 };
 
 export function isAppearance(value: unknown): value is Appearance {
-  return value === "system" || value === "light" || value === "dark" || value === "diagnostic" || value === "clearsky" || value === "slate" || value === "slate-light" || value === "glacier" || value === "orbital" || value === "luminous" || value === "cupertino";
+  return value === "system" || value === "light" || value === "dark" || value === "diagnostic" || value === "clearsky" || value === "slate" || value === "slate-light" || value === "glacier" || value === "orbital" || value === "luminous" || isCupertinoAppearance(value);
 }
 
 function normalizeAppearance(

@@ -9,10 +9,11 @@ export async function checkCupertinoStyles({
   waitUntil,
   failGate,
   captureScreenshot,
+  appearance = "cupertino",
 }) {
   const base =
     process.env.BROWSER_CUPERTINO_STYLE_SCREENSHOT_BASE ||
-    "/tmp/cupertino-style";
+    `/tmp/${appearance}-style`;
   mkdirSync(dirname(base), { recursive: true });
   const width = async (value) => {
     await cdp.call("Emulation.setDeviceMetricsOverride", {
@@ -26,6 +27,7 @@ export async function checkCupertinoStyles({
     );
   };
   const switchTheme = async (label, style, shell) => {
+    const scheme = label === "原生 · 暗色" ? "dark" : "light";
     await cdp.value(
       "if(document.querySelector('.floating-controls-trigger').getAttribute('aria-expanded')!=='true')document.querySelector('.floating-controls-trigger').click()",
     );
@@ -40,7 +42,7 @@ export async function checkCupertinoStyles({
     );
     await waitUntil(
       cdp,
-      `document.documentElement?.dataset.themeStyle==='${style}' && document.querySelector('${shell}')!==null`,
+      `document.documentElement?.dataset.themeStyle==='${style}' && document.documentElement?.dataset.appearance==='${scheme}' && document.querySelector('${shell}')!==null`,
       10000,
     );
     await cdp.value(
@@ -136,7 +138,7 @@ export async function checkCupertinoStyles({
   for (const order of ["cupertino-first", "luminous-first"]) {
     await width(1672);
     await cdp.value(
-      `localStorage.setItem('appearance',JSON.stringify('${order === "cupertino-first" ? "cupertino" : "luminous"}'))`,
+      `localStorage.setItem('appearance',JSON.stringify('${order === "cupertino-first" ? appearance : "luminous"}'))`,
     );
     await cdp.call("Page.navigate", { url: origin + "/instance/node-0" });
     await waitUntil(
@@ -146,7 +148,12 @@ export async function checkCupertinoStyles({
     );
     if (order === "cupertino-first")
       await switchTheme("光域未来", "luminous", ".luminous-sidebar");
-    await switchTheme("原生 · Cupertino", "cupertino", ".cupertino-sidebar");
+    await switchTheme(appearance === "cupertino-dark" ? "原生 · 暗色" : "原生 · Cupertino", "cupertino", ".cupertino-sidebar");
+    // Switch the native palette in the same document: the family and shell do
+    // not change, but cached canvas options and every surface must update.
+    await switchTheme(appearance === "cupertino-dark" ? "原生 · Cupertino" : "原生 · 暗色", "cupertino", ".cupertino-sidebar");
+    await switchTheme(appearance === "cupertino-dark" ? "原生 · 暗色" : "原生 · Cupertino", "cupertino", ".cupertino-sidebar");
+    failGate(await cdp.value(`getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()==='${appearance === "cupertino-dark" ? "#232326" : "#fff"}'`), "Native palette retained the previous color scheme after a SPA switch");
     // Both styles must still be loaded; a reload here would hide the regression.
     failGate(
       await cdp.value(
@@ -180,7 +187,7 @@ export async function checkCupertinoStyles({
   }
   return {
     themeStyles:
-      "both SPA stylesheet load orders; metric rows, separate event columns and single search focus at 320–1920px",
+      "native light/dark SPA palette switches and both luminous stylesheet load orders; metric rows, separate event columns and single search focus at 320–1920px",
     cases: results.length,
   };
 }

@@ -1,3 +1,4 @@
+import { isCupertinoAppearance } from "@/utils/themeSettings";
 import { Link } from "react-router-dom";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -104,7 +105,7 @@ export function PingChart({
     range,
   );
   const { resolvedAppearance, appearance } = usePreferences();
-  const native = appearance === "luminous" || appearance === "cupertino";
+  const native = appearance === "luminous" || isCupertinoAppearance(appearance);
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const orbital = appearance === "orbital" || native;
@@ -147,7 +148,7 @@ export function PingChart({
     );
   }, [tasks]);
   const taskColors = useMemo(
-    () => new Map(tasks.map((task, index) => [task.id, orbital ? (native ? [appearance === "cupertino" ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"] : ["#ed35c8", "#ffa63f", "#9ce84c", "#12dcee", "#258dff", "#a46aff"])[index % 6] : appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
+    () => new Map(tasks.map((task, index) => [task.id, orbital ? (native ? (appearance === "cupertino-dark" ? ["#ff453a", "#ff9f0a", "#32d74b", "#64d2ff", "#0a84ff", "#bf5af2"] : [isCupertinoAppearance(appearance) ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"]) : ["#ed35c8", "#ffa63f", "#9ce84c", "#12dcee", "#258dff", "#a46aff"])[index % 6] : appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
     [tasks, appearance, orbital, native],
   );
   const taskKeySet = useMemo(() => new Set(tasks.map((task) => String(task.id))), [tasks]);
@@ -536,8 +537,8 @@ export function PingChart({
   ]);
 
   const options = useMemo<uPlot.Options | null>(
-    () => (baseOptions ? { ...baseOptions, axes: native ? baseOptions.axes?.map(axis=>({...axis,font:"10px Inter, sans-serif",size:axis.size===82?60:axis.size})) : baseOptions.axes, width: w, height: native ? fullscreen ? Math.max(290,window.innerHeight-40) : 290 : h } : null),
-    [baseOptions, w, h, fullscreen, native],
+    () => (baseOptions ? { ...baseOptions, axes: native ? baseOptions.axes?.map(axis=>({...axis,font:"10px Inter, sans-serif",size:axis.size===82?60:axis.size})) : baseOptions.axes, width: w, height: native ? fullscreen ? Math.max(290,window.innerHeight-40) : appearance === "cupertino-dark" ? 260 : 290 : h } : null),
+    [baseOptions, w, h, fullscreen, native, appearance],
   );
 
   const taskStats = useMemo(() => {

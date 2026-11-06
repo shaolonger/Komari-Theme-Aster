@@ -11,6 +11,7 @@ const appearances: { value: Appearance; label: string; detail: string }[] = [
   { value: 'slate-light', label: '曜石·明', detail: '曜石的亮色版本，保留相同卡片层次' },
   { value: 'clearsky', label: '澄空', detail: '冷白冰蓝、薄片叠层与轻微空间视差' },
   { value: 'cupertino', label: '原生 · Cupertino', detail: '珍珠白、石墨文字与系统蓝，清晰而克制的监控工作台' },
+  { value: 'cupertino-dark', label: '原生 · 暗色', detail: '深石墨、柔和灰白与系统蓝，苹果风格的暗色监控工作台' },
   { value: 'luminous', label: '光域未来', detail: '蓝白玻璃、实时三维地球与动态云端装置' },
   { value: 'orbital', label: '星轨', detail: '深海蓝、青紫光效与环形节点仪表工作台' },
   { value: 'glacier', label: '冰川', detail: '冰蓝玻璃侧栏、全网总览与双栏诊断工作台' },

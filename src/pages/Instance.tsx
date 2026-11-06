@@ -1,3 +1,4 @@
+import { isCupertinoAppearance } from "@/utils/themeSettings";
 import {
   lazy,
   Suspense,
@@ -70,7 +71,7 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const luminous = appearance === "luminous";
-  const cupertino = appearance === "cupertino";
+  const cupertino = isCupertinoAppearance(appearance);
   const workspaceLayout = luminous || cupertino;
   const glacier = appearance === "glacier";
   const orbital = appearance === "orbital" || appearance === "luminous";
@@ -213,7 +214,7 @@ export function Instance() {
     if (
       appearance === "glacier" ||
       appearance === "orbital" ||
-      appearance === "luminous" || appearance === "cupertino"
+      appearance === "luminous" || isCupertinoAppearance(appearance)
     )
       return;
     const frame = window.requestAnimationFrame(() => {
