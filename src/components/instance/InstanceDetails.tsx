@@ -32,6 +32,7 @@ import { InstancePanel } from "./InstancePanel";
 import { usePreferences } from "@/hooks/usePreferences";
 import { getHostHealthStatus, NodeStatusSummary, type NetworkHealthStatus } from "@/components/node/NodeStatusSummary";
 
+const CupertinoInstanceSummary = lazy(() => import("@/components/cupertino/CupertinoInstanceSummary"));
 const LuminousInstanceSummary = lazy(() => import("@/components/luminous/LuminousInstanceSummary"));
 const OrbitalInstanceSummary = lazy(() => import("@/components/orbital/OrbitalInstanceSummary"));
 
@@ -101,10 +102,12 @@ export function InstanceDetails({
   onPingSummarySlot,
   view = "load",
   children,
+  navigation,
 }: {
   uuid: string;
   view?: InstanceView;
   children?: ReactNode;
+  navigation?: ReactNode;
   onNodeReady?: () => (() => void) | void;
   onPingSummarySlot?: (node: HTMLDivElement | null) => void;
 }) {
@@ -376,6 +379,7 @@ export function InstanceDetails({
         </div>
       </div>
   );
+  if (appearance === "cupertino") return <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}><CupertinoInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>} navigation={navigation}>{children}</CupertinoInstanceSummary></Suspense>;
   if (appearance === "luminous") return (
     <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}>
       <LuminousInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>}>

@@ -115,7 +115,7 @@ function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedApp
   const root = document.documentElement;
   const previous = `${root.dataset.appearance}:${root.dataset.themeStyle}`;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = appearance.startsWith("slate") ? "slate" : appearance === "diagnostic" || appearance === "clearsky" || appearance === "glacier" || appearance === "orbital" || appearance === "luminous" ? appearance : "default";
+  root.dataset.themeStyle = appearance.startsWith("slate") ? "slate" : appearance === "diagnostic" || appearance === "clearsky" || appearance === "glacier" || appearance === "orbital" || appearance === "luminous" || appearance === "cupertino" ? appearance : "default";
   root.style.colorScheme = resolvedAppearance;
   if (previous !== `${root.dataset.appearance}:${root.dataset.themeStyle}`) notifyPaletteChanged();
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');

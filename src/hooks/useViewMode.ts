@@ -163,7 +163,7 @@ export function useViewMode() {
   const defaultMode: NodeViewMode =
     appearance === "glacier" && themeSettings.defaultAppearance !== "glacier"
       ? state.device === "mobile" ? "compact" : "list"
-      : (appearance === "orbital" || appearance === "luminous") && themeSettings.defaultAppearance !== appearance
+      : (appearance === "orbital" || appearance === "luminous" || appearance === "cupertino") && themeSettings.defaultAppearance !== appearance
         ? state.device === "mobile" ? "compact" : "standard"
         : state.device === "mobile"
         ? themeSettings.mobileNodeViewMode

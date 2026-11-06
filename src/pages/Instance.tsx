@@ -44,6 +44,7 @@ import {
 } from "@/utils/instanceView";
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 
+const CupertinoInstanceHeading = lazy(() => import("@/components/cupertino/CupertinoInstanceHeading"));
 const LuminousInstanceHeading = lazy(
   () => import("@/components/luminous/LuminousInstanceHeading"),
 );
@@ -69,6 +70,8 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const luminous = appearance === "luminous";
+  const cupertino = appearance === "cupertino";
+  const workspaceLayout = luminous || cupertino;
   const glacier = appearance === "glacier";
   const orbital = appearance === "orbital" || appearance === "luminous";
   const allNodes = useAllNodeMeta();
@@ -210,7 +213,7 @@ export function Instance() {
     if (
       appearance === "glacier" ||
       appearance === "orbital" ||
-      appearance === "luminous"
+      appearance === "luminous" || appearance === "cupertino"
     )
       return;
     const frame = window.requestAnimationFrame(() => {
@@ -280,7 +283,7 @@ export function Instance() {
 
   const chartControls = (
     <div className="instance-chart-controls">
-      {!luminous && (
+      {!workspaceLayout && (
         <div className="instance-segmented">
           <button
             type="button"
@@ -425,15 +428,15 @@ export function Instance() {
     <section
       ref={chartControlsRef}
       className="instance-panel instance-chart-workspace"
-      role={luminous ? "tabpanel" : undefined}
-      id={luminous ? "instance-view-panel" : "instance-chart-controls"}
-      aria-labelledby={luminous ? "instance-view-" + chartType : undefined}
+      role={workspaceLayout ? "tabpanel" : undefined}
+      id={workspaceLayout ? "instance-view-panel" : "instance-chart-controls"}
+      aria-labelledby={workspaceLayout ? "instance-view-" + chartType : undefined}
     >
-      {(!luminous || chartType === "load" || chartType === "traffic") && (
+      {(!workspaceLayout || chartType === "load" || chartType === "traffic") && (
         <header className="instance-chart-workspace-header">
           <div className="instance-panel-headings">
             <h2 className="instance-panel-title">
-              {luminous
+              {workspaceLayout
                 ? chartType === "traffic"
                   ? "区间用量"
                   : "性能趋势"
@@ -446,7 +449,7 @@ export function Instance() {
                   : "节点诊断"}
             </h2>
             <p className="instance-panel-description">
-              {luminous
+              {workspaceLayout
                 ? instanceViews.find((view) => view.id === chartType)
                     ?.description
                 : chartType === "network"
@@ -454,7 +457,7 @@ export function Instance() {
                   : "选择监控指标与时间范围，检查节点状态变化。"}
             </p>
           </div>
-          {!luminous && chartControls}
+          {(!workspaceLayout || cupertino) && chartControls}
         </header>
       )}
       {customRangeActive && (
@@ -560,56 +563,7 @@ export function Instance() {
       )}
     </section>
   );
-  return (
-    <div
-      className={`flex flex-col gap-5 py-2${luminous ? " luminous-instance-page" : glacier ? " glacier-instance" : orbital ? " orbital-instance" : ""}`}
-      data-chart={chartType}
-    >
-      <div className="instance-topbar">
-        {luminous ? (
-          <Suspense fallback={null}>
-            <LuminousInstanceHeading uuid={uuid} view={chartType} />
-          </Suspense>
-        ) : orbital ? (
-          <Suspense fallback={null}>
-            <OrbitalInstanceHeading uuid={uuid} ping={chartType === "ping"} />
-          </Suspense>
-        ) : glacier ? (
-          <Suspense fallback={null}>
-            <GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} />
-          </Suspense>
-        ) : (
-          <Link to="/" className="instance-page-back">
-            <ChevronLeft size={14} />
-            返回
-          </Link>
-        )}
-        <div className="instance-topbar-actions">
-          <Link
-            className="instance-report-entry"
-            to={`/instance/${encodeURIComponent(uuid)}/report${customRangeActive ? `?${new URLSearchParams({ start: appliedRange.start, end: appliedRange.end })}` : ""}`}
-          >
-            <FileChartColumn size={14} />
-            生成报告
-          </Link>
-          {!luminous && (
-            <NodeSwitcher
-              key={uuid}
-              nodes={nodeOptions}
-              currentUuid={selectedNodeUuid}
-              onSelect={(nextUuid) => {
-                if (nextUuid !== uuid)
-                  startTransition(() =>
-                    navigate(
-                      `/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`,
-                    ),
-                  );
-              }}
-            />
-          )}
-        </div>
-      </div>
-      {luminous ? (
+  const workspaceNavigation = (
         <nav
           className="luminous-instance-navigation luminous-glass"
           aria-label="实例内容导航"
@@ -663,16 +617,62 @@ export function Instance() {
                 </button>
               ))}
           </div>
-          {chartControls}
+          {(!cupertino || chartType === "ping") && chartControls}
         </nav>
-      ) : (
-        <InstanceDetails
-          uuid={uuid}
-          onNodeReady={alignCharts}
-          onPingSummarySlot={setPingSummarySlot}
-        />
-      )}
-      {!luminous && chartType !== "network" && (
+  );
+  return (
+    <div
+      className={`flex flex-col gap-5 py-2${cupertino ? " cupertino-instance" : luminous ? " luminous-instance-page" : glacier ? " glacier-instance" : orbital ? " orbital-instance" : ""}`}
+      data-chart={chartType}
+    >
+      <div className="instance-topbar">
+        {cupertino ? <Suspense fallback={null}><CupertinoInstanceHeading uuid={uuid} view={chartType}/></Suspense> : luminous ? (
+          <Suspense fallback={null}>
+            <LuminousInstanceHeading uuid={uuid} view={chartType} />
+          </Suspense>
+        ) : orbital ? (
+          <Suspense fallback={null}>
+            <OrbitalInstanceHeading uuid={uuid} ping={chartType === "ping"} />
+          </Suspense>
+        ) : glacier ? (
+          <Suspense fallback={null}>
+            <GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} />
+          </Suspense>
+        ) : (
+          <Link to="/" className="instance-page-back">
+            <ChevronLeft size={14} />
+            返回
+          </Link>
+        )}
+        <div className="instance-topbar-actions">
+          <Link
+            className="instance-report-entry"
+            to={`/instance/${encodeURIComponent(uuid)}/report${customRangeActive ? `?${new URLSearchParams({ start: appliedRange.start, end: appliedRange.end })}` : ""}`}
+          >
+            <FileChartColumn size={14} />
+            生成报告
+          </Link>
+          {cupertino && <button className="cupertino-switch-node" onClick={()=>document.querySelector<HTMLInputElement>('.cupertino-global-search input')?.focus()}>⇆ 切换节点</button>}
+          {!workspaceLayout && (
+            <NodeSwitcher
+              key={uuid}
+              nodes={nodeOptions}
+              currentUuid={selectedNodeUuid}
+              onSelect={(nextUuid) => {
+                if (nextUuid !== uuid)
+                  startTransition(() =>
+                    navigate(
+                      `/instance/${nextUuid}${chartType === "network" ? "?focus=network" : ""}`,
+                    ),
+                  );
+              }}
+            />
+          )}
+        </div>
+      </div>
+      {luminous && workspaceNavigation}
+      {!workspaceLayout && <InstanceDetails uuid={uuid} onNodeReady={alignCharts} onPingSummarySlot={setPingSummarySlot}/>}
+      {!workspaceLayout && chartType !== "network" && (
         <Link
           className="network-instance-shortcut"
           to={`/instance/${uuid}?focus=network`}
@@ -680,8 +680,8 @@ export function Instance() {
           网络检测 · 探测器、计划与报告 →
         </Link>
       )}
-      {luminous ? (
-        <InstanceDetails uuid={uuid} view={chartType} onNodeReady={alignCharts}>
+      {workspaceLayout ? (
+        <InstanceDetails uuid={uuid} view={chartType} onNodeReady={alignCharts} navigation={cupertino ? workspaceNavigation : undefined}>
           {chartWorkspace}
         </InstanceDetails>
       ) : (

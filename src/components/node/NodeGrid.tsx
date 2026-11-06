@@ -95,6 +95,8 @@ import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey,
 const NodeCard = lazy(() => import("./NodeCard").then(module => ({ default: module.NodeCard })));
 const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
 const renderGlacierCard = (uuid: string) => <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density="expanded" /></Suspense>;
+const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"));
+const CupertinoNodeCard = lazy(() => import("@/components/cupertino/CupertinoNodeCard"));
 const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
@@ -819,16 +821,17 @@ export function NodeGrid() {
   const { appearance } = usePreferences();
   const diagnosticAppearance = appearance === "diagnostic";
   const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital" || appearance === "luminous";
-  const OrbitalWorkspace = appearance === "luminous" ? LuminousHome : OrbitalHome;
+  const nativeHome = appearance === "luminous" || appearance === "cupertino";
+  const orbital = appearance === "orbital" || nativeHome;
+  const OrbitalWorkspace = appearance === "cupertino" ? CupertinoHome : appearance === "luminous" ? LuminousHome : OrbitalHome;
   const [orbitalParams, setOrbitalParams] = useSearchParams();
   const orbitalRegion = orbitalParams.get("region") ?? "";
-  const favoriteUuids = useLuminousFavorites(appearance === "luminous");
+  const favoriteUuids = useLuminousFavorites(nativeHome);
   const [orbitalGroup, setOrbitalGroup] = useState("");
   const [glacierTools, setGlacierTools] = useState(false);
   const [storedGlacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention" | "offline" | "favorites">("all");
   const luminousStatus = orbitalParams.get("status");
-  const glacierStatus = appearance === "luminous"
+  const glacierStatus = nativeHome
     ? luminousStatus === "online" || luminousStatus === "attention" || luminousStatus === "offline" || luminousStatus === "favorites" ? luminousStatus : "all"
     : storedGlacierStatus;
   const { mode } = useViewMode();
@@ -1265,7 +1268,7 @@ export function NodeGrid() {
       (!orbital || (!orbitalRegion || getDisplayRegionCode(node.region) === orbitalRegion) && (!orbitalGroup || node.group === orbitalGroup)),
     );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
-    const searchGroups = appearance === "luminous" ? splitNodeSearchGroups(normalizedSearch) : [normalizedSearch];
+    const searchGroups = nativeHome ? splitNodeSearchGroups(normalizedSearch) : [normalizedSearch];
     const searchFiltered = normalizedSearch
       ? facetFiltered.filter((node) => {
           const meta = workbenchMetaByUuid.get(node.uuid);
@@ -1356,7 +1359,7 @@ export function NodeGrid() {
     ];
   }, [
     facetFilteredUuidSet,
-    appearance,
+    nativeHome,
     glacier,
     orbital,
     orbitalRegion,
@@ -1449,7 +1452,7 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
+        {appearance === "cupertino" && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
   }, [uuidsKey, mode, appearance]);
@@ -1629,7 +1632,7 @@ export function NodeGrid() {
             onToggleTools={() => setGlacierTools(v => !v)}
             status={glacierStatus}
             onStatus={(value) => {
-              if (appearance === "luminous") setOrbitalParams(previous => {
+              if (nativeHome) setOrbitalParams(previous => {
                 const next = new URLSearchParams(previous);
                 if (value === "all") next.delete("status"); else next.set("status", value);
                 return next;

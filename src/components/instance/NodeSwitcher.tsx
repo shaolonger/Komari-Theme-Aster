@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { matchesNodeSearch } from "@/utils/nodeSearch";
 export type SearchableNode = { uuid: string; name: string; group?: string | null; region?: string | null; tags?: string | null; public_remark?: string | null; provider?: string | null; business_role?: string | null; remark?: string | null; ipv4?: string | null; ipv6?: string | null; };
 
-export function NodeSwitcher({ nodes, currentUuid, onSelect, label = "切换 VPS", className = "" }: { nodes: SearchableNode[]; currentUuid: string; onSelect: (uuid: string) => void; label?: string; className?: string }) {
+export function NodeSwitcher({ nodes, currentUuid, onSelect, label = "切换 VPS", className = "", showCurrentValue = true, placeholder }: { nodes: SearchableNode[]; currentUuid: string; onSelect: (uuid: string) => void; label?: string; className?: string; showCurrentValue?: boolean; placeholder?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -31,7 +31,7 @@ export function NodeSwitcher({ nodes, currentUuid, onSelect, label = "切换 VPS
     <input id={`${listId}-input`} className="instance-node-select" role="combobox" autoComplete="off"
       aria-label={label === "切换 VPS" ? "搜索并切换 VPS" : `搜索并选择${label}`} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
       aria-activedescendant={open && matches.length ? `${listId}-${index}` : undefined}
-      value={open ? query : current?.name ?? ""} placeholder="输入名称、分组或 UUID；空格分词"
+      value={open ? query : showCurrentValue ? current?.name ?? "" : ""} placeholder={placeholder || "输入名称、分组或 UUID；空格分词"}
       onFocus={() => { setOpen(true); setQuery(""); setActive(0); }}
       onClick={() => setOpen(true)}
       onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }}

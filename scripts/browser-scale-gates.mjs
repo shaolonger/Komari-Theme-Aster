@@ -1,3 +1,4 @@
+import { checkCupertino } from "./cupertino-browser-gates.mjs";
 import { checkLuminous } from "./luminous-browser-gates.mjs";
 import { checkOrbital } from "./orbital-browser-gates.mjs";
 import { checkGlacier } from "./glacier-browser-gates.mjs";
@@ -268,7 +269,7 @@ function legacyReport(index, sequence) {
 function officialLatestStatus(index, sequence) {
   const docsOffline = (activeFixture.reportOffline || activeFixture.docs && !activeFixture.slate) && index === 0;
   return {
-    online: activeFixture.luminousReference ? index < 42 : !docsOffline,
+    online: activeFixture.cupertino ? index !== 7 : activeFixture.luminousReference ? index < 42 : !docsOffline,
     cpu: activeFixture.luminousReference ? [1.51,.3,0,.1,30,5.6,1,1.1,1.8,.3][index%10] : (index + sequence) % 100,
     ram: activeFixture.luminousReference ? (973*1024*1024)*[.175,.24,.24,.073,.77,.76,.16,.16,.21,.24][index%10] : 536_870_912 + ((index + sequence) % 100) * 1_048_576,
     ram_total: activeFixture.luminousReference ? 973*1024*1024 : 2_147_483_648,
@@ -458,7 +459,7 @@ const server = createServer(async (request, response) => {
         // Use an absolute URL: production correctly rejects relative rate
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
-        homepagePingBindings: Object.fromEntries((fixture.luminousReference ? [1,2,3,4,5,6] : fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
+        homepagePingBindings: Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
       },
@@ -993,7 +994,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_SLATE_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -2034,7 +2035,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
-  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY) {
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY) {
   await clearFixturePage(cdp);
   activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: 'clear-sky', ui: true, docs: true, clearSky: true, comprehensive: true };
   savedUiSettings = null;
@@ -2044,19 +2045,19 @@ try {
   savedUiSettings = null;
   results.push(await checkSlate({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   }
-  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, soak: false, run: "glacier", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkGlacier({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot }));
   }
-  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 15, soak: false, run: "orbital", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
     results.push(await checkOrbital({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, enableNetworkCards: () => { activeFixture.reports = true; homeRouteDisplay = true; homeSpeedDisplay = true; } }));
   }
-  if (!process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: process.env.BROWSER_LUMINOUS_REFERENCE ? 49 : 15, luminousReference: Boolean(process.env.BROWSER_LUMINOUS_REFERENCE), soak: false, run: "luminous", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
     savedUiSettings = null;
@@ -2067,6 +2068,12 @@ try {
       savedUiSettings = null;
       results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, reference: true }));
     }
+  }
+  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_ORBITAL_ONLY && !process.env.BROWSER_GLACIER_ONLY && !process.env.BROWSER_SLATE_ONLY && !process.env.BROWSER_CLEAR_SKY_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: "cupertino", ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
+    savedUiSettings = null;
+    results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,enableNetworkCards:()=>{activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {
