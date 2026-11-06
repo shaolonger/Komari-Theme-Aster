@@ -243,7 +243,7 @@ function nodeList(size) {
 
 function legacyReport(index, sequence) {
   return {
-    online: true,
+    online: !(activeFixture.reportOffline && index === 0),
     cpu: { usage: (index + sequence) % 100 },
     ram: { used: 536_870_912 + ((index + sequence) % 100) * 1_048_576, total: 2_147_483_648 },
     swap: { used: 0, total: 0 },
@@ -258,7 +258,7 @@ function legacyReport(index, sequence) {
     connections: { tcp: 10, udp: 2 },
     uptime: sequence,
     process: 20,
-    updated_at: 1_700_000_000 + sequence,
+    updated_at: activeFixture.reportOffline && index === 0 ? Math.floor(Date.now()/1000)-3*3600 : 1_700_000_000 + sequence,
   };
 }
 
@@ -266,7 +266,7 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
-  const docsOffline = activeFixture.docs && !activeFixture.slate && index === 0;
+  const docsOffline = (activeFixture.reportOffline || activeFixture.docs && !activeFixture.slate) && index === 0;
   return {
     online: activeFixture.luminousReference ? index < 42 : !docsOffline,
     cpu: activeFixture.luminousReference ? [1.51,.3,0,.1,30,5.6,1,1.1,1.8,.3][index%10] : (index + sequence) % 100,
@@ -305,6 +305,7 @@ function requestedEntityIds(params, fixture) {
 
 function officialPingMetricSeries(params, fixture) {
   const metricKeys = Array.isArray(params?.metric_keys) ? params.metric_keys : [];
+  if (fixture.reportEmpty) return {series: []};
   const entityIds = requestedEntityIds(params, fixture);
   const end = new Date(toIsoOrNow(params?.end)).getTime();
   const start = new Date(toIsoOrNow(params?.start)).getTime();
@@ -340,6 +341,7 @@ function officialPingMetricSeries(params, fixture) {
           tags: { task_id: "1" },
         };
       });
+      if (fixture.reportOffline) points = points.filter(point=>Date.parse(point.time)<=Date.now()-3*3600000);
       if (fixture.comprehensive && metricKey.startsWith('gpu.') && metricKey !== 'gpu.usage') points = points.flatMap(p => [0,1].map(device => ({...p, value: metricKey === 'gpu.temperature' ? 45 + device * 5 : metricKey === 'gpu.memory.total' ? 4294967296 : metricKey.includes('memory') ? 500000000 + device * 100000000 : 40 + device * 10, tags: { device_index: String(device), device_name: `Example GPU ${device}` }})));
       series.push({
         metric_key: metricKey,
@@ -422,6 +424,11 @@ const server = createServer(async (request, response) => {
     return response.end('<!doctype html><title>Preview temporarily unavailable</title>');
   }
 
+  if (fixture.reportWorkerFailure === 'html' && /\/assets\/instanceReport\.worker-[^/]+\.js$/.test(url.pathname)) {
+    count('report-worker-html',fixture.run);
+    response.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
+    return response.end('<!doctype html><title>Theme asset replaced</title>');
+  }
   if (url.pathname === '/studio-retry.svg') {
     backgroundAttempts += 1;
     response.setHeader('Cache-Control', 'no-store');
@@ -620,7 +627,7 @@ const server = createServer(async (request, response) => {
         sequence,
         snapshot: since === 0,
         reports,
-        online: since === 0 ? nodeList(fixture.nodes).map((node) => node.uuid) : undefined,
+        online: since === 0 ? nodeList(fixture.nodes).filter(node=>!fixture.reportOffline || node.uuid!=="node-0").map((node) => node.uuid) : undefined,
       };
       if (!fixture.soak && since > 0) await new Promise((resolve) => setTimeout(resolve, 250));
       if (fixture.soak && since >= SOAK_TICK_TARGET) await new Promise((resolve) => setTimeout(resolve, 250));
@@ -650,6 +657,7 @@ const server = createServer(async (request, response) => {
       });
     }
     if (fixture.comprehensive && payload.method === "common:getRecords") {
+      if (fixture.reportEmpty) return sendRpcResult(response,payload.id,{records:[],count:0,tasks:[]});
       const end = Date.parse(toIsoOrNow(payload.params.end));
       const requestedStart = payload.params.start ? Date.parse(payload.params.start) : end - (payload.params.hours || 6) * 3600000;
       const start = Math.max(requestedStart, Date.now() - 60 * 86400000);
@@ -669,6 +677,7 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, {
     "Content-Type": mime[extname(path)] ?? "application/octet-stream",
     "Cache-Control": "no-store",
+    ...(fixture.reportWorkerFailure === "csp" && path.endsWith("index.html") ? {"Content-Security-Policy":"worker-src 'none'"}:{}),
   });
   createReadStream(path).pipe(response);
 });
@@ -1859,6 +1868,26 @@ try {
     await cdp.call('Emulation.setEmulatedMedia', { media: '' });
     await cdp.call('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     results.push({ comprehensiveReport: backend.label, verified: 'detail entry, 30-day exact query, worker statistics, all network evidence, redaction, same archived ID, offline charts/navigation, 1024/390/320px, both appearances, PDF all chapters' });
+  }
+
+  for (const backend of Object.values(BACKEND_PROFILES)) {
+    for (const [mode,empty] of [['normal',false],['html',false],['csp',true]]) {
+      await clearFixturePage(cdp);
+      activeFixture={backend:backend.id,nodes:1,ui:true,comprehensive:true,reportOffline:true,reportEmpty:empty,reportWorkerFailure:mode,run:`offline-report-${backend.id}-${mode}`};
+      requestCounts.set(activeFixture.run,{});requestPayloads.set(activeFixture.run,[]);
+      await cdp.call('Page.navigate',{url:`http://127.0.0.1:${address.port}/instance/node-0/report`});
+      await waitUntil(cdp,`document.querySelector('.instance-report-offline-note')!==null`,6000);
+      await cdp.value(`document.querySelector('.instance-report-generate').click()`);
+      await waitUntil(cdp,`document.querySelector('.instance-report-progress')===null && (document.querySelector('.instance-report-frame')!==null || document.querySelector('.instance-report-error')!==null)`,15000);
+      failGate(await cdp.value(`!document.querySelector('.instance-report-error') && document.querySelector('.instance-report-frame')!==null`),`offline report failed with ${mode} worker / ${backend.label}`);
+      const offline=await cdp.value(`(()=>{const d=new DOMParser().parseFromString(document.querySelector('.instance-report-frame').srcdoc,'text/html');const model=JSON.parse(d.getElementById('report-data').textContent);return {snapshot:model.node.snapshot,metrics:model.metrics,notice:d.querySelector('.report-offline-notice')?.textContent,empty:d.querySelector('.executive-intro h2')?.textContent}})()`);
+      failGate(offline.snapshot.online===false && offline.notice?.includes('最后上报') && offline.notice?.includes('不要求节点在线'),'offline report omitted state or cached provenance');
+      if(empty)failGate(!offline.metrics.some(metric=>metric.points.some(p=>p.v!=null)) && offline.empty.includes('无历史数据'),'empty offline report invented history');
+      else failGate(offline.metrics.some(metric=>metric.key==='cpu' && metric.points.length>1),'offline status prevented historical metrics from loading');
+      if(mode==='html')failGate((requestCounts.get(activeFixture.run)?.['report-worker-html']||0)===1,'worker loading failure fixture was not exercised');
+      if(mode==='html' && backend.id===BACKEND_PROFILES.official.id && process.env.BROWSER_REPORT_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_REPORT_SCREENSHOT}-offline.png`,{waitForImages:false});
+      results.push({offlineReport:backend.label,worker:mode,history:empty?'absent, explicitly retained as unknown':'retained',verified:'offline node, cached snapshot, historical report and worker compatibility'});
+    }
   }
 
   if (process.env.BROWSER_GATE_SCREENSHOT) {

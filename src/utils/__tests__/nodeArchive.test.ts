@@ -32,7 +32,12 @@ describe("upstream NodeQuality report archive", () => {
   });
   it("checks retained log integrity before displaying it", async () => {
     const bytes = Uint8Array.from(atob(archive([["net_quality.log", "ORIGINAL"]], 0)), c => c.charCodeAt(0));
-    const index = new TextDecoder().decode(bytes).indexOf("ORIGINAL"); bytes[index] = 88;
+    // ZIP headers are binary; decoded character offsets need not equal byte
+    // offsets (the timestamp alone can contain multi-byte UTF-8 sequences).
+    const header = new DataView(bytes.buffer);
+    const index = 30 + header.getUint16(26, true) + header.getUint16(28, true);
+    expect(new TextDecoder().decode(bytes.subarray(index, index + 8))).toBe("ORIGINAL");
+    bytes[index] = 88;
     await expect(readNodeQualityArchive(btoa(String.fromCharCode(...bytes)))).rejects.toThrow("CRC");
   });
 });

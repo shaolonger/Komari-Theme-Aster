@@ -15,7 +15,9 @@ import {
   collectPings,
   collectReportInput,
   forkMetrics,
+  reportNode,
 } from "@/services/instanceReport";
+import type { NodeMetrics } from "@/types/komari";
 import { NodeInfoSchema } from "@/types/komari";
 import { RpcResponseError, RpcTransportError } from "@/services/rpc2Client";
 
@@ -29,6 +31,12 @@ describe("strict report data collector", () => {
     call.mockReset();
   });
   afterEach(() => vi.unstubAllGlobals());
+  it("keeps offline status while rejecting placeholder counters without an actual report timestamp",()=>{
+    const placeholder={online:false,updatedAt:0,uptime:0,trafficUp:0,trafficDown:0} as NodeMetrics;
+    expect(reportNode(meta,placeholder).snapshot).toEqual({online:false,updatedAt:null,uptime:null,trafficUp:null,trafficDown:null});
+    expect(reportNode(meta,{...placeholder,updatedAt:start,uptime:500,trafficUp:100}).snapshot).toEqual({online:false,updatedAt:start,uptime:500,trafficUp:100,trafficDown:0});
+    expect(reportNode(meta).snapshot.online).toBeNull();
+  });
   it("preserves absent fields separately from genuine zero in both adapters", async () => {
     const fork = forkMetrics(
       {

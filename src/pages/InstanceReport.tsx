@@ -164,7 +164,9 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
           if (!controller.signal.aborted) setPhase(text);
         },
       );
-      const model = await computeReport(input, controller.signal);
+      const model = await computeReport(input, controller.signal, (text) => {
+        if (!controller.signal.aborted) setPhase(text);
+      });
       throwIfReportAborted(controller.signal);
       const html = renderReportHtml(model);
       throwIfReportAborted(controller.signal);
@@ -240,6 +242,7 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
           <p>
             先看结论，再核查证据。用统一的报告回顾资源、网络、流量与续费，并附上所选 TcpQuality、NodeQuality 完整测评图。
           </p>
+          {current?.online === false && <p className="instance-report-offline-note" role="status">节点当前离线，仍可整理服务端保存的资源、Ping 与既有检测记录。请选择包含历史观测的日期；没有记录的部分会标明缺失。</p>}
           <div className="instance-report-outline" aria-label="报告内容">
             {["结论摘要", "资源与稳定性", "网络体验", "流量与资产", "异常与行动", "测评截图附录"].map((label, index) => <span key={label}><small>{String(index + 1).padStart(2,"0")}</small>{label}</span>)}
           </div>

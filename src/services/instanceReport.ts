@@ -162,6 +162,7 @@ async function forkHistory(uuid: string, type: "load" | "ping", range: ReportRan
 
 export function reportNode(meta: NodeInfo, current?: NodeMetrics): ReportNode {
   const show = (v: unknown) => (v == null || v === "" ? "未知" : String(v));
+  const observed = current != null && Number.isFinite(current.updatedAt) && current.updatedAt > 0;
   return {
     uuid: meta.uuid,
     name: meta.name || meta.uuid,
@@ -217,10 +218,10 @@ export function reportNode(meta: NodeInfo, current?: NodeMetrics): ReportNode {
     ],
     snapshot: {
       online: current?.online ?? null,
-      uptime: current?.uptime ?? null,
-      updatedAt: current?.updatedAt ?? null,
-      trafficUp: current && Number.isFinite(current.trafficUp) && current.trafficUp >= 0 ? current.trafficUp : null,
-      trafficDown: current && Number.isFinite(current.trafficDown) && current.trafficDown >= 0 ? current.trafficDown : null,
+      uptime: observed && Number.isFinite(current.uptime) && current.uptime >= 0 ? current.uptime : null,
+      updatedAt: observed ? current.updatedAt : null,
+      trafficUp: observed && Number.isFinite(current.trafficUp) && current.trafficUp >= 0 ? current.trafficUp : null,
+      trafficDown: observed && Number.isFinite(current.trafficDown) && current.trafficDown >= 0 ? current.trafficDown : null,
     },
   };
 }
