@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { checkCupertinoStyles } from "./cupertino-style-browser-gates.mjs";
 export async function checkCupertino({
   cdp,
   origin,
@@ -423,6 +424,13 @@ export async function checkCupertino({
         "Cupertino shell leaked into " + theme,
       );
   }
+  const styleIsolation = await checkCupertinoStyles({
+    cdp,
+    origin,
+    waitUntil,
+    failGate,
+    captureScreenshot,
+  });
   await enableNetworkCards();
   await navigate();
   await waitUntil(
@@ -462,5 +470,6 @@ export async function checkCupertino({
     cupertino:
       "reference geometry, four full views, multi-search, favorites, metrics/settings, carrier modules, persistent tabs, unique search, offline report entry, Studio persistence, original themes, 320–1920px",
     measurements,
+    styleIsolation,
   };
 }

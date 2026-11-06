@@ -1,3 +1,4 @@
+/* Lazy theme styles persist after SPA switches. Zero-specificity guards keep this theme isolated without changing its cascade; search styles are shared separately. */
 /* Instance content owns real columns. Tab changes never reserve grid rows
    for panels that belong to a different workspace. */
 [data-theme-style="luminous"] .luminous-instance-page { display:flex; flex-direction:column; gap:14px; padding:0; min-width:0; }
@@ -71,9 +72,9 @@
 [data-theme-style="luminous"] .luminous-global-search .node-switch-results strong { font-size:12px; }
 [data-theme-style="luminous"] .luminous-global-search .node-switch-results small { font-size:10px; }
 @media(min-width:721px) {
- [data-luminous-page="instance"] .luminous-sidebar { overflow-y:auto; scrollbar-width:thin; }
- [data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] { position:relative; left:auto; bottom:auto; margin:18px 6px 0; width:calc(100% - 12px); height:170px; min-height:170px; flex-shrink:0; }
- [data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] .luminous-promo-planet { height:90px; }
+ :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar { overflow-y:auto; scrollbar-width:thin; }
+ :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] { position:relative; left:auto; bottom:auto; margin:18px 6px 0; width:calc(100% - 12px); height:170px; min-height:170px; flex-shrink:0; }
+ :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] .luminous-promo-planet { height:90px; }
 }
 @media(max-width:1199px) {
  [data-theme-style="luminous"] .luminous-detail-columns[data-sidebar="true"] { grid-template-columns:minmax(0,1fr); }
@@ -123,7 +124,7 @@
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.instance-ping-task-groups { grid-row:3/span 3; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.luminous-event-cards,
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.glacier-anomaly-summary { grid-row:6; }
-@media(min-width:721px) { [data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] { height:190px; min-height:190px; } [data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] .luminous-promo-planet { height:108px; } }
+@media(min-width:721px) { :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] { height:190px; min-height:190px; } :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] .luminous-promo-planet { height:108px; } }
 @media(max-width:1199px) { [data-theme-style="luminous"] .luminous-instance-navigation { flex-wrap:wrap; gap:6px; } [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice) { grid-template-rows:auto; } }
 @media(max-width:720px) {
  [data-theme-style="luminous"] .luminous-instance-navigation>.instance-chart-controls { width:100%; justify-content:flex-start; }

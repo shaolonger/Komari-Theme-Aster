@@ -1,3 +1,4 @@
+/* Lazy theme styles persist after SPA switches. Zero-specificity guards keep this theme isolated without changing its cascade; search styles are shared separately. */
 /* 光域未来 / Luminous Future. Loaded only with its shell. */
 [data-theme-style="luminous"] {
   --bg-0: #eaf3ff;
@@ -55,7 +56,7 @@
   outline: 3px solid #1688ff;
   outline-offset: 3px;
 }
-.luminous-backdrop {
+:where([data-theme-style="luminous"]) .luminous-backdrop {
   position: fixed;
   inset: 0;
   z-index: -3;
@@ -66,7 +67,7 @@
     radial-gradient(ellipse at 90% 30%, #fff 0, transparent 55%),
     linear-gradient(120deg, #d9e7fa, #eef7ff 50%, #e5edff);
 }
-.luminous-backdrop::before {
+:where([data-theme-style="luminous"]) .luminous-backdrop::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -78,7 +79,7 @@
   );
   mask-image: linear-gradient(#000, transparent 65%);
 }
-.luminous-backdrop i {
+:where([data-theme-style="luminous"]) .luminous-backdrop i {
   position: absolute;
   width: 600px;
   height: 600px;
@@ -89,18 +90,18 @@
   transform: rotateX(60deg);
   box-shadow: 0 0 50px #74b9ff30;
 }
-.luminous-backdrop i:nth-child(2) {
+:where([data-theme-style="luminous"]) .luminous-backdrop i:nth-child(2) {
   width: 1000px;
   height: 1000px;
   left: 35%;
   top: -780px;
 }
-.luminous-backdrop i:nth-child(3) {
+:where([data-theme-style="luminous"]) .luminous-backdrop i:nth-child(3) {
   top: auto;
   bottom: -500px;
   left: -300px;
 }
-.luminous-glass {
+:where([data-theme-style="luminous"]) .luminous-glass {
   border: 1px solid #ffffffed;
   border-radius: 20px;
   background: linear-gradient(130deg, #ffffffdc, #f8fbffb8);
@@ -109,7 +110,7 @@
     inset 0 1px 1px #fff;
   backdrop-filter: blur(18px);
 }
-.luminous-sidebar {
+:where([data-theme-style="luminous"]) .luminous-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
   width: 218px;
@@ -121,13 +122,13 @@
   display: flex;
   flex-direction: column;
 }
-.luminous-brand {
+:where([data-theme-style="luminous"]) .luminous-brand {
   display: flex;
   align-items: center;
   gap: 13px;
   padding: 0 12px 32px;
 }
-.luminous-brand-mark {
+:where([data-theme-style="luminous"]) .luminous-brand-mark {
   width: 36px;
   height: 40px;
   display: grid;
@@ -141,22 +142,22 @@
     0 5px 12px #168bff30;
   transform: rotate(-10deg);
 }
-.luminous-brand strong {
+:where([data-theme-style="luminous"]) .luminous-brand strong {
   display: block;
   color: #071643;
   font-size: 22px;
   letter-spacing: 0.03em;
 }
-.luminous-brand small {
+:where([data-theme-style="luminous"]) .luminous-brand small {
   font-size: 11px;
   color: #6a7fad;
 }
-.luminous-sidebar nav {
+:where([data-theme-style="luminous"]) .luminous-sidebar nav {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
-.luminous-sidebar nav a {
+:where([data-theme-style="luminous"]) .luminous-sidebar nav a {
   padding: 14px 17px;
   display: flex;
   align-items: center;
@@ -166,22 +167,22 @@
   font-size: 13px;
   font-weight: 600;
 }
-.luminous-sidebar nav a svg {
+:where([data-theme-style="luminous"]) .luminous-sidebar nav a svg {
   width: 20px;
   height: 20px;
 }
-.luminous-sidebar nav a:hover {
+:where([data-theme-style="luminous"]) .luminous-sidebar nav a:hover {
   background: #fff9;
   color: #007bff;
 }
-.luminous-sidebar nav [aria-current="page"] {
+:where([data-theme-style="luminous"]) .luminous-sidebar nav [aria-current="page"] {
   color: #fff;
   background: linear-gradient(120deg, #0770ff, #45b5ff);
   box-shadow:
     inset 0 1px 4px #fff8,
     0 6px 14px #168aff35;
 }
-.luminous-sync {
+:where([data-theme-style="luminous"]) .luminous-sync {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -189,34 +190,34 @@
   color: #4385ad;
   padding: 24px 16px;
 }
-.luminous-sync[data-warning="true"] {
+:where([data-theme-style="luminous"]) .luminous-sync[data-warning="true"] {
   color: #d36d24;
 }
-.luminous-sidebar-art {
+:where([data-theme-style="luminous"]) .luminous-sidebar-art {
   margin-top: auto;
   padding: 30px 17px 18px;
   min-height: 240px;
   position: relative;
 }
-.luminous-sidebar-art > .luminous-device {
+:where([data-theme-style="luminous"]) .luminous-sidebar-art > .luminous-device {
   width: 155px;
   height: 145px;
   display: block;
   margin: 0 auto 24px;
 }
-.luminous-sidebar-art > strong {
+:where([data-theme-style="luminous"]) .luminous-sidebar-art > strong {
   display: block;
   font-size: 17px;
   color: #102657;
   margin-bottom: 8px;
 }
-.luminous-sidebar-art > small {
+:where([data-theme-style="luminous"]) .luminous-sidebar-art > small {
   color: #7790b6;
   font-size: 10px;
   line-height: 1.7;
   display: block;
 }
-.luminous-motion-toggle {
+:where([data-theme-style="luminous"]) .luminous-motion-toggle {
   position: fixed;
   top: 20px;
   right: 76px;
@@ -245,7 +246,7 @@
   background: #007bff;
   color: white;
 }
-.luminous-home-heading {
+:where([data-theme-style="luminous"]) .luminous-home-heading {
   height: 45px;
   margin-bottom: 10px;
   display: flex;
@@ -253,7 +254,7 @@
   justify-content: space-between;
   padding-right: 210px;
 }
-.luminous-search {
+:where([data-theme-style="luminous"]) .luminous-search {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -266,7 +267,7 @@
   color: #5d7aa6;
   backdrop-filter: blur(18px);
 }
-.luminous-search input {
+:where([data-theme-style="luminous"]) .luminous-search input {
   flex: 1;
   min-width: 0;
   width: 100%;
@@ -276,25 +277,25 @@
   font-size: 12px;
   color: #2c4a79;
 }
-.luminous-search input::placeholder {
+:where([data-theme-style="luminous"]) .luminous-search input::placeholder {
   color: #8397b7;
 }
-.luminous-search kbd {
+:where([data-theme-style="luminous"]) .luminous-search kbd {
   font-size: 10px;
   color: #92a7c4;
   padding: 3px 6px;
   border-radius: 5px;
   background: #dbe8fa80;
 }
-.luminous-home-heading > span {
+:where([data-theme-style="luminous"]) .luminous-home-heading > span {
   display: flex;
   gap: 9px;
   align-items: center;
   color: #577ea7;
   font-size: 10px;
 }
-.luminous-home-heading > span i,
-.luminous-global p i {
+:where([data-theme-style="luminous"]) .luminous-home-heading > span i,
+:where([data-theme-style="luminous"]) .luminous-global p i {
   width: 7px;
   height: 7px;
   background: #05c68f;
@@ -302,7 +303,7 @@
   display: inline-block;
   box-shadow: 0 0 8px #00b89125;
 }
-.luminous-hero {
+:where([data-theme-style="luminous"]) .luminous-hero {
   position: relative;
   height: 350px;
   display: grid;
@@ -314,14 +315,14 @@
   padding: 12px 0 18px;
   isolation: isolate;
 }
-.luminous-hero-left {
+:where([data-theme-style="luminous"]) .luminous-hero-left {
   grid-column: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 3;
 }
-.luminous-global {
+:where([data-theme-style="luminous"]) .luminous-global {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -330,15 +331,15 @@
   text-align: left;
   min-height: 132px;
 }
-.luminous-global small,
-.luminous-hero-right small,
-.luminous-bandwidth small {
+:where([data-theme-style="luminous"]) .luminous-global small,
+:where([data-theme-style="luminous"]) .luminous-hero-right small,
+:where([data-theme-style="luminous"]) .luminous-bandwidth small {
   font-size: 12px;
   font-weight: 600;
   color: #375676;
   display: block;
 }
-.luminous-global strong {
+:where([data-theme-style="luminous"]) .luminous-global strong {
   display: block;
   margin: 8px 0;
   font-size: 34px;
@@ -346,13 +347,13 @@
   font-weight: 700;
   white-space: nowrap;
 }
-.luminous-global strong em {
+:where([data-theme-style="luminous"]) .luminous-global strong em {
   font-size: 22px;
   font-style: normal;
   color: #8198b6;
   font-weight: 500;
 }
-.luminous-global p {
+:where([data-theme-style="luminous"]) .luminous-global p {
   font-size: 10px;
   color: #6a86a1;
   margin: 0;
@@ -360,7 +361,7 @@
   align-items: center;
   gap: 5px;
 }
-.luminous-online-ring {
+:where([data-theme-style="luminous"]) .luminous-online-ring {
   width: 94px;
   height: 94px;
   border-radius: 50%;
@@ -380,7 +381,7 @@
   transform: rotateX(12deg);
   position: relative;
 }
-.luminous-online-ring b {
+:where([data-theme-style="luminous"]) .luminous-online-ring b {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -394,45 +395,45 @@
   color: #12396b;
   box-shadow: inset 0 3px 10px #3679ba16;
 }
-.luminous-online-ring b small {
+:where([data-theme-style="luminous"]) .luminous-online-ring b small {
   font-weight: 400;
   font-size: 10px;
   color: #6e8aab;
 }
-.luminous-bandwidth {
+:where([data-theme-style="luminous"]) .luminous-bandwidth {
   padding: 16px 20px 10px;
   flex: 1;
   position: relative;
   overflow: hidden;
 }
-.luminous-bandwidth > button {
+:where([data-theme-style="luminous"]) .luminous-bandwidth > button {
   text-align: left;
   position: relative;
   z-index: 2;
 }
-.luminous-bandwidth strong {
+:where([data-theme-style="luminous"]) .luminous-bandwidth strong {
   display: block;
   font-size: 25px;
   margin-top: 7px;
   color: #112c58;
 }
-.luminous-bandwidth > .glacier-fleet-chart {
+:where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
   height: 60px;
   margin: 5px 0;
 }
-.luminous-bandwidth p {
+:where([data-theme-style="luminous"]) .luminous-bandwidth p {
   display: flex;
   gap: 17px;
   font-size: 10px;
   margin: 7px 0 0;
 }
-.luminous-bandwidth p span {
+:where([data-theme-style="luminous"]) .luminous-bandwidth p span {
   display: flex;
   align-items: center;
   gap: 3px;
   color: #00aa85;
 }
-.luminous-bandwidth p span + span {
+:where([data-theme-style="luminous"]) .luminous-bandwidth p span + span {
   color: #e95b75;
 }
 [data-theme-style="luminous"] .glacier-fleet-chart {
@@ -483,13 +484,13 @@
   font-size: 9px;
   color: #718bad;
 }
-.luminous-region-tags {
+:where([data-theme-style="luminous"]) .luminous-region-tags {
   grid-column: 2;
   z-index: 3;
   position: relative;
   pointer-events: none;
 }
-.luminous-region-tags > button {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button {
   position: absolute;
   display: flex;
   align-items: center;
@@ -507,8 +508,8 @@
   backdrop-filter: blur(14px);
   transition: transform 0.25s;
 }
-.luminous-region-tags > button:hover,
-.luminous-region-tags > [aria-pressed="true"] {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:hover,
+:where([data-theme-style="luminous"]) .luminous-region-tags > [aria-pressed="true"] {
   transform: translateY(-3px);
   color: #007bff;
   background: white;
@@ -516,35 +517,35 @@
     0 0 0 2px #8ccaff,
     0 5px 16px #168aff30;
 }
-.luminous-region-tags > button:nth-child(1) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(1) {
   top: 16%;
   left: 4%;
 }
-.luminous-region-tags > button:nth-child(2) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(2) {
   top: 2%;
   left: 48%;
 }
-.luminous-region-tags > button:nth-child(3) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(3) {
   top: 32%;
   right: 0;
 }
-.luminous-region-tags > button:nth-child(4) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(4) {
   top: 57%;
   right: 4%;
 }
-.luminous-region-tags > button:nth-child(5) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(5) {
   bottom: 9%;
   left: 45%;
 }
-.luminous-region-tags > button:nth-child(6) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(6) {
   top: 48%;
   left: 2%;
 }
-.luminous-region-tags > button:nth-child(7) {
+:where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(7) {
   top: 7%;
   right: 0;
 }
-.luminous-region-tags > small {
+:where([data-theme-style="luminous"]) .luminous-region-tags > small {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -553,28 +554,28 @@
   color: #527ea780;
   font-size: 8px;
 }
-.luminous-hero-right {
+:where([data-theme-style="luminous"]) .luminous-hero-right {
   grid-column: 3;
   display: flex;
   flex-direction: column;
   gap: 16px;
   z-index: 3;
 }
-.luminous-hero-right > button {
+:where([data-theme-style="luminous"]) .luminous-hero-right > button {
   flex: 1;
   padding: 20px;
   position: relative;
   overflow: hidden;
   text-align: left;
 }
-.luminous-hero-right strong {
+:where([data-theme-style="luminous"]) .luminous-hero-right strong {
   font-size: 29px;
   display: block;
   margin: 10px 0 0;
   color: #102853;
   letter-spacing: -0.03em;
 }
-.luminous-hero-right p {
+:where([data-theme-style="luminous"]) .luminous-hero-right p {
   font-size: 9px;
   color: #6688b1;
   display: flex;
@@ -582,7 +583,7 @@
   align-items: center;
   margin: 15px 0 0;
 }
-.luminous-mini-bars {
+:where([data-theme-style="luminous"]) .luminous-mini-bars {
   position: absolute;
   right: 18px;
   top: 22px;
@@ -592,7 +593,7 @@
   height: 55px;
   opacity: 0.65;
 }
-.luminous-mini-bars i {
+:where([data-theme-style="luminous"]) .luminous-mini-bars i {
   width: 5px;
   border-radius: 3px;
   background: linear-gradient(#138bff, #76d8ff);
@@ -601,17 +602,17 @@
   animation: luminous-bars 3s ease-in-out infinite alternate;
   animation-delay: calc(var(--i) * -0.2s);
 }
-.luminous-assets small {
+:where([data-theme-style="luminous"]) .luminous-assets small {
   display: flex;
   justify-content: space-between;
 }
-.luminous-assets small svg {
+:where([data-theme-style="luminous"]) .luminous-assets small svg {
   color: #00bda4;
 }
-.luminous-assets p {
+:where([data-theme-style="luminous"]) .luminous-assets p {
   justify-content: space-between;
 }
-.luminous-assets p span::before {
+:where([data-theme-style="luminous"]) .luminous-assets p span::before {
   content: "";
   display: inline-block;
   width: 6px;
@@ -620,15 +621,15 @@
   border-radius: 50%;
   margin-right: 5px;
 }
-.luminous-assets p span + span::before {
+:where([data-theme-style="luminous"]) .luminous-assets p span + span::before {
   background: #ff4f6d;
 }
-.luminous-asset-orbit {
+:where([data-theme-style="luminous"]) .luminous-asset-orbit {
   height: 24px;
   position: relative;
   margin-top: 8px;
 }
-.luminous-asset-orbit i {
+:where([data-theme-style="luminous"]) .luminous-asset-orbit i {
   position: absolute;
   height: 20px;
   width: 65%;
@@ -637,12 +638,12 @@
   transform: rotate(-8deg);
   left: 0;
 }
-.luminous-asset-orbit i:nth-child(2) {
+:where([data-theme-style="luminous"]) .luminous-asset-orbit i:nth-child(2) {
   left: 24%;
   border-color: #a66bff70;
   transform: rotate(5deg);
 }
-.luminous-notices {
+:where([data-theme-style="luminous"]) .luminous-notices {
   grid-column: 4;
   padding: 16px;
   z-index: 3;
@@ -650,11 +651,11 @@
   flex-direction: column;
   gap: 14px;
 }
-.luminous-notices section + section {
+:where([data-theme-style="luminous"]) .luminous-notices section + section {
   padding-top: 14px;
   border-top: 1px solid #dce7f480;
 }
-.luminous-notices h2 {
+:where([data-theme-style="luminous"]) .luminous-notices h2 {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -662,7 +663,7 @@
   font-weight: 650;
   margin: 0 0 12px;
 }
-.luminous-notices h2 b {
+:where([data-theme-style="luminous"]) .luminous-notices h2 b {
   margin-left: auto;
   font-size: 9px;
   width: 17px;
@@ -673,17 +674,17 @@
   display: grid;
   place-items: center;
 }
-.luminous-notices section + section h2 b {
+:where([data-theme-style="luminous"]) .luminous-notices section + section h2 b {
   background: #ffad36;
 }
-.luminous-notices a {
+:where([data-theme-style="luminous"]) .luminous-notices a {
   display: flex;
   align-items: center;
   gap: 7px;
   margin: 11px 0;
   min-width: 0;
 }
-.luminous-notices a > i {
+:where([data-theme-style="luminous"]) .luminous-notices a > i {
   width: 4px;
   height: 19px;
   border-radius: 4px;
@@ -691,14 +692,14 @@
   box-shadow: 0 0 5px #ff486d50;
   flex-shrink: 0;
 }
-.luminous-notices a > i[data-tone="warning"] {
+:where([data-theme-style="luminous"]) .luminous-notices a > i[data-tone="warning"] {
   background: #ffae3d;
 }
-.luminous-notices a > span {
+:where([data-theme-style="luminous"]) .luminous-notices a > span {
   min-width: 0;
   flex: 1;
 }
-.luminous-notices strong {
+:where([data-theme-style="luminous"]) .luminous-notices strong {
   display: block;
   font-size: 10px;
   font-weight: 600;
@@ -706,7 +707,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.luminous-notices small {
+:where([data-theme-style="luminous"]) .luminous-notices small {
   display: block;
   font-size: 8px;
   color: #6f88a9;
@@ -715,19 +716,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.luminous-notices button {
+:where([data-theme-style="luminous"]) .luminous-notices button {
   font-size: 9px;
   color: #007bff;
   display: flex;
   gap: 6px;
   align-items: center;
 }
-.luminous-clear {
+:where([data-theme-style="luminous"]) .luminous-clear {
   color: #8098b6;
   font-size: 10px;
   padding: 8px 0;
 }
-.luminous-toolbar {
+:where([data-theme-style="luminous"]) .luminous-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -736,11 +737,11 @@
   border-radius: 16px;
   margin-bottom: 15px;
 }
-.luminous-status-filters {
+:where([data-theme-style="luminous"]) .luminous-status-filters {
   display: flex;
   gap: 7px;
 }
-.luminous-status-filters button {
+:where([data-theme-style="luminous"]) .luminous-status-filters button {
   padding: 8px 14px;
   border: 1px solid #fff;
   background: #f2f7ff;
@@ -750,27 +751,27 @@
   display: flex;
   gap: 8px;
 }
-.luminous-status-filters [aria-pressed="true"] {
+:where([data-theme-style="luminous"]) .luminous-status-filters [aria-pressed="true"] {
   color: white;
   background: linear-gradient(120deg, #1183ff, #46c9ff);
   box-shadow:
     inset 0 1px 3px #fff8,
     0 3px 8px #149fff25;
 }
-.luminous-filter-controls {
+:where([data-theme-style="luminous"]) .luminous-filter-controls {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
 }
-.luminous-filter-controls label {
+:where([data-theme-style="luminous"]) .luminous-filter-controls label {
   display: flex;
   align-items: center;
   gap: 5px;
   color: #7691b0;
   font-size: 10px;
 }
-.luminous-filter-controls select {
+:where([data-theme-style="luminous"]) .luminous-filter-controls select {
   font-size: 11px;
   padding: 7px 4px;
   border-radius: 9px;
@@ -779,7 +780,7 @@
   color: #526f97;
   max-width: 130px;
 }
-.luminous-tools-toggle {
+:where([data-theme-style="luminous"]) .luminous-tools-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -787,7 +788,7 @@
   font-size: 10px;
   color: #567ca6;
 }
-.luminous-view-switch {
+:where([data-theme-style="luminous"]) .luminous-view-switch {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -796,7 +797,7 @@
   border: 1px solid #fff;
   border-radius: 11px;
 }
-.luminous-view-switch button {
+:where([data-theme-style="luminous"]) .luminous-view-switch button {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -805,7 +806,7 @@
   color: #6681a6;
   border-radius: 8px;
 }
-.luminous-view-switch [aria-pressed="true"] {
+:where([data-theme-style="luminous"]) .luminous-view-switch [aria-pressed="true"] {
   background: #0085ff;
   color: white;
   box-shadow: 0 3px 8px #007bff30;
@@ -1060,7 +1061,7 @@
 }
 
 /* Three-dimensional CSS devices and a perspective stage. */
-.luminous-device {
+:where([data-theme-style="luminous"]) .luminous-device {
   --device-light: #02beff;
   --device-dark: #1b4489;
   --device-top: #a1cbef;
@@ -1070,21 +1071,21 @@
   height: 180px;
   perspective: 700px;
 }
-.luminous-device[data-tone="purple"] {
+:where([data-theme-style="luminous"]) .luminous-device[data-tone="purple"] {
   --device-light: #9966ff;
   --device-dark: #4931a2;
 }
-.luminous-device[data-tone="red"] {
+:where([data-theme-style="luminous"]) .luminous-device[data-tone="red"] {
   --device-light: #ff5679;
   --device-dark: #843d5c;
 }
-.luminous-device-float {
+:where([data-theme-style="luminous"]) .luminous-device-float {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
   animation: luminous-device-float 6s ease-in-out infinite;
 }
-.luminous-cube {
+:where([data-theme-style="luminous"]) .luminous-cube {
   position: absolute;
   width: 64%;
   height: 52%;
@@ -1093,7 +1094,7 @@
   transform-style: preserve-3d;
   transform: translateY(calc(var(--layer) * 21%)) rotateX(60deg) rotateZ(-35deg);
 }
-.luminous-cube-top {
+:where([data-theme-style="luminous"]) .luminous-cube-top {
   position: absolute;
   inset: 0;
   display: grid;
@@ -1104,7 +1105,7 @@
   box-shadow: inset 0 0 12px #fff8;
   transform: translateZ(18px);
 }
-.luminous-cube-top > span {
+:where([data-theme-style="luminous"]) .luminous-cube-top > span {
   display: grid;
   place-items: center;
   width: 38%;
@@ -1118,7 +1119,7 @@
     inset 0 0 8px #fff;
   font-size: 15px;
 }
-.luminous-cube-front {
+:where([data-theme-style="luminous"]) .luminous-cube-front {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -1137,8 +1138,8 @@
     inset 0 -3px 2px var(--device-light),
     0 0 10px #00aaff50;
 }
-.luminous-cube-front i,
-.luminous-cube-right i {
+:where([data-theme-style="luminous"]) .luminous-cube-front i,
+:where([data-theme-style="luminous"]) .luminous-cube-right i {
   width: 4px;
   height: 4px;
   flex-shrink: 0;
@@ -1148,7 +1149,7 @@
   animation: luminous-led 2.6s ease-in-out infinite alternate;
   animation-delay: calc(var(--layer) * -0.7s);
 }
-.luminous-cube-front b {
+:where([data-theme-style="luminous"]) .luminous-cube-front b {
   width: 25%;
   height: 5px;
   margin-left: auto;
@@ -1156,7 +1157,7 @@
   border-radius: 2px;
   background: #00cfff55;
 }
-.luminous-cube-right {
+:where([data-theme-style="luminous"]) .luminous-cube-right {
   position: absolute;
   top: 0;
   right: 0;
@@ -1173,7 +1174,7 @@
   justify-content: space-around;
   box-shadow: inset -2px 0 3px var(--device-light);
 }
-.luminous-device-shadow {
+:where([data-theme-style="luminous"]) .luminous-device-shadow {
   position: absolute;
   width: 90%;
   height: 25%;
@@ -1185,7 +1186,7 @@
   transform: rotate(-8deg);
   animation: luminous-shadow 6s ease-in-out infinite;
 }
-.luminous-device-halo {
+:where([data-theme-style="luminous"]) .luminous-device-halo {
   position: absolute;
   width: 90%;
   height: 27%;
@@ -1197,22 +1198,22 @@
     inset 0 0 10px #00aaff33;
   border-radius: 50%;
 }
-.luminous-device[data-small="true"] .luminous-cube {
+:where([data-theme-style="luminous"]) .luminous-device[data-small="true"] .luminous-cube {
   transform: translateY(calc(var(--layer) * 22%)) rotateX(60deg) rotateZ(-35deg)
     scaleZ(0.48);
 }
-.luminous-device[data-small="true"] .luminous-cube-front {
+:where([data-theme-style="luminous"]) .luminous-device[data-small="true"] .luminous-cube-front {
   gap: 8%;
   padding: 0 8%;
 }
-.luminous-device[data-small="true"] .luminous-cube-front i {
+:where([data-theme-style="luminous"]) .luminous-device[data-small="true"] .luminous-cube-front i {
   width: 3px;
   height: 3px;
 }
-.luminous-device[data-small="true"] .luminous-cube-top > span {
+:where([data-theme-style="luminous"]) .luminous-device[data-small="true"] .luminous-cube-top > span {
   font-size: 9px;
 }
-.luminous-scene {
+:where([data-theme-style="luminous"]) .luminous-scene {
   position: absolute;
   inset: -70px 15% -20px 12%;
   z-index: -1;
@@ -1221,12 +1222,12 @@
   perspective: 1000px;
   contain: layout style;
 }
-.luminous-scene-light {
+:where([data-theme-style="luminous"]) .luminous-scene-light {
   position: absolute;
   inset: -10%;
   background: radial-gradient(ellipse at center, #fff9, transparent 63%);
 }
-.luminous-world {
+:where([data-theme-style="luminous"]) .luminous-world {
   position: absolute;
   width: 420px;
   height: 420px;
@@ -1235,18 +1236,18 @@
   margin-left: -210px;
   perspective: 900px;
 }
-.luminous-earth {
+:where([data-theme-style="luminous"]) .luminous-earth {
   position: absolute;
   inset: 4%;
   border-radius: 50%;
 }
-.luminous-earth canvas {
+:where([data-theme-style="luminous"]) .luminous-earth canvas {
   position: absolute;
   width: 100%;
   height: 100%;
   border-radius: 50%;
 }
-.luminous-earth-fallback {
+:where([data-theme-style="luminous"]) .luminous-earth-fallback {
   position: absolute;
   inset: 5.4%;
   background:
@@ -1257,7 +1258,7 @@
     inset -24px -10px 35px #001e6b80,
     0 0 30px #73dbff80;
 }
-.luminous-earth-sheen {
+:where([data-theme-style="luminous"]) .luminous-earth-sheen {
   position: absolute;
   inset: 5.4%;
   border-radius: 50%;
@@ -1266,16 +1267,16 @@
     inset -3px -3px 10px #13a5ff66,
     0 0 20px #3fd2ff55;
 }
-.luminous-earth canvas[data-renderer="fallback"] {
+:where([data-theme-style="luminous"]) .luminous-earth canvas[data-renderer="fallback"] {
   display: none;
 }
-.luminous-orbits {
+:where([data-theme-style="luminous"]) .luminous-orbits {
   position: absolute;
   inset: -13%;
   transform-style: preserve-3d;
   transform: rotateZ(-14deg);
 }
-.luminous-orbit {
+:where([data-theme-style="luminous"]) .luminous-orbit {
   position: absolute;
   inset: 8%;
   border: 1.5px solid #c0f5ff;
@@ -1287,7 +1288,7 @@
   transform: rotateX(calc(64deg + var(--orbit) * -14deg))
     rotateY(calc(var(--orbit) * 30deg));
 }
-.luminous-orbit > i {
+:where([data-theme-style="luminous"]) .luminous-orbit > i {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -1295,7 +1296,7 @@
   animation: luminous-orbit 14s linear infinite;
   animation-duration: calc(14s + var(--orbit) * 5s);
 }
-.luminous-orbit > i::before {
+:where([data-theme-style="luminous"]) .luminous-orbit > i::before {
   content: "";
   position: absolute;
   left: 48%;
@@ -1308,13 +1309,13 @@
     0 0 7px 4px #66e7ff,
     0 0 18px 8px #00bbff80;
 }
-.luminous-orbit > b {
+:where([data-theme-style="luminous"]) .luminous-orbit > b {
   position: absolute;
   inset: -2px;
   border: 1px dashed #ffffff80;
   border-radius: 50%;
 }
-.luminous-platform {
+:where([data-theme-style="luminous"]) .luminous-platform {
   position: absolute;
   width: 78%;
   height: 155px;
@@ -1328,22 +1329,22 @@
     inset 0 0 35px #b0e7ff99;
   transform: rotateX(18deg);
 }
-.luminous-platform i {
+:where([data-theme-style="luminous"]) .luminous-platform i {
   position: absolute;
   inset: 10%;
   border: 1px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 8px #00baff4d;
 }
-.luminous-platform i:nth-child(2) {
+:where([data-theme-style="luminous"]) .luminous-platform i:nth-child(2) {
   inset: 20%;
   border-color: #70caff55;
 }
-.luminous-platform i:nth-child(3) {
+:where([data-theme-style="luminous"]) .luminous-platform i:nth-child(3) {
   inset: 30%;
   border-style: dashed;
 }
-.luminous-city {
+:where([data-theme-style="luminous"]) .luminous-city {
   position: absolute;
   width: 70%;
   left: 15%;
@@ -1352,7 +1353,7 @@
   transform: rotateX(5deg);
   opacity: 0.55;
 }
-.luminous-city > i {
+:where([data-theme-style="luminous"]) .luminous-city > i {
   position: absolute;
   bottom: 0;
   width: 24px;
@@ -1365,31 +1366,31 @@
     inset 4px 0 6px #fff;
   border-radius: 3px 3px 0 0;
 }
-.luminous-scene-server {
+:where([data-theme-style="luminous"]) .luminous-scene-server {
   position: absolute;
   bottom: 6%;
   width: 100px;
   height: 100px;
 }
-.luminous-scene-server > .luminous-device {
+:where([data-theme-style="luminous"]) .luminous-scene-server > .luminous-device {
   width: 100%;
   height: 100%;
 }
-.luminous-scene-server.is-left {
+:where([data-theme-style="luminous"]) .luminous-scene-server.is-left {
   left: 14%;
 }
-.luminous-scene-server.is-right {
+:where([data-theme-style="luminous"]) .luminous-scene-server.is-right {
   right: 8%;
   bottom: 1%;
   width: 130px;
   height: 130px;
 }
-.luminous-particles {
+:where([data-theme-style="luminous"]) .luminous-particles {
   position: absolute;
   inset: 0;
   overflow: hidden;
 }
-.luminous-particles i {
+:where([data-theme-style="luminous"]) .luminous-particles i {
   position: absolute;
   width: 3px;
   height: 3px;
@@ -1460,49 +1461,49 @@
   isolation: isolate;
   padding: 12px 8px;
 }
-.luminous-instance-heading {
+:where([data-theme-style="luminous"]) .luminous-instance-heading {
   min-width: 0;
   flex: 1;
 }
-.luminous-instance-heading > .luminous-scene {
+:where([data-theme-style="luminous"]) .luminous-instance-heading > .luminous-scene {
   inset: -65px 3% -10px 40%;
 }
-.luminous-instance-heading .luminous-world {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-world {
   width: 280px;
   height: 280px;
   margin-left: -140px;
   top: 8px;
 }
-.luminous-instance-heading .luminous-world > .luminous-device {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-world > .luminous-device {
   width: 100%;
   height: 100%;
 }
-.luminous-instance-heading .luminous-platform {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-platform {
   bottom: -10px;
 }
-.luminous-instance-heading .luminous-city {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-city {
   bottom: 45px;
 }
-.luminous-instance-heading .luminous-scene-server {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-scene-server {
   width: 80px;
   height: 80px;
   bottom: 0;
 }
-.luminous-instance-heading .luminous-scene-server.is-right {
+:where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-scene-server.is-right {
   width: 90px;
   height: 90px;
 }
-.luminous-instance-title {
+:where([data-theme-style="luminous"]) .luminous-instance-title {
   position: relative;
   z-index: 2;
   max-width: 76%;
 }
-.luminous-instance-title > p:first-child {
+:where([data-theme-style="luminous"]) .luminous-instance-title > p:first-child {
   color: #6d88b0;
   font-size: 11px;
   margin: 4px 0 22px;
 }
-.luminous-instance-title h1 {
+:where([data-theme-style="luminous"]) .luminous-instance-title h1 {
   color: #0b164a;
   font-size: 31px;
   font-weight: 700;
@@ -1513,7 +1514,7 @@
   overflow-wrap: anywhere;
   margin: 0 0 15px;
 }
-.luminous-instance-title h1 small {
+:where([data-theme-style="luminous"]) .luminous-instance-title h1 small {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1524,17 +1525,17 @@
   font-size: 11px;
   font-weight: 500;
 }
-.luminous-instance-title h1 small[data-online="false"] {
+:where([data-theme-style="luminous"]) .luminous-instance-title h1 small[data-online="false"] {
   background: #ffe4e9;
   color: #e93e60;
 }
-.luminous-instance-title h1 small i {
+:where([data-theme-style="luminous"]) .luminous-instance-title h1 small i {
   width: 6px;
   height: 6px;
   background: currentColor;
   border-radius: 50%;
 }
-.luminous-instance-title > div {
+:where([data-theme-style="luminous"]) .luminous-instance-title > div {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1542,12 +1543,12 @@
   font-size: 11px;
   line-height: 1.7;
 }
-.luminous-instance-title h2 {
+:where([data-theme-style="luminous"]) .luminous-instance-title h2 {
   color: #284478;
   font-size: 13px;
   margin: -2px 0 12px;
 }
-.luminous-instance-subtitle {
+:where([data-theme-style="luminous"]) .luminous-instance-subtitle {
   color: #7191b6;
   font-size: 11px;
   margin-top: 18px;
@@ -2285,7 +2286,7 @@
 [data-theme-style="luminous"] .instance-ping-retention-notice {
   grid-column: 1/-1;
 }
-.studio-appearance-drawing[data-appearance="luminous"] {
+:where([data-theme-style="luminous"]) .studio-appearance-drawing[data-appearance="luminous"] {
   --mini-bg: #e9f3ff;
   --mini-surface: #fff;
   --mini-line: #c2dcff;
@@ -2306,67 +2307,67 @@
     margin-left: 185px;
     padding: 18px;
   }
-  .luminous-sidebar {
+  :where([data-theme-style="luminous"]) .luminous-sidebar {
     width: 185px;
     padding: 24px 10px;
   }
-  .luminous-brand {
+  :where([data-theme-style="luminous"]) .luminous-brand {
     gap: 10px;
     padding-left: 7px;
   }
-  .luminous-brand strong {
+  :where([data-theme-style="luminous"]) .luminous-brand strong {
     font-size: 19px;
   }
-  .luminous-sidebar nav a {
+  :where([data-theme-style="luminous"]) .luminous-sidebar nav a {
     gap: 12px;
     padding: 13px;
   }
-  .luminous-hero {
+  :where([data-theme-style="luminous"]) .luminous-hero {
     height: 335px;
     grid-template-columns: 210px minmax(130px, 1fr) 205px;
   }
-  .luminous-notices {
+  :where([data-theme-style="luminous"]) .luminous-notices {
     display: none;
   }
-  .luminous-hero-right {
+  :where([data-theme-style="luminous"]) .luminous-hero-right {
     grid-column: 3;
   }
-  .luminous-scene {
+  :where([data-theme-style="luminous"]) .luminous-scene {
     inset: -50px 5% -25px 12%;
   }
-  .luminous-world {
+  :where([data-theme-style="luminous"]) .luminous-world {
     width: 370px;
     height: 370px;
     margin-left: -185px;
   }
-  .luminous-home-heading > span {
+  :where([data-theme-style="luminous"]) .luminous-home-heading > span {
     display: none;
   }
-  .luminous-global {
+  :where([data-theme-style="luminous"]) .luminous-global {
     padding: 18px 14px;
   }
-  .luminous-global strong {
+  :where([data-theme-style="luminous"]) .luminous-global strong {
     font-size: 29px;
   }
-  .luminous-global strong em {
+  :where([data-theme-style="luminous"]) .luminous-global strong em {
     font-size: 18px;
   }
-  .luminous-online-ring {
+  :where([data-theme-style="luminous"]) .luminous-online-ring {
     width: 78px;
     height: 78px;
   }
-  .luminous-online-ring b {
+  :where([data-theme-style="luminous"]) .luminous-online-ring b {
     width: 60px;
     height: 60px;
     font-size: 15px;
   }
-  .luminous-toolbar {
+  :where([data-theme-style="luminous"]) .luminous-toolbar {
     gap: 8px;
   }
-  .luminous-status-filters button {
+  :where([data-theme-style="luminous"]) .luminous-status-filters button {
     padding: 8px 11px;
   }
-  .luminous-view-switch span {
+  :where([data-theme-style="luminous"]) .luminous-view-switch span {
     display: none;
   }
   [data-theme-style="luminous"] .orbital-instance {
@@ -2399,79 +2400,79 @@
     margin-left: 165px;
     padding: 18px 14px;
   }
-  .luminous-sidebar {
+  :where([data-theme-style="luminous"]) .luminous-sidebar {
     width: 165px;
   }
-  .luminous-brand strong {
+  :where([data-theme-style="luminous"]) .luminous-brand strong {
     font-size: 17px;
   }
-  .luminous-brand-mark {
+  :where([data-theme-style="luminous"]) .luminous-brand-mark {
     width: 29px;
     height: 34px;
     font-size: 29px;
   }
-  .luminous-sidebar nav a {
+  :where([data-theme-style="luminous"]) .luminous-sidebar nav a {
     font-size: 11px;
     gap: 10px;
   }
-  .luminous-sidebar-art {
+  :where([data-theme-style="luminous"]) .luminous-sidebar-art {
     padding-left: 5px;
   }
-  .luminous-sidebar-art > .luminous-device {
+  :where([data-theme-style="luminous"]) .luminous-sidebar-art > .luminous-device {
     width: 125px;
     height: 130px;
   }
-  .luminous-hero {
+  :where([data-theme-style="luminous"]) .luminous-hero {
     grid-template-columns: 190px minmax(50px, 1fr) 185px;
     height: 320px;
     gap: 10px;
   }
-  .luminous-global {
+  :where([data-theme-style="luminous"]) .luminous-global {
     gap: 5px;
     padding: 14px 11px;
   }
-  .luminous-global strong {
+  :where([data-theme-style="luminous"]) .luminous-global strong {
     font-size: 26px;
   }
-  .luminous-online-ring {
+  :where([data-theme-style="luminous"]) .luminous-online-ring {
     width: 68px;
     height: 68px;
   }
-  .luminous-online-ring b {
+  :where([data-theme-style="luminous"]) .luminous-online-ring b {
     width: 54px;
     height: 54px;
     font-size: 12px;
   }
-  .luminous-world {
+  :where([data-theme-style="luminous"]) .luminous-world {
     width: 320px;
     height: 320px;
     margin-left: -160px;
     top: 15px;
   }
-  .luminous-region-tags > button {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button {
     font-size: 9px;
     padding: 5px 7px;
     gap: 3px;
   }
-  .luminous-region-tags > button:nth-child(n + 5) {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(n + 5) {
     display: none;
   }
-  .luminous-hero-right > button {
+  :where([data-theme-style="luminous"]) .luminous-hero-right > button {
     padding: 16px 13px;
   }
-  .luminous-hero-right strong {
+  :where([data-theme-style="luminous"]) .luminous-hero-right strong {
     font-size: 24px;
   }
-  .luminous-mini-bars {
+  :where([data-theme-style="luminous"]) .luminous-mini-bars {
     opacity: 0.4;
     right: 10px;
   }
-  .luminous-filter-controls {
+  :where([data-theme-style="luminous"]) .luminous-filter-controls {
     order: 3;
     margin-left: 0;
     width: 100%;
   }
-  .luminous-view-switch {
+  :where([data-theme-style="luminous"]) .luminous-view-switch {
     margin-left: auto;
   }
   [data-theme-style="luminous"] .orbital-instance {
@@ -2513,10 +2514,10 @@
   [data-theme-style="luminous"] .instance-ping-summary strong {
     font-size: 23px;
   }
-  .luminous-instance-title h1 {
+  :where([data-theme-style="luminous"]) .luminous-instance-title h1 {
     font-size: 25px;
   }
-  .luminous-instance-title {
+  :where([data-theme-style="luminous"]) .luminous-instance-title {
     max-width: 85%;
   }
 }
@@ -2525,7 +2526,7 @@
     margin-left: 0;
     padding: 70px 12px 100px;
   }
-  .luminous-sidebar {
+  :where([data-theme-style="luminous"]) .luminous-sidebar {
     position: fixed;
     inset: auto 0 0;
     width: 100%;
@@ -2535,19 +2536,19 @@
     border-radius: 18px 18px 0 0;
     background: #f8fbfff0;
   }
-  .luminous-brand,
-  .luminous-sync,
-  .luminous-sidebar-art {
+  :where([data-theme-style="luminous"]) .luminous-brand,
+  :where([data-theme-style="luminous"]) .luminous-sync,
+  :where([data-theme-style="luminous"]) .luminous-sidebar-art {
     display: none;
   }
-  .luminous-sidebar nav {
+  :where([data-theme-style="luminous"]) .luminous-sidebar nav {
     display: flex;
     flex-direction: row;
     justify-content: space-around;
     gap: 2px;
     height: 100%;
   }
-  .luminous-sidebar nav a {
+  :where([data-theme-style="luminous"]) .luminous-sidebar nav a {
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -2556,11 +2557,11 @@
     font-size: 9px;
     border-radius: 12px;
   }
-  .luminous-sidebar nav a svg {
+  :where([data-theme-style="luminous"]) .luminous-sidebar nav a svg {
     width: 18px;
     height: 18px;
   }
-  .luminous-motion-toggle {
+  :where([data-theme-style="luminous"]) .luminous-motion-toggle {
     top: 15px;
     left: 14px;
     right: auto;
@@ -2571,192 +2572,192 @@
     right: 14px;
     max-width: calc(100vw - 28px);
   }
-  .luminous-home-heading {
+  :where([data-theme-style="luminous"]) .luminous-home-heading {
     padding: 0;
     height: auto;
     margin: 0 0 12px;
   }
-  .luminous-search {
+  :where([data-theme-style="luminous"]) .luminous-search {
     width: 100%;
     height: 42px;
   }
-  .luminous-search kbd {
+  :where([data-theme-style="luminous"]) .luminous-search kbd {
     display: none;
   }
-  .luminous-hero {
+  :where([data-theme-style="luminous"]) .luminous-hero {
     height: 540px;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 260px 1fr;
     gap: 12px;
     padding: 0 0 12px;
   }
-  .luminous-hero > .luminous-scene {
+  :where([data-theme-style="luminous"]) .luminous-hero > .luminous-scene {
     inset: -5px -10px auto;
     height: 275px;
   }
-  .luminous-world {
+  :where([data-theme-style="luminous"]) .luminous-world {
     width: 265px;
     height: 265px;
     margin-left: -132px;
     top: 0;
   }
-  .luminous-city {
+  :where([data-theme-style="luminous"]) .luminous-city {
     bottom: 40px;
     height: 120px;
   }
-  .luminous-city > i {
+  :where([data-theme-style="luminous"]) .luminous-city > i {
     width: 14px;
     height: calc(var(--tower-height) * 0.7);
   }
-  .luminous-scene-server.is-left {
+  :where([data-theme-style="luminous"]) .luminous-scene-server.is-left {
     width: 65px;
     height: 65px;
     left: 9%;
     bottom: 8%;
   }
-  .luminous-scene-server.is-right {
+  :where([data-theme-style="luminous"]) .luminous-scene-server.is-right {
     width: 80px;
     height: 80px;
     right: 2%;
     bottom: 4%;
   }
-  .luminous-platform {
+  :where([data-theme-style="luminous"]) .luminous-platform {
     height: 85px;
     bottom: 0;
   }
-  .luminous-region-tags {
+  :where([data-theme-style="luminous"]) .luminous-region-tags {
     grid-column: 1/-1;
     grid-row: 1;
     margin: 0 7px;
   }
-  .luminous-region-tags > button {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button {
     padding: 6px 9px;
     font-size: 10px;
   }
-  .luminous-region-tags > button:nth-child(1) {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(1) {
     top: 20%;
     left: 0;
   }
-  .luminous-region-tags > button:nth-child(2) {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(2) {
     top: 4%;
     left: 45%;
   }
-  .luminous-region-tags > button:nth-child(3) {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(3) {
     top: 42%;
     right: 0;
   }
-  .luminous-region-tags > button:nth-child(4) {
+  :where([data-theme-style="luminous"]) .luminous-region-tags > button:nth-child(4) {
     top: 70%;
     right: 4%;
   }
-  .luminous-hero-left {
+  :where([data-theme-style="luminous"]) .luminous-hero-left {
     grid-column: 1;
     grid-row: 2;
     gap: 10px;
   }
-  .luminous-hero-right {
+  :where([data-theme-style="luminous"]) .luminous-hero-right {
     grid-column: 2;
     grid-row: 2;
     gap: 10px;
   }
-  .luminous-global {
+  :where([data-theme-style="luminous"]) .luminous-global {
     min-height: 112px;
     padding: 12px;
   }
-  .luminous-global strong {
+  :where([data-theme-style="luminous"]) .luminous-global strong {
     font-size: 25px;
   }
-  .luminous-global strong em {
+  :where([data-theme-style="luminous"]) .luminous-global strong em {
     font-size: 15px;
   }
-  .luminous-online-ring {
+  :where([data-theme-style="luminous"]) .luminous-online-ring {
     width: 56px;
     height: 56px;
   }
-  .luminous-online-ring b {
+  :where([data-theme-style="luminous"]) .luminous-online-ring b {
     width: 44px;
     height: 44px;
     font-size: 10px;
     gap: 2px;
   }
-  .luminous-online-ring b small {
+  :where([data-theme-style="luminous"]) .luminous-online-ring b small {
     font-size: 8px;
   }
-  .luminous-global small,
-  .luminous-hero-right small,
-  .luminous-bandwidth small {
+  :where([data-theme-style="luminous"]) .luminous-global small,
+  :where([data-theme-style="luminous"]) .luminous-hero-right small,
+  :where([data-theme-style="luminous"]) .luminous-bandwidth small {
     font-size: 10px;
   }
-  .luminous-global p {
+  :where([data-theme-style="luminous"]) .luminous-global p {
     font-size: 8px;
   }
-  .luminous-bandwidth {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth {
     padding: 11px;
   }
-  .luminous-bandwidth strong {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth strong {
     font-size: 20px;
   }
-  .luminous-bandwidth > .glacier-fleet-chart {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
     height: 40px;
   }
-  .luminous-bandwidth p {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth p {
     flex-direction: column;
     gap: 4px;
     font-size: 9px;
   }
-  .luminous-hero-right > button {
+  :where([data-theme-style="luminous"]) .luminous-hero-right > button {
     padding: 12px;
   }
-  .luminous-hero-right strong {
+  :where([data-theme-style="luminous"]) .luminous-hero-right strong {
     font-size: 23px;
   }
-  .luminous-hero-right p {
+  :where([data-theme-style="luminous"]) .luminous-hero-right p {
     font-size: 8px;
     flex-wrap: wrap;
     gap: 5px;
     margin: 8px 0 0;
   }
-  .luminous-mini-bars {
+  :where([data-theme-style="luminous"]) .luminous-mini-bars {
     display: none;
   }
-  .luminous-asset-orbit {
+  :where([data-theme-style="luminous"]) .luminous-asset-orbit {
     height: 17px;
   }
-  .luminous-toolbar {
+  :where([data-theme-style="luminous"]) .luminous-toolbar {
     gap: 9px;
     padding: 8px;
   }
-  .luminous-status-filters {
+  :where([data-theme-style="luminous"]) .luminous-status-filters {
     gap: 3px;
   }
-  .luminous-status-filters button {
+  :where([data-theme-style="luminous"]) .luminous-status-filters button {
     padding: 8px 10px;
     font-size: 10px;
     gap: 5px;
   }
-  .luminous-view-switch {
+  :where([data-theme-style="luminous"]) .luminous-view-switch {
     gap: 0;
   }
-  .luminous-view-switch button {
+  :where([data-theme-style="luminous"]) .luminous-view-switch button {
     padding: 6px;
   }
-  .luminous-view-switch svg {
+  :where([data-theme-style="luminous"]) .luminous-view-switch svg {
     width: 15px;
   }
-  .luminous-filter-controls {
+  :where([data-theme-style="luminous"]) .luminous-filter-controls {
     flex-wrap: wrap;
     gap: 6px;
   }
-  .luminous-filter-controls label {
+  :where([data-theme-style="luminous"]) .luminous-filter-controls label {
     flex: 1;
     min-width: 0;
   }
-  .luminous-filter-controls select {
+  :where([data-theme-style="luminous"]) .luminous-filter-controls select {
     max-width: 100px;
     min-width: 0;
     width: 100%;
   }
-  .luminous-tools-toggle {
+  :where([data-theme-style="luminous"]) .luminous-tools-toggle {
     padding: 7px 3px;
     font-size: 9px;
     gap: 3px;
@@ -2781,36 +2782,36 @@
     gap: 5px;
     flex-wrap: wrap;
   }
-  .luminous-instance-heading > .luminous-scene {
+  :where([data-theme-style="luminous"]) .luminous-instance-heading > .luminous-scene {
     inset: 120px -10px auto;
     height: 200px;
   }
-  .luminous-instance-heading .luminous-world {
+  :where([data-theme-style="luminous"]) .luminous-instance-heading .luminous-world {
     width: 200px;
     height: 200px;
     margin-left: -100px;
     top: 0;
   }
-  .luminous-instance-title {
+  :where([data-theme-style="luminous"]) .luminous-instance-title {
     max-width: 100%;
   }
-  .luminous-instance-title h1 {
+  :where([data-theme-style="luminous"]) .luminous-instance-title h1 {
     font-size: 22px;
     gap: 7px;
     margin-bottom: 10px;
   }
-  .luminous-instance-title > p:first-child {
+  :where([data-theme-style="luminous"]) .luminous-instance-title > p:first-child {
     margin: 0 0 12px;
     font-size: 10px;
   }
-  .luminous-instance-title > div {
+  :where([data-theme-style="luminous"]) .luminous-instance-title > div {
     font-size: 10px;
   }
-  .luminous-instance-title h1 small {
+  :where([data-theme-style="luminous"]) .luminous-instance-title h1 small {
     padding: 5px 8px;
     font-size: 9px;
   }
-  .luminous-instance-subtitle {
+  :where([data-theme-style="luminous"]) .luminous-instance-subtitle {
     display: none;
   }
   [data-theme-style="luminous"] .instance-topbar-actions {
@@ -2919,29 +2920,29 @@
   }
 }
 @media (max-width: 360px) {
-  .luminous-global {
+  :where([data-theme-style="luminous"]) .luminous-global {
     padding: 10px 8px;
     gap: 4px;
   }
-  .luminous-global strong {
+  :where([data-theme-style="luminous"]) .luminous-global strong {
     font-size: 21px;
   }
-  .luminous-global strong em {
+  :where([data-theme-style="luminous"]) .luminous-global strong em {
     font-size: 13px;
   }
-  .luminous-online-ring {
+  :where([data-theme-style="luminous"]) .luminous-online-ring {
     width: 48px;
     height: 48px;
   }
-  .luminous-online-ring b {
+  :where([data-theme-style="luminous"]) .luminous-online-ring b {
     width: 38px;
     height: 38px;
     font-size: 9px;
   }
-  .luminous-status-filters button {
+  :where([data-theme-style="luminous"]) .luminous-status-filters button {
     padding: 7px 8px;
   }
-  .luminous-view-switch button {
+  :where([data-theme-style="luminous"]) .luminous-view-switch button {
     padding: 5px;
   }
   [data-theme-style="luminous"] .server-metric-grid {
@@ -2960,10 +2961,9 @@
     font-size: 17px;
   }
 }
-[data-luminous-motion="paused"]
+:where([data-theme-style="luminous"])[data-luminous-motion="paused"]
   :is(.luminous-scene, .luminous-device, .luminous-mini-bars)
-  *,
-[data-luminous-motion="paused"] .luminous-device-float {
+  *, :where([data-theme-style="luminous"])[data-luminous-motion="paused"] .luminous-device-float {
   animation-play-state: paused !important;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3028,12 +3028,12 @@
 [data-theme-style="luminous"] .compact-node-gauge[data-critical="true"] {
   --compact-gauge-color: #ff4569 !important;
 }
-.luminous-world {
+:where([data-theme-style="luminous"]) .luminous-world {
   transform-style: preserve-3d;
   transform: rotateX(var(--scene-y, 0deg)) rotateY(var(--scene-x, 0deg));
   transition: transform 0.5s ease-out;
 }
-.luminous-city > i::after {
+:where([data-theme-style="luminous"]) .luminous-city > i::after {
   content: "";
   position: absolute;
   left: 0;
@@ -3085,7 +3085,7 @@
   .compact-node-gauge-track::before {
   display: none;
 }
-[data-luminous-motion="paused"] .luminous-scene *::after {
+:where([data-theme-style="luminous"])[data-luminous-motion="paused"] .luminous-scene *::after {
   animation-play-state: paused !important;
 }
 
@@ -3158,7 +3158,7 @@
 [data-theme-style="luminous"] .compact-node-gauge {
   transition: --compact-gauge-fill 0.65s ease;
 }
-.luminous-device[data-active="false"] * {
+:where([data-theme-style="luminous"]) .luminous-device[data-active="false"] * {
   animation-play-state: paused !important;
 }
 [data-theme-style="luminous"] .ping-source-matrix-head {

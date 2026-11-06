@@ -27,3 +27,5 @@ BROWSER_REPORT_GATES_ONLY=1 BROWSER_REPORT_SCREENSHOT="$PWD/docs/images/current/
 生成 `vps-report-dates.png`、`vps-report-online.png` 与离线报告的 `vps-report-light.png` / `vps-report-dark.png`。此门禁同时验证两类后端、精确日期、断网阅读、真实曲线绘制、1024/390/320px 和 PDF，不修改首页预览图。
 
 `cupertino/` 为 1.35.0「原生 · Cupertino」主题的代码运行截图：`home.png`、`instance.png`、`ping.png` 为 1672 × 941；两张 `*-mobile.png` 为 390 × 941。使用 `BROWSER_CUPERTINO_ONLY=1 node scripts/browser-scale-gates.mjs` 的官方 Komari 兼容模拟场景生成（8 台演示节点、6 条诊断线路，首页绑定其中 3 条）。数值和曲线为模拟数据，界面来自实际组件。当前 `theme-preview.png` 与 `cupertino/home.png` 相同。
+
+1.35.1 的 Cupertino 详情与 Ping 截图在同一文档加载过光域未来样式后截取，覆盖主题热切换的真实样式生命周期；`cupertino/search-focus.png` 展示新的单层圆角焦点状态。回归检查两种样式加载顺序及 320–1920px 的 12 组布局。
