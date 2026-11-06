@@ -804,7 +804,9 @@ class CDP {
 async function waitUntil(cdp, expression, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await cdp.value(expression)) return;
+    // Chrome can expose an empty Document between Page.reload and the new
+    // root element. Keep waiting there without swallowing predicate errors.
+    if (await cdp.value(`document.documentElement !== null && (${expression})`)) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const diagnostics = await cdp.value(`({

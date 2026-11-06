@@ -73,6 +73,13 @@ export async function checkCupertino({
     );
     await cdp.value("window.scrollTo(0,0)");
     await captureScreenshot(cdp, base + "-" + name + ".png");
+    if (name === "instance")
+      failGate(
+        await cdp.value(
+          "getComputedStyle(document.querySelector('.cupertino-switch-node')).backgroundColor==='rgb(255, 255, 255)'",
+        ),
+        "Cupertino switch action must retain its neutral reference surface",
+      );
     measurements[name] = await cdp.value(
       `Object.fromEntries(${JSON.stringify(selectors)}.map(s=>{const r=document.querySelector(s)?.getBoundingClientRect();return[s,r?{x:r.x,y:r.y,width:r.width,height:r.height}:null]}))`,
     );

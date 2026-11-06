@@ -3512,3 +3512,12 @@
 [data-theme-style="cupertino"] .home-command-area .home-workbench-search {
   display: none;
 }
+
+/* The neutral switch action precedes the blue report action in the reference. */
+[data-theme-style="cupertino"]
+  .instance-topbar-actions
+  > button.cupertino-switch-node {
+  background: #fff;
+  color: #515157;
+  border-color: #d5d5df;
+}
