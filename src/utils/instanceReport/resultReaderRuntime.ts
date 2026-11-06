@@ -171,17 +171,36 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
     for (const image of all) {
       image.loading = "eager"; await image.decode();
       // Print pagination is separate from the intact preview/download image.
-      if (image.naturalHeight <= image.naturalWidth * 1.25) continue;
       const pages = document.createElement("div"); pages.className = "report-print-pages";
-      const step = Math.floor(image.naturalWidth * 1.25), width = Math.min(1800, image.naturalWidth);
-      if (Math.ceil(image.naturalHeight / step) > 100) throw new Error("所选长图超过 100 个打印页，请分批选择结果。");
-      for (let top = 0; top < image.naturalHeight; top += step) {
-        const height = Math.min(step, image.naturalHeight - top), canvas = document.createElement("canvas");
+      const count = image.naturalHeight <= image.naturalWidth * 1.25 ? 1 : Math.ceil(image.naturalHeight / (image.naturalWidth * 1.18)), width = Math.min(1800, image.naturalWidth);
+      if (count > 100) throw new Error("所选长图超过 100 个打印页，请分批选择结果。");
+      const cuts = [0];
+      // Balanced pages, with a quiet scan line near each boundary. No pixels
+      // are removed; whole-image preview/download caches remain untouched.
+      for (let part=1;part<count;part++) {
+        const ideal=Math.round(image.naturalHeight*part/count), low=Math.max(cuts.at(-1)!+1,ideal-70), high=Math.min(image.naturalHeight-1,ideal+70);
+        const scan=document.createElement("canvas");scan.width=Math.min(900,image.naturalWidth);scan.height=high-low+1;
+        const context=scan.getContext("2d",{willReadFrequently:true});if(!context)throw new Error("浏览器无法准备长图分页");
+        context.drawImage(image,0,low,image.naturalWidth,scan.height,0,0,scan.width,scan.height);
+        const pixels=context.getImageData(0,0,scan.width,scan.height).data;let score=Infinity,cut=ideal;
+        for(let y=0;y<scan.height;y++){let edges=0;for(let x=1;x<scan.width;x++){const p=(y*scan.width+x)*4,q=p-4;if(Math.max(Math.abs(pixels[p]!-pixels[q]!),Math.abs(pixels[p+1]!-pixels[q+1]!),Math.abs(pixels[p+2]!-pixels[q+2]!))>28)edges++;}if(edges<score||(edges===score&&Math.abs(low+y-ideal)<Math.abs(cut-ideal))){score=edges;cut=low+y;}}
+        cuts.push(cut);scan.width=scan.height=1;
+      }
+      cuts.push(image.naturalHeight);
+      for (let part=0;part<count;part++) {
+        const top=cuts[part]!,height=cuts[part+1]!-top,canvas = document.createElement("canvas");
         canvas.width = width; canvas.height = Math.ceil(height / image.naturalWidth * width);
         const context = canvas.getContext("2d"); if (!context) throw new Error("浏览器无法准备长图打印");
         context.drawImage(image, 0, top, image.naturalWidth, height, 0, 0, canvas.width, canvas.height);
         const page = document.createElement("img"); page.src = await inline(await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("打印图片编码失败")), "image/png")));
-        page.alt = `${image.alt} · 打印页 ${Math.floor(top / step) + 1}`; await page.decode(); pages.append(page); canvas.width = canvas.height = 1;
+        page.alt = `${image.alt} · 打印页 ${part + 1}/${count}`; await page.decode();
+        const wrapper=document.createElement("section");wrapper.className="report-print-page";
+        const header=document.createElement("header");header.className="result-print-heading";
+        const name=document.createElement("strong");name.textContent=image.closest("figure")?.querySelector("figcaption")?.textContent||image.alt;
+        const description=document.createElement("p");description.textContent=`连续分页 ${part+1}/${count} / 高清整图另保留`;
+        header.append(name,description);
+        const original=image.closest("figure")?.querySelector<HTMLAnchorElement>("a");if(original){const link=document.createElement("a");link.href=original.href;link.textContent="查看本轮原报告 ↗";link.rel="noopener noreferrer";header.append(link);}
+        wrapper.append(header,page);pages.append(wrapper); canvas.width = canvas.height = 1;
       }
       image.after(pages); image.dataset.hasPrintPages = "true";
     }
@@ -201,5 +220,5 @@ export function resultReaderRuntime(model: ReportModel, tools: ResultToolkit) {
   });
   const styleSelect = document.querySelector<HTMLSelectElement>("[data-result-style]"); if (styleSelect) styleSelect.value = mode;
   renderList();
-  return { prepare, saveHtml, print, onChapter: (id: string) => { if (id === "network" && results.length && !images?.children.length && !busy) void prepare().catch(showError); } };
+  return { prepare, saveHtml, print, onChapter: (id: string) => { if (id === "sources" && results.length && !images?.children.length && !busy) void prepare().catch(showError); } };
 }

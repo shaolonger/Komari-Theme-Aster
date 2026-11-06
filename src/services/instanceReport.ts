@@ -219,6 +219,8 @@ export function reportNode(meta: NodeInfo, current?: NodeMetrics): ReportNode {
       online: current?.online ?? null,
       uptime: current?.uptime ?? null,
       updatedAt: current?.updatedAt ?? null,
+      trafficUp: current && Number.isFinite(current.trafficUp) && current.trafficUp >= 0 ? current.trafficUp : null,
+      trafficDown: current && Number.isFinite(current.trafficDown) && current.trafficDown >= 0 ? current.trafficDown : null,
     },
   };
 }

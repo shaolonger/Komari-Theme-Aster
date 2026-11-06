@@ -1,13 +1,13 @@
 import type { ReportFullResult } from "./model";
+import { analyzeFullResult } from "./fullResultAnalysis";
 
 /** Embedded verbatim in offline reports; all helpers intentionally live inside. */
-export function resultToolkit(TerminalConstructor?: typeof import("@xterm/xterm").Terminal) {
+export function resultToolkit(TerminalConstructor?: typeof import("@xterm/xterm").Terminal, describe = analyzeFullResult) {
   const xmlText = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu, "");
   const escape = (value: unknown) => xmlText(String(value ?? "")).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
   // OSC titles/hyperlinks and other terminal commands are not printable XML.
   const terminal = (value: string, preserveCR = false) => value.replace(/(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c|$)/g, "").replace(/\x1b[PX^_][\s\S]*?(?:\x1b\\|$)/g, "").replace(/\r/g, preserveCR ? "\r" : "");
   const strip = (value: string) => xmlText(terminal(value).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""));
-  const colors = ["#236bfe", "#00ad92", "#8b5cf6", "#f59e0b", "#ef5276"];
   function csv(value: string) {
     const rows: string[][] = []; let row: string[] = [], field = "", quoted = false;
     const input = value.replace(/^\uFEFF/, "");
@@ -35,70 +35,45 @@ export function resultToolkit(TerminalConstructor?: typeof import("@xterm/xterm"
     if (line || !rows.length) rows.push(line); return rows;
   };
   function unified(result: ReportFullResult, node: string, zone: string) {
-    const facts: { section: string; label: string; value: string }[] = [];
-    const chart: { label: string; value: number; unit: string }[] = [];
-    for (const section of result.sections) {
-      if (section.format === "csv") {
-        const [heads = [], ...rows] = csv(section.text);
-        for (const row of rows) {
-          const label = row.slice(0, Math.min(4, row.length)).filter(Boolean).join(" · ");
-          const description = row.map((cell, i) => cell ? `${heads[i] || `字段 ${i + 1}`}：${cell}` : "").filter(Boolean).join("   ");
-          for (const [i, part] of wrap(description, 112).entries()) facts.push({ section: section.title, label: i ? "" : label, value: part });
-          const index = heads.findIndex(h => /(?:延迟.*ms|latency|rtt|平均.*ms)/i.test(h));
-          const n = index < 0 ? NaN : Number(row[index]);
-          if (row[index]?.trim() && Number.isFinite(n) && n >= 0) chart.push({ label, value: n, unit: "ms" });
-        }
-      } else if (section.format === "json") {
-        let values: [string, string][] = [];
-        try { values = flatten(JSON.parse(section.text)); } catch { values = [["原始结果", section.text]]; }
-        for (const [label, value] of values) {
-          for (const [i, part] of wrap(value, 83).entries()) facts.push({ section: section.title, label: i ? "" : label, value: part });
-          const n = Number(value);
-          if (value.trim() && Number.isFinite(n) && n >= 0 && /(?:latency|rtt|avg_ms|延迟)/i.test(label)) chart.push({ label, value: n, unit: "ms" });
-        }
-      } else for (const line of strip(section.text).split("\n")) for (const part of wrap(line, 112)) facts.push({ section: section.title, label: "", value: part });
+    const summary = describe(result);
+    type Item = {group:string; label:string; values:string[]; latency?:number|null; loss?:number|null};
+    const items: Item[] = [];
+    for (const row of summary.rows) items.push({group:[row.group,row.context].filter(Boolean).join(" / "),label:row.label,values:[`${row.latency==null?"成功时延未提供":row.latency.toFixed(2)+" ms"}    ${row.loss==null?"失败 / 丢包未提供":row.loss.toFixed(2)+"% 失败 / 丢包"}    ${row.state||"状态未提供"}`],latency:row.latency,loss:row.loss});
+    for (const fact of summary.facts) items.push({group:fact.group,label:fact.label,values:wrap(fact.value,100)});
+    for (const note of summary.notes) items.push({group:"阅读边界",label:"",values:wrap(note,112)});
+    if (!summary.rows.length && !summary.facts.length) {
+      for (const section of result.sections.filter(section=>section.format==="terminal"))
+        for (const line of strip(section.text).split("\n").filter(Boolean)) items.push({group:section.title+" / 原始输出补充",label:"",values:wrap(line,112)});
     }
-    const pages: string[] = [];
-    const slices: typeof facts[] = [[]];
-    let used = 0, previousSection = "";
-    for (const fact of facts) {
-      const cost = (fact.label ? 39 : 24) + (fact.section !== previousSection ? 25 : 0);
-      const budget = slices.length === 1 && chart.length ? 1050 - Math.min(5, chart.length) * 30 - 53 : 1050;
-      if (used + cost > budget && slices.at(-1)!.length) { slices.push([]); used = 0; previousSection = ""; }
-      used += (fact.label ? 39 : 24) + (fact.section !== previousSection ? 25 : 0);
-      slices.at(-1)!.push(fact); previousSection = fact.section;
+    const bounded = items.flatMap(row => {
+      const labels = wrap(row.label,100), values = [...wrap(row.group,100).slice(2),...labels.slice(1),...row.values.flatMap(value=>wrap(value,112))];
+      const parts: Item[] = [];
+      for(let start=0;start<Math.max(1,values.length);start+=26) parts.push({...row,label:start?"":labels[0]||"",values:values.slice(start,start+26),latency:start?null:row.latency});
+      return parts;
+    });
+    const groups = new Map<string,number>();
+    for (const row of items) if (row.latency!=null) groups.set(row.group,Math.max(groups.get(row.group)||1,row.latency));
+    const slices: Item[][] = [[]]; let used=0,previous="";
+    for (const row of bounded) {
+      const cost=24*row.values.length+(row.label?27:0)+(row.latency!=null?23:0)+(previous!==row.group?33*Math.min(2,wrap(row.group,100).length):0);
+      if(used+cost>1000&&slices.at(-1)!.length){slices.push([]);used=0;previous="";}
+      used+=cost;slices.at(-1)!.push(row);previous=row.group;
     }
-    const count = slices.length;
-    for (let page = 0; page < count; page++) {
-      let body = `<defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#eff6ff"/><stop offset="1" stop-color="#f6f3ff"/></linearGradient></defs><rect width="1200" height="1540" fill="#f1f5fc"/><rect width="1200" height="290" fill="url(#wash)"/><circle cx="1090" cy="30" r="180" fill="#dceaff" opacity=".65"/>`;
-      body += text(54, 56, "ASTER / RESULT COLLECTION", 13, "#5282c6", "700") + text(54, 108, `${title(result)} 检测结果`, 35, "#102354", "700");
-      body += text(54, 143, `${node} · ${stamp(result, zone)} · ${zone}`, 16, "#6680a5");
-      body += `<rect x="54" y="169" width="1092" height="92" rx="18" fill="#fff"/>`;
-      const coverage = result.coverage;
-      const cards = coverage ? [["检测状态", status(result.state)], ["完成项目", String(coverage.ok)], ["需留意", String(coverage.failed)], ["未完成 / 未知", String(coverage.skipped + coverage.unknown)]] : [["检测状态", status(result.state)], ["结果分区", String(result.sections.length)], ["检测配置", result.profile || "上游配置"], ["归档内容", result.truncated ? "部分保留" : "已保存内容"]];
-      cards.forEach(([label, value], i) => { body += text(76 + i * 270, 199, label, 13, "#7890ad") + text(76 + i * 270, 235, value, 23, i === 0 ? colors[0] : "#18315c", "700"); });
-      body += `<rect x="54" y="287" width="1092" height="1190" rx="20" fill="#fff"/>`;
-      let top = 328;
-      if (page === 0 && chart.length) {
-        body += text(78, top, `测点延迟分布 · ${chart[0]!.unit}`, 17, "#18315c", "700"); top += 28;
-        const visible = chart.slice(0, 5), max = Math.max(1, ...visible.map(row => row.value));
-        visible.forEach((row, i) => { body += text(78, top + i * 30 + 15, row.label.slice(0, 24), 12, "#6680a5") + `<rect x="405" y="${top + i * 30}" width="530" height="18" rx="7" fill="#eff4fc"/><rect x="405" y="${top + i * 30}" width="${Math.max(1, row.value / max * 530)}" height="18" rx="7" fill="${colors[i % colors.length]}"/>` + text(954, top + i * 30 + 15, row.value.toFixed(2), 13); });
-        top += visible.length * 30 + 25;
+    return slices.map((rows,page)=>{
+      let body=`<rect width="1200" height="PAGE_HEIGHT" fill="#fff"/><rect width="1200" height="224" fill="#172a46"/><rect x="54" y="36" width="28" height="4" fill="#25b4ac"/>`;
+      body+=text(96,45,"ASTER / ORIGINAL RESULT COLLECTION",13,"#c8d4e6")+text(54,102,`${title(result)} 检测结果`,34,"#fff","600")+text(54,143,`${node} / ${stamp(result,zone)} / ${zone}`,16,"#c8d4e6");
+      body+=text(54,184,`${status(result.state)}  ·  ${result.module==="tcpquality-full"?summary.rows.length+" 个可解析测点":summary.facts.length+" 项可归纳字段"}  ·  单次测评，独立于期间统计`,15,"#c8d4e6");
+      let y=278,last="";
+      for(const row of rows){
+        if(last!==row.group){for(const label of wrap(row.group,100).slice(0,2)){body+=text(54,y,label,17,"#148f89","600");y+=33;}last=row.group;}
+        if(row.label){body+=text(54,y,row.label,18,"#172a46","600");y+=27;}
+        for(const value of row.values){body+=text(54,y,value,16,"#63738b");y+=24;}
+        if(row.latency!=null){body+=`<rect x="54" y="${y-7}" width="1092" height="6" rx="3" fill="#e1e7ef"/><rect x="54" y="${y-7}" width="${Math.max(1,row.latency/(groups.get(row.group)||1)*1092)}" height="6" rx="3" fill="${row.loss!=null&&row.loss>=3?"#bc3850":"#285ce3"}"/>`;y+=23;}
       }
-      let lastSection = "";
-      for (const fact of slices[page]!) {
-        if (fact.section !== lastSection) { body += text(78, top, fact.section, 15, "#236bfe", "700"); top += 25; lastSection = fact.section; }
-        const label = fact.label ? fact.label.slice(0, 40) : "";
-        body += text(78, top, label, 13, "#7890ad"); if (label) top += 15;
-        body += text(78, top, fact.value, 18, "#2c4568"); top += 24;
-      }
-      if (!facts.length) body += text(78, top + 20, "此轮未保留可导出的详细结果；请查看原报告链接或检测状态。", 17, "#7890ad");
-      const height = Math.max(760, Math.min(1540, top + 105));
-      body = body.replace('height="1540"', `height="${height}"`).replace('height="1190"', `height="${height - 350}"`);
-      body += text(54, height - 36, result.url || "本轮未提供有效的上游报告链接", 12, "#6680a5") + text(1050, height - 36, `${page + 1} / ${count}`, 12, "#6680a5");
-      pages.push(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}" viewBox="0 0 1200 ${height}" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif">${body}</svg>`);
-    }
-    return pages;
+      const height=Math.max(660,y+112);body=body.replace("PAGE_HEIGHT",String(height));
+      body+=`<path d="M54 ${height-77}H1146" stroke="#e1e7ef"/>`+text(54,height-57,"成功时延与失败比例分别呈现；不同目标、协议和方向不合并平均。",13,"#63738b")+text(54,height-36,(result.url||"此轮未提供有效的上游报告链接"),12,"#63738b")+text(1070,height-36,`${page+1} / ${slices.length}`,12,"#63738b");
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}" viewBox="0 0 1200 ${height}" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif">${body}</svg>`;
+    });
   }
   async function original(result: ReportFullResult) {
     if (result.originalPages?.length) return result.originalPages.map(page => {

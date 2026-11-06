@@ -1812,11 +1812,19 @@ try {
     await cdp.call('Page.navigate', { url: new URL(`file://${offlinePath}`).href });
     await waitUntil(cdp, `document.querySelector('#overview [data-chart] svg')!==null`, 6000);
     await waitUntil(cdp, `document.querySelector('#overview [data-chart^="ping:"] path')?.getAttribute('d').includes('L')`, 2000);
-    failGate(await cdp.value(`Math.min(...Array.from(document.querySelector('#overview [data-chart="cpu"] path').getAttribute('d').matchAll(/[ML][^, ]+,(-?[\\d.]+)/g),m=>Number(m[1])))<50`), 'display reduction lost the original CPU spike');
-    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`document.querySelector('#overview [data-chart="cpu"] svg circle')!==null`), 'isolated valid CPU sample disappeared across gaps');
-    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`/^M[^ML]+L/.test(document.querySelector('#overview [data-chart="cpu"] path').getAttribute('d'))`), 'mixed retention cadences fragmented an otherwise continuous historical series');
+    await cdp.value(`document.querySelector('[data-chapter="resources"]').click()`);
+    await waitUntil(cdp, `document.querySelector('#resources [data-chart="cpu"] path')!==null`, 2000);
+    failGate(await cdp.value(`Math.min(...Array.from(document.querySelector('#resources [data-chart="cpu"] path').getAttribute('d').matchAll(/[ML][^, ]+,(-?[\\d.]+)/g),m=>Number(m[1])))<50`), 'display reduction lost the original CPU spike');
+    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`document.querySelector('#resources [data-chart="cpu"] svg circle')!==null`), 'isolated valid CPU sample disappeared across gaps');
+    if (backend.id === BACKEND_PROFILES.official.id) failGate(await cdp.value(`/^M[^ML]+L/.test(document.querySelector('#resources [data-chart="cpu"] path').getAttribute('d'))`), 'mixed retention cadences fragmented an otherwise continuous historical series');
+    failGate(await cdp.value(`document.querySelectorAll('.chapter').length===6 && document.querySelector('#sources #report-original-results')!==null && document.querySelectorAll('#network .full-result-gallery').length===0`), 'report must organize six chapters with a separate complete-image appendix');
+    failGate(await cdp.value(`document.querySelector('.appendix-entry [data-jump=sources]')!==null && document.querySelectorAll('#overview .report-metric').length===3`), 'summary must expose screenshots and three focused indicators');
+    await cdp.value(`document.querySelector('[data-chapter=events]').click();document.querySelector('[data-evidence]')?.click()`);
+    failGate(await cdp.value(`(()=>{const button=document.querySelector('#events [data-evidence]');return !button || (document.activeElement.id===button.dataset.evidence && !document.activeElement.closest('.chapter').hidden && [...document.querySelectorAll('details')].filter(d=>d.contains(document.activeElement)).every(d=>d.open))})()`), 'action did not reveal its associated evidence');
     console.log(`  ${backend.label}: drawing offline network trends`);
     await cdp.value(`document.querySelector('[data-chapter="network"]').click()`);
+    failGate(await cdp.value(`(()=>{const picker=document.querySelector('[data-ping-picker]');const original=picker.value;picker.value=picker.options[picker.options.length-1].value;picker.dispatchEvent(new Event('change'));const selected=picker.value;const ok=document.querySelector('[data-report-ping=latency] [data-chart]').dataset.chart==='ping:'+selected && document.querySelector('[data-report-ping=loss] [data-chart]').dataset.chart==='ping-loss:'+selected;picker.value=original;picker.dispatchEvent(new Event('change'));return ok})()`), 'paired latency and failure charts must switch together');
+    await cdp.value(`document.querySelector('.trend-explorer').closest('details').open=true`);
     await waitUntil(cdp, `document.querySelector('#network [data-chart^="network-category:"] svg circle')!==null && document.querySelector('#network [data-chart^="network:"] svg')!==null`, 4000);
     if (process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) {
       await cdp.value(`document.querySelector('.network-trend-group').scrollIntoView({block:'start'})`);
@@ -1824,10 +1832,11 @@ try {
     }
     await cdp.value(`document.querySelector('[data-chapter="overview"]').click()`);
     failGate(await cdp.value(`JSON.parse(document.getElementById('report-data').textContent).reportId===${JSON.stringify(model.reportId)}`), 'offline report identity changed');
-    for (const chapter of ['resources','network','traffic','stability','assets','events','sources','overview']) {
+    for (const chapter of ['resources','network','traffic','events','sources','overview']) {
       await cdp.value(`document.querySelector('[data-chapter="${chapter}"]').click()`);
       await waitUntil(cdp, `document.getElementById('${chapter}').hidden===false`, 1500);
       failGate(await cdp.value(`document.querySelectorAll('.chapter:not([hidden])').length===1`), 'offline chapter navigation broken');
+      if (chapter === 'sources' && process.env.BROWSER_REPORT_SCREENSHOT && backend.id === BACKEND_PROFILES.official.id) { await cdp.value('document.querySelector("#report-original-results").scrollIntoView({block:"start"})'); await captureScreenshot(cdp, `${process.env.BROWSER_REPORT_SCREENSHOT}-gallery.png`, { waitForImages: false }); }
     }
     for (const width of [1024, 390, 320]) {
       await cdp.call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });

@@ -1,4 +1,5 @@
 import { networkTrends } from "./networkTrends";
+import { analyzeReport } from "./insights";
 import type {
   MetricStats,
   PingStats,
@@ -199,69 +200,9 @@ export function buildReport(input: ReportInput): ReportModel {
     input.pings.map((p) => [p.id, pingStats(p)]),
   );
   const traffic = trafficStats(input.metrics, input.range);
-  const rules = { cpu: 80, memory: 85, disk: 85, version: "aster-report-1" };
+  const rules = { cpu: 80, memory: 85, disk: 85, version: "aster-report-2" };
   const findings: ReportModel["findings"] = [];
-  for (const [key, threshold, label] of [
-    ["cpu", rules.cpu, "CPU"],
-    ["ram", rules.memory, "内存"],
-    ["disk", rules.disk, "磁盘"],
-  ] as const) {
-    const m = input.metrics.find((x) => x.key === key),
-      stat = stats[key];
-    const denominator =
-      key === "ram"
-        ? input.node.memory
-        : key === "disk"
-          ? input.node.disk
-          : 100;
-    if (!m || stat?.max == null || !denominator) continue;
-    const pct = (stat.max / denominator) * 100;
-    if (pct > threshold)
-      findings.push({
-        chapter: "resources",
-        severity: "warning",
-        title: `${label}返回点高于 ${threshold}%`,
-        detail: `最高返回点换算为 ${pct.toFixed(1)}%；精度为${m.precision}，不能推断瞬时峰值或连续超限时长。建议检查对应时间的任务与日志。`,
-        time: m.points.find((p) => p.v === stat.max)?.t,
-      });
-  }
-  for (const ping of input.pings) {
-    const s = pings[ping.id]!;
-    if (s.lost > 0)
-      findings.push({
-        chapter: "network",
-        severity: "warning",
-        title: `${ping.name}存在失败探测`,
-        detail: `${s.lost}/${s.sent} 次，失败率 ${((s.loss ?? 0) * 100).toFixed(2)}%。请对照协议、目标与其他任务；这不是整台 VPS 的停机率。`,
-        time: ping.points.find((p) => p.lost > 0)?.t,
-      });
-  }
-  if (stats.cpu?.gaps.length)
-    findings.push({
-      chapter: "stability",
-      severity: "info",
-      title: "CPU 采集存在未知时段",
-      detail: "按返回点间距估计覆盖，缺测不补零，也不视为已确认离线。",
-      time: stats.cpu.gaps[0]?.start,
-    });
-  if (traffic.resets)
-    findings.push({
-      chapter: "traffic",
-      severity: "warning",
-      title: "累计流量计数器发生回退",
-      detail: `${traffic.resets} 次回退段未计入已观测流量，实际用量可能更高。不能仅据此确定重启。`,
-    });
-  for (const source of input.sources.filter(
-    (s) =>
-      s.state === "failed" || s.state === "forbidden" || s.state === "partial",
-  ))
-    findings.push({
-      chapter: "sources",
-      severity: "info",
-      title: `${source.name}：${source.state === "forbidden" ? "无权限" : "覆盖受限"}`,
-      detail: source.detail,
-    });
-  return {
+  const model: ReportModel = {
     ...input,
     stats,
     pingStats: pings,
@@ -283,4 +224,8 @@ export function buildReport(input: ReportInput): ReportModel {
         )
       : undefined,
   };
+  model.analysis = analyzeReport(model);
+  model.findings = model.analysis.actions.map(action => ({ chapter: action.chapter, severity: action.priority === "info" ? "info" : "warning", title: action.title, detail: action.observation, time: action.time }));
+  model.rules.version = "aster-report-2";
+  return model;
 }

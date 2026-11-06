@@ -235,11 +235,14 @@ function ReportWorkspace({ meta, zone }: { meta: NodeInfo; zone: string }) {
         >
           <p className="instance-report-kicker">ASTER · COMPREHENSIVE REPORT</p>
           <h1 id="instance-report-form-title">
-            为 {meta.name} 生成一份可视化报告
+            为 {meta.name} 生成运行与网络体验报告
           </h1>
           <p>
-            用图表回顾资源、流量和网络体验，自选完整检测结果，导出可离线阅读的 HTML、PDF 与高清图片。
+            先看结论，再核查证据。用统一的报告回顾资源、网络、流量与续费，并附上所选 TcpQuality、NodeQuality 完整测评图。
           </p>
+          <div className="instance-report-outline" aria-label="报告内容">
+            {["结论摘要", "资源与稳定性", "网络体验", "流量与资产", "异常与行动", "测评截图附录"].map((label, index) => <span key={label}><small>{String(index + 1).padStart(2,"0")}</small>{label}</span>)}
+          </div>
           <form
             onSubmit={(event) => {
               event.preventDefault();

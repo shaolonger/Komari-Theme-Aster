@@ -15,6 +15,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
     hourCycle: "h23",
   });
   const date = (t: number) => formatter.format(t);
+  const tickDate = (t: number) => new Intl.DateTimeFormat("zh-CN", model.range.end-model.range.start<=2*86400000 ? {timeZone:model.range.timeZone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"} : {timeZone:model.range.timeZone,month:"2-digit",day:"2-digit"}).format(t);
   const number = (v: number, unit: string) => {
     if (unit === "B" || unit === "B/s") {
       const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -43,11 +44,12 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
       const intervals = points.slice(1).map((p, i) => p.t - points[i]!.t).filter(v => v > 0).sort((a, b) => a - b);
       return { points, unit: trend?.unit || "", label: trend?.title || "网络观测", step: intervals.length ? intervals[Math.floor((intervals.length - 1) / 2)]! : 0 };
     }
-    if (key.startsWith("ping:")) {
+    if (key.startsWith("ping:") || key.startsWith("ping-loss:")) {
+      const loss = key.startsWith("ping-loss:");
       const ping = model.pings.find(
-        (p: { id: number }) => p.id === Number(key.slice(5)),
+        (p: { id: number }) => p.id === Number(key.slice(loss ? 10 : 5)),
       );
-      const points: { t: number; v: number | null }[] = ping?.points || [];
+      const points: { t: number; v: number | null }[] = loss ? (ping?.points || []).map((p: {t:number;sent:number;lost:number}) => ({t:p.t,v:p.sent>0?p.lost/p.sent*100:null})) : ping?.points || [];
       const intervals = points
         .slice(1)
         .map((p, i) => p.t - points[i]!.t)
@@ -57,7 +59,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
       const step = intervals.length
         ? intervals[Math.floor((intervals.length - 1) / 2)]!
         : 0;
-      return { points, unit: "ms", label: ping?.name || "Ping", step };
+      return { points, unit: loss ? "%" : "ms", label: `${ping?.name || "Ping"}${loss ? " · 失败比例" : ""}`, step };
     }
     const metric = model.metrics.find((m: { key: string }) => m.key === key);
     return {
@@ -79,7 +81,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
     const data = dataset(container.dataset.chart || ""),
       full = data.points;
     const width = Math.max(200, Math.round(container.clientWidth)),
-      height = 218,
+      height = Math.max(130, Math.round(container.clientHeight) || 210),
       left = 57,
       right = 12,
       top = 22,
@@ -97,7 +99,9 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
       maximum = Math.max(maximum, p.v || 0);
       minimum = Math.min(minimum, p.v || 0);
     }
-    const ceiling = Math.max(1, maximum * 1.12),
+    const scale = Math.max(1, maximum * 1.12);
+    const magnitude = 10 ** Math.floor(Math.log10(scale));
+    const ceiling = Math.ceil(scale / magnitude * 2) / 2 * magnitude,
       floor = minimum < 0 ? minimum * 1.12 : 0,
       y = (v: number) => top + ph - ((v - floor) / (ceiling - floor)) * ph;
     const x = (t: number) =>
@@ -200,9 +204,9 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
           fill: "var(--muted)",
           "font-size": 11,
         },
-        date(
+        tickDate(
           model.range.start + ratio * (model.range.end - model.range.start),
-        ).split(" ")[0] || "",
+        ),
       ),
     );
     node(
@@ -214,7 +218,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
         fill: "var(--muted)",
         "font-size": 11,
       },
-      "日期 · " + model.range.timeZone,
+      "时间 · " + model.range.timeZone,
     );
     let path = "";
     for (const points of reduced) {
@@ -224,7 +228,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
         points.forEach((p, i) => { path += `${i ? "L" : "M"}${x(p.t).toFixed(2)},${y(p.v).toFixed(2)} `; });
       }
     }
-    const key = container.dataset.chart || "", color = /ram|swap/.test(key) ? "var(--purple)" : /net_out/.test(key) ? "#14b8a6" : "var(--blue)";
+    const key = container.dataset.chart || "", color = key.startsWith("ping-loss:") ? "var(--alert)" : /ram|swap|net_out/.test(key) ? "var(--teal)" : "var(--blue)";
     node("path", { d: path, fill: "none", stroke: color, "stroke-width": 2.3, "stroke-linejoin": "round" });
     for (const points of reduced) if (points.length > 1) {
       const area = `M${x(points[0]!.t)},${top + ph} ` + points.map(p => `L${x(p.t)},${y(p.v)}`).join(" ") + ` L${x(points.at(-1)!.t)},${top + ph} Z`;
@@ -294,7 +298,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
     for (const point of points) { const label = point.label || "未知"; frequencies.set(label, (frequencies.get(label) || 0) + 1); }
     const ranked = [...frequencies].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label]) => label);
     const labels = ranked.length > 12 ? [...ranked.slice(0, 11), "其他类别"] : ranked;
-    const width = Math.max(200, container.clientWidth), height = 218, left = Math.min(130, width * .35), right = 12, top = 20, bottom = 43;
+    const width = Math.max(200, container.clientWidth), height = Math.max(130, Math.round(container.clientHeight) || 210), left = Math.min(130, width * .35), right = 12, top = 20, bottom = 43;
     const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", trend.title + "，按时间显示观测类别");
     const node = (tag: string, attrs: Record<string, string | number>, text?: string) => {
@@ -330,7 +334,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
       return;
     }
     const width = Math.max(200, container.clientWidth),
-      height = 218,
+      height = Math.max(130, Math.round(container.clientHeight) || 210),
       left = 57,
       right = 12,
       top = 22,
@@ -400,7 +404,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
         y: top + ph - down - up,
         width: w,
         height: up,
-        fill: "var(--purple)",
+        fill: "var(--teal)",
       });
       for (const el of [a, b]) {
         const title = document.createElementNS(ns, "title");
@@ -470,10 +474,16 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
   document.querySelector("[data-trend-module]")?.addEventListener("change", () => { updateExplorer(true); drawVisible(); });
   for (const side of ["primary", "secondary"]) document.querySelector(`[data-trend-${side}]`)?.addEventListener("change", () => { updateExplorer(); drawVisible(); });
   document.querySelector<HTMLSelectElement>("[data-ping-picker]")?.addEventListener("change", event => {
-    const id = Number((event.target as HTMLSelectElement).value), chart = document.querySelector<HTMLElement>(".ping-charts [data-chart]"), ping = model.pings.find((p: { id: number }) => p.id === id);
-    if (chart && ping) { chart.dataset.chart = `ping:${id}`; const caption = chart.closest("figure")?.querySelector("figcaption"); if (caption) caption.textContent = `${ping.name} · ${ping.protocol}`; drawVisible(); }
+    const id = Number((event.target as HTMLSelectElement).value), ping = model.pings.find((p: { id: number }) => p.id === id);
+    if (ping) for (const figure of document.querySelectorAll<HTMLElement>("[data-report-ping]")) {
+      const chart = figure.querySelector<HTMLElement>("[data-chart]"), loss = figure.dataset.reportPing === "loss";
+      if (chart) chart.dataset.chart = `${loss ? "ping-loss" : "ping"}:${id}`;
+      const caption = figure.querySelector("figcaption"); if (caption) caption.textContent = `${ping.name} · ${loss ? "失败比例" : "成功时延"} · ${ping.protocol}`;
+    }
+    drawVisible();
   });
   function chapter(id: string) {
+    id = ({stability:"resources",assets:"traffic"} as Record<string,string>)[id] || id;
     document.querySelectorAll<HTMLElement>(".chapter").forEach((el) => {
       el.hidden = el.id !== id;
     });
@@ -499,11 +509,20 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
     if (!element) return;
     if (element.dataset.chapter || element.dataset.jump) {
       chapter(element.dataset.chapter || element.dataset.jump || "overview");
-      document
-        .getElementById(
-          element.dataset.chapter || element.dataset.jump || "overview",
-        )
-        ?.scrollIntoView({ block: "start" });
+      const picker = document.querySelector<HTMLSelectElement>("[data-ping-picker]");
+      if (picker && element.dataset.pingEvidence) {
+        picker.value = element.dataset.pingEvidence;
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const evidence = element.dataset.evidence && document.getElementById(element.dataset.evidence);
+      if (evidence) {
+        let parent: HTMLElement | null = evidence;
+        while (parent) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
+        drawVisible();
+        evidence.tabIndex = -1;
+        evidence.focus({ preventScroll: true });
+        evidence.scrollIntoView({ block: "center" });
+      } else document.getElementById(element.dataset.chapter || element.dataset.jump || "overview")?.scrollIntoView({ block: "start" });
     }
     if (element.hasAttribute("data-print")) void gallery.print().catch(error => { const status = document.querySelector("[data-results-status]"); if (status) status.textContent = String(error.message || error); });
     if (element.hasAttribute("data-json")) {
@@ -534,6 +553,7 @@ export function readerRuntime(installResults: typeof resultReaderRuntime, tools:
     );
   });
   charts.forEach((c) => resize.observe(c));
+  document.querySelectorAll("details").forEach(details => details.addEventListener("toggle",drawVisible));
   resize.observe(document.body);
   chapter("overview");
 }

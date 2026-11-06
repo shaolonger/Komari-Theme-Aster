@@ -1,3 +1,5 @@
+import type { ReportAnalysis } from "./insights";
+
 export interface ReportRange {
   start: number;
   end: number;
@@ -87,6 +89,8 @@ export interface ReportNode {
     online: boolean | null;
     uptime: number | null;
     updatedAt: number | null;
+    trafficUp?: number | null;
+    trafficDown?: number | null;
   };
 }
 export interface ReportInput {
@@ -160,6 +164,7 @@ export interface ReportFinding {
   time?: number;
 }
 export interface ReportModel extends ReportInput {
+  analysis?: ReportAnalysis;
   stats: Record<string, MetricStats>;
   pingStats: Record<number, PingStats>;
   traffic: TrafficStats;
@@ -199,14 +204,12 @@ export const METRIC_FIELDS = [
   ["traffic_delta_down", "上报下载增量", "B", "traffic.down"],
 ] as const;
 export const CHAPTERS = [
-  ["overview", "报告概览"],
-  ["resources", "性能资源"],
-  ["network", "网络质量"],
-  ["traffic", "带宽流量"],
-  ["stability", "运行稳定性"],
-  ["assets", "配置资产"],
-  ["events", "事件建议"],
-  ["sources", "数据口径"],
+  ["overview", "结论摘要"],
+  ["resources", "资源与稳定性"],
+  ["network", "网络体验"],
+  ["traffic", "流量与资产"],
+  ["events", "异常与行动"],
+  ["sources", "检测与证据附录"],
 ] as const;
 
 export function timestamp(value: unknown): number {

@@ -13,7 +13,7 @@ export async function checkReportExports({ cdp, model, profile, backend, waitUnt
   failGate(Boolean(context), "Report execution context missing");
   const childCdp = { value: expression => cdp.value(expression, context.id, sessionId) };
   failGate(model.fullResults.length >= 4 && model.fullResults.every(result => result.url.startsWith("https://")), "Full report links/history were omitted");
-  await childCdp.value("document.querySelector('[data-chapter=network]').click()");
+  await childCdp.value("document.querySelector('[data-chapter=sources]').click()");
   await waitUntil(childCdp, "document.querySelectorAll('.full-result-image').length>=2 && document.querySelector('[data-results-status]').textContent.includes('已准备')", 12000);
   failGate(await childCdp.value("[...document.querySelectorAll('.full-result-image')].every(image=>image.src.startsWith('data:image/png;base64,')) && document.querySelectorAll('[data-result-list] a').length===4"), "Results need embedded PNG images and a link per run");
   await childCdp.value("document.querySelector('.full-result-image').click()");
@@ -65,7 +65,7 @@ export async function checkReportExports({ cdp, model, profile, backend, waitUnt
     await cdp.call("Page.navigate", { url: new URL(`file://${path}`).href }, offlineSession);
     const offlineCdp = { value: expression => cdp.value(expression, undefined, offlineSession) };
     await waitUntil(offlineCdp, "document.readyState==='complete' && document.querySelector('[data-results-count]')?.textContent.includes('已选择')", 15000);
-    await offlineCdp.value("document.querySelector('[data-chapter=network]').click()");
+    await offlineCdp.value("document.querySelector('[data-chapter=sources]').click()");
     if (selectedCount) {
       await offlineCdp.value("document.querySelectorAll('.full-result-image').forEach(image=>image.loading='eager')");
       await waitUntil(offlineCdp, "[...document.querySelectorAll('.full-result-image')].length>0 && [...document.querySelectorAll('.full-result-image')].every(image=>image.complete&&image.naturalWidth>=2400)", 5000);

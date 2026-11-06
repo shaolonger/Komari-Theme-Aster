@@ -210,8 +210,6 @@ describe("VPS report statistics and archival", () => {
       "resources",
       "network",
       "traffic",
-      "stability",
-      "assets",
       "events",
       "sources",
     ])
