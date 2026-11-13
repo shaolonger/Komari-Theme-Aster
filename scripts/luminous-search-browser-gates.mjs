@@ -115,6 +115,8 @@ export async function checkLuminousSearch({ cdp, waitUntil, failGate, width, fit
   await region("");
   await count(4);
   await cdp.value("document.querySelector('.luminous-status-filters button:nth-child(2)').click()");
+  // React may commit the URL-backed filter after this evaluation returns.
+  await count(3);
   failGate(await cdp.value("document.querySelectorAll('.server-card.is-offline').length===0"), "Multi-search bypassed the online filter");
   await cdp.value(`document.querySelector('${field}').focus()`);
   failGate(await cdp.value("document.querySelector('.luminous-search-result').textContent.includes('当前筛选下')"), "Search omitted the current filter context");
