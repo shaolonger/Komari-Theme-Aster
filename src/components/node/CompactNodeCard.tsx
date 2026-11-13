@@ -51,7 +51,7 @@ function formatCompactPercent(value: number) {
 }
 
 function formatCompactExpire({ value, unit }: CompactExpire) {
-  if (value === "—") return "到期 --";
+  if (value === "—") return "到期未设置";
   return unit ? `${value}${unit}` : value;
 }
 

@@ -211,6 +211,13 @@
   padding: 4px;
 }
 
+.cost-summary-sort-hint {
+  align-self: center;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .cost-summary-sort-tab {
   flex: 1 0 auto;
   min-width: 0;

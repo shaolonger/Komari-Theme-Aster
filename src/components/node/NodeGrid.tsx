@@ -87,13 +87,13 @@ import {
 } from "@/utils/vpsListSort";
 import { Spinner } from "@/components/ui/Spinner";
 import { CompactNodeCard } from "./CompactNodeCard";
-import { CostSummary } from "./CostSummary";
 import { NodeList } from "./NodeList";
 import { VpsListSortPanel } from "./VpsListSortPanel";
 import type { HomeMetricPanel } from "./HomeMetricSummary";
 import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey, getHomeTodayTrafficQueryRange, summarizeHomeTodayTraffic, type HomeTrafficOverviewRow } from "@/utils/trafficOverview";
 
 const NodeCard = lazy(() => import("./NodeCard").then(module => ({ default: module.NodeCard })));
+const CostSummary = lazy(() => import("./CostSummary").then(module => ({ default: module.CostSummary })));
 const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
 const renderGlacierCard = (uuid: string) => <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density="expanded" /></Suspense>;
 const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"));
@@ -1553,11 +1553,13 @@ export function NodeGrid() {
     return (
       <>
         {shouldRenderCostSummary && (
-          <CostSummary
-            open={costSummaryOpen}
-            onOpenChange={setCostSummaryOpen}
-            showLauncher={showCostFloatingButton}
-          />
+          <Suspense fallback={null}>
+            <CostSummary
+              open={costSummaryOpen}
+              onOpenChange={setCostSummaryOpen}
+              showLauncher={showCostFloatingButton}
+            />
+          </Suspense>
         )}
         <HomeWorkbenchPanel
           nodes={workbenchNodes}
@@ -1588,11 +1590,13 @@ export function NodeGrid() {
   return (
     <div className="home-workspace" data-glacier-tools={glacierTools}>
       {shouldRenderCostSummary && (
-        <CostSummary
-          open={costSummaryOpen}
-          onOpenChange={setCostSummaryOpen}
-          showLauncher={showCostFloatingButton}
-        />
+        <Suspense fallback={null}>
+          <CostSummary
+            open={costSummaryOpen}
+            onOpenChange={setCostSummaryOpen}
+            showLauncher={showCostFloatingButton}
+          />
+        </Suspense>
       )}
       {appearance === "clearsky" && <Suspense fallback={null}><ClearSkyHomeHeading count={nodes.length} /></Suspense>}
       {overviewPanel != null && <Suspense fallback={<section className="home-overview-panel show" role="status"><header className="home-overview-header"><h3>正在加载总览明细…</h3><button type="button" className="home-overview-close" aria-label="关闭总览明细" onClick={() => setOverviewPanel(null)}><X size={18} /></button></header></section>}>
@@ -1612,6 +1616,7 @@ export function NodeGrid() {
       {orbital ? (
         <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
           <OrbitalWorkspace
+            resourceMetadata={workbenchMetaByUuid}
             facets={facetRows}
             selectedFacets={facetFilters}
             onFacet={(dimension,value)=>{setActiveSavedViewId("");setFacetFilters(prev=>({...prev,[dimension]:value?[value]:[]}));}}

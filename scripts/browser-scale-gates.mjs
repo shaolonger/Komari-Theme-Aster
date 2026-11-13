@@ -238,6 +238,14 @@ function nodeList(size) {
       traffic_limit: index===0?2.93*1024**4:100*1024**3,
       created_at:"2023-11-05T00:00:00Z"
     } : {}),
+    ...(activeFixture.cupertinoResources ? {
+      tags: index === 0 ? "1C/1.5G/500M;CN2/10099/CMI/长标签完整显示-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" : "2C/2G/5G;CN2 GIA/9929",
+      traffic_limit_type: ["up", "down", "sum", "min", "max", "sum"][index % 6],
+      traffic_limit: index >= 6 ? 0 : 100 * 1024 ** 3,
+      price: index === 1 ? -1 : 5,
+      billing_cycle: index === 7 ? "lifetime" : "monthly",
+      expired_at: index === 6 ? "" : new Date(Date.now() + ([-2, 1, 12, 7, 45, 90, 0, 36600][index]) * 86400000).toISOString(),
+    } : {}),
   };
   });
 }
@@ -462,6 +470,7 @@ const server = createServer(async (request, response) => {
         homepagePingBindings: Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : fixture.slate ? [1,2,3,4] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
+        ...(fixture.cupertinoResources ? { showConnections: true } : {}),
       },
     };
     return isOfficialFixture(fixture)
@@ -781,7 +790,7 @@ class CDP {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
-      if (message.error) pending.reject(new Error(message.error.message));
+      if (message.error) pending.reject(new Error(`CDP ${pending.method}: ${message.error.message}`));
       else pending.resolve(message.result);
     });
   }
@@ -789,7 +798,7 @@ class CDP {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP ${method} timed out`)); }, method === 'Page.printToPDF' ? 45000 : 30000);
-      this.pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
+      this.pending.set(id, { method, resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
       this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
@@ -2079,7 +2088,7 @@ try {
       await clearFixturePage(cdp);
       activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: appearance, ui: true, docs: true, clearSky: true, comprehensive: true, glacier: true };
       savedUiSettings = null;
-      results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,appearance,enableNetworkCards:()=>{activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
+      results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,appearance,enableNetworkCards:()=>{activeFixture.cupertinoResources=true;activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
     }
   }
   console.log(JSON.stringify(results, null, 2));

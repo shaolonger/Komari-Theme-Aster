@@ -26,7 +26,9 @@ import LuminousSearch from "@/components/luminous/LuminousSearch";
 import { FleetThroughput } from "@/components/workspace/FleetThroughput";
 import { getDisplayRegionCode } from "@/utils/geo";
 import { regionLabel } from "@/components/glacier/regionLabel";
-import { formatByteRateLabel } from "@/utils/format";
+import { formatBytes, formatByteRateLabel } from "@/utils/format";
+import { formatCompactTrafficDetail, resolveTrafficUsage } from "@/utils/traffic";
+import { summarizeHomeResources } from "@/utils/homeResources";
 import { formatCnyMoney } from "@/utils/cost";
 import type { WorkbenchSortKey } from "@/utils/vpsWorkbench";
 
@@ -41,6 +43,35 @@ export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
       (n) => n.expireDays != null && n.expireDays <= 30,
     ).length;
   const ratio = p.nodes.length ? (online / p.nodes.length) * 100 : 0;
+  const resources = useMemo(
+    () => summarizeHomeResources(p.summaries, p.resourceMetadata ?? new Map()),
+    [p.summaries, p.resourceMetadata],
+  );
+  const memoryLabel = resources.memoryTotal
+    ? `${resources.memoryMissing ? "≈ " : ""}${formatBytes(resources.memoryTotal)}`
+    : "—";
+  const hasLimited = resources.limitedCount > 0;
+  const measured = hasLimited ? resources.limitedMeasured : resources.unlimitedMeasured;
+  const count = hasLimited ? resources.limitedCount : resources.unlimitedCount;
+  const partial = measured < count || resources.metadataMissing > 0;
+  const trafficUsage = resolveTrafficUsage(
+    "sum", hasLimited ? resources.limitedUsed : resources.unlimitedUsed,
+    0, hasLimited ? resources.limitedQuota : 0,
+  );
+  const trafficLabel = measured
+    ? `${partial ? "≈ " : ""}${formatCompactTrafficDetail(trafficUsage)}`
+    : hasLimited ? `— / ${formatBytes(resources.limitedQuota)}` : "—";
+  const remainingLabel = !measured ? "—" : `${partial ? "≈ " : ""}${formatBytes(resources.limitedRemaining)}`;
+  const unlimitedDetail = resources.unlimitedCount
+    ? `${resources.unlimitedCount} 台不限量，已用 ${resources.unlimitedMeasured ? `${resources.unlimitedMeasured < resources.unlimitedCount ? "≈ " : ""}${formatBytes(resources.unlimitedUsed)}` : "—"}`
+    : "";
+  const trafficDetail = [
+    hasLimited ? `有限额节点已用 / 总配额：${trafficLabel}；剩余为各节点可用配额之和：${remainingLabel}` : resources.unlimitedCount ? "所有已配置节点均未设流量上限" : "尚无可用配额信息",
+    unlimitedDetail,
+    measured < count ? `${count - measured} 台尚无流量上报，已用与剩余仅汇总已上报节点` : "",
+    resources.metadataMissing ? `${resources.metadataMissing} 台缺少配额信息，未纳入配额统计` : "",
+    p.todayTraffic.detail,
+  ].filter(Boolean).join("；");
   const up = p.summaries.reduce(
       (s, n) => s + (n.online === true ? n.netUp : 0),
       0,
@@ -111,7 +142,10 @@ export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
                 {online}
                 <small>/ {p.nodes.length}</small>
               </strong>
-              <em>{ratio.toFixed(1)}% 在线率</em>
+              <span className="cupertino-memory-total" title={`全部可见节点的内存资源，包含离线节点${resources.memoryMissing ? `；${resources.memoryMissing} 台内存信息未上报` : ""}`}>
+                总内存 <b>{memoryLabel}</b>
+              </span>
+              <small className="cupertino-online-rate">{ratio.toFixed(1)}% 在线率</small>
             </span>
             <span
               className="cupertino-fleet-ring"
@@ -146,8 +180,8 @@ export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
             </p>
           </section>
           <button
-            className="cupertino-overview-card cupertino-daily"
-            title={p.todayTraffic.detail}
+            className="cupertino-overview-card cupertino-daily cupertino-traffic-resources"
+            title={trafficDetail}
             onClick={() => p.onOpenMetric("traffic")}
             data-home-overview-trigger="traffic"
           >
@@ -155,11 +189,17 @@ export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
               <LayoutGrid />
             </span>
             <span className="cupertino-stat-content">
-              <span>今日流量</span>
-              <strong>{p.todayTraffic.label}</strong>
-              <small>已观测用量</small>
+              <span>流量资源</span>
+              <strong className="cupertino-resource-value">{trafficLabel}</strong>
+              <small>{hasLimited ? "有限额节点 · 已用 / 总配额" : resources.unlimitedCount ? "不限量节点 · 已用 / 总配额" : "已用 / 总配额 · 等待数据"}</small>
             </span>
-            <BarMark />
+            {hasLimited && resources.unlimitedCount > 0 && (
+              <span className="cupertino-unlimited-badge" title={unlimitedDetail}>另 {resources.unlimitedCount} 台不限量</span>
+            )}
+            <span className="cupertino-resource-footer">
+              <span>今日 <b>{p.todayTraffic.label}</b></span>
+              {hasLimited && <span>剩余 <b>{remainingLabel}</b></span>}
+            </span>
           </button>
           {p.showCost && (
             <button
@@ -306,18 +346,5 @@ export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
         </div>
       )}
     </div>
-  );
-}
-function BarMark() {
-  return (
-    <span
-      className="cupertino-daily-mark"
-      aria-hidden="true"
-      title="用量装饰图形"
-    >
-      {[0.35, 0.7, 0.6, 0.46, 0.68, 1, 0.82].map((v, i) => (
-        <i key={i} style={{ height: v * 48 }} />
-      ))}
-    </span>
   );
 }

@@ -14,16 +14,17 @@ import {
   calculateCostSummary,
   formatCnyMoney,
   getExchangeRates,
+  sortCostSummaryDetails,
+  type CostSortField,
+  type CostSortDirection,
 } from "@/utils/cost";
 import { getExpireDaysRemaining, LONG_TERM_EXPIRE_DAYS } from "@/utils/format";
-
-type CostSortField = "weight" | "price" | "remain";
-type CostSortDirection = "asc" | "desc";
 
 const COST_SORT_OPTIONS: Array<{ field: CostSortField; label: string }> = [
   { field: "weight", label: "权重" },
   { field: "price", label: "价格" },
   { field: "remain", label: "剩余" },
+  { field: "expiry", label: "到期" },
 ];
 
 function formatCostCycle(days: number) {
@@ -35,7 +36,8 @@ function formatCostCycle(days: number) {
   return days > 0 ? `${days}天` : "年";
 }
 
-function formatCostExpiry(expiredAt: string) {
+function formatCostExpiry(expiredAt: string, cycleDays: number) {
+  if (cycleDays === -1) return "永久";
   const days = getExpireDaysRemaining(expiredAt);
   if (days == null) return "到期未知";
   if (days > LONG_TERM_EXPIRE_DAYS) return "长期";
@@ -101,27 +103,10 @@ export function CostSummary({
     () => (resolvedOpen && rate ? calculateCostSummary(nodes, ignoredNodes, rate.rates) : null),
     [nodes, ignoredNodes, rate, resolvedOpen],
   );
-  const detailRows = useMemo(() => {
-    const rows = summary?.details.slice() ?? [];
-    return rows.sort((a, b) => {
-      if (a.counted !== b.counted) return a.counted ? -1 : 1;
-
-      const left =
-        sortField === "price"
-          ? a.priceCny
-          : sortField === "remain"
-            ? a.remainingCny
-            : a.weight;
-      const right =
-        sortField === "price"
-          ? b.priceCny
-          : sortField === "remain"
-            ? b.remainingCny
-            : b.weight;
-      const direction = sortDirection === "asc" ? 1 : -1;
-      return (left - right) * direction || a.name.localeCompare(b.name, "zh-CN");
-    });
-  }, [sortDirection, sortField, summary]);
+  const detailRows = useMemo(
+    () => sortCostSummaryDetails(summary?.details ?? [], sortField, sortDirection),
+    [sortDirection, sortField, summary],
+  );
   const exchangeRateRows = useMemo(() => {
     if (!rate?.rates.CNY) return [];
 
@@ -248,7 +233,10 @@ export function CostSummary({
                       type="button"
                       className="cost-summary-sort-tab"
                       data-active={sortField === option.field}
-                      onClick={() => setSortField(option.field)}
+                      onClick={() => {
+                        if (option.field === "expiry" && sortField !== "expiry") setSortDirection("asc");
+                        setSortField(option.field);
+                      }}
                       aria-pressed={sortField === option.field}
                       tabIndex={hiddenTabIndex}
                     >
@@ -266,12 +254,14 @@ export function CostSummary({
                 >
                   {sortDirection === "asc" ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                 </button>
+                {sortField === "expiry" && <span className="cost-summary-sort-hint">{sortDirection === "asc" ? "最近到期优先" : "最远到期优先"}</span>}
               </div>
             </div>
             <div className="cost-summary-detail-list">
               {summary ? (
                 detailRows.map((detail) => {
-                  const expiryLabel = formatCostExpiry(detail.expiredAt);
+                  const expiryLabel = formatCostExpiry(detail.expiredAt, detail.billingCycleDays);
+                  const days = getExpireDaysRemaining(detail.expiredAt);
                   const priceLabel =
                     detail.note || `${formatCnyMoney(detail.priceCny)}/${formatCostCycle(detail.billingCycleDays)}`;
                   return (
@@ -279,6 +269,7 @@ export function CostSummary({
                       key={detail.uuid}
                       className="cost-summary-detail-item"
                       data-counted={detail.counted}
+                      data-node-uuid={detail.uuid}
                       title={detail.name}
                     >
                       <div className="cost-summary-detail-name">
@@ -286,7 +277,7 @@ export function CostSummary({
                           <Flag region={detail.region} size={12} />
                           <span className="cost-summary-detail-title">{detail.name}</span>
                           <span className="cost-summary-price-chip">{priceLabel}</span>
-                          <span className="cost-summary-expire-label">{expiryLabel}</span>
+                          <span className="cost-summary-expire-label" data-expire-tone={detail.billingCycleDays !== -1 && days != null && days <= 30 ? days < 0 ? "expired" : "soon" : undefined}>{expiryLabel}</span>
                         </span>
                       </div>
                       <strong>{formatCnyMoney(detail.remainingCny)}</strong>

@@ -23,6 +23,7 @@ import { regionLabel } from "@/components/glacier/regionLabel";
 import type { CSSProperties } from "react";
 
 type Props = ComponentProps<typeof GlacierHome> & {
+  resourceMetadata?: ReadonlyMap<string, import("@/types/komari").NodeInfo>;
   searchTexts?: ReadonlyMap<string, string>;
   searchResultCount?: number;
   searchHasFilters?: boolean;

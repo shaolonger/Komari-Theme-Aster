@@ -1,7 +1,7 @@
 import type { NodeInfo } from "@/types/komari";
 import { classifyBillingCycleWord } from "@/utils/billing";
 import { fetchWithTimeout } from "@/utils/abort";
-import { resolveExpireTimestamp } from "@/utils/format";
+import { LONG_TERM_EXPIRE_DAYS, resolveExpireTimestamp } from "@/utils/format";
 
 const COST_TARGET_CURRENCY = "CNY";
 export const DEFAULT_COST_RATE_API_URL = "https://api.frankfurter.dev/v2/rates?base=USD";
@@ -70,7 +70,7 @@ interface CostSummary {
   details: CostSummaryDetail[];
 }
 
-interface CostSummaryDetail {
+export interface CostSummaryDetail {
   uuid: string;
   name: string;
   region: string;
@@ -82,6 +82,37 @@ interface CostSummaryDetail {
   billingCycleDays: number;
   counted: boolean;
   note: string;
+}
+
+export type CostSortField = "weight" | "price" | "remain" | "expiry";
+export type CostSortDirection = "asc" | "desc";
+
+export function sortCostSummaryDetails(
+  details: readonly CostSummaryDetail[],
+  field: CostSortField,
+  direction: CostSortDirection,
+  now = Date.now(),
+) {
+  const order = direction === "asc" ? 1 : -1;
+  const expiry = (row: CostSummaryDetail) => {
+    const timestamp = resolveExpireTimestamp(row.expiredAt);
+    return row.billingCycleDays === -1 || timestamp == null || timestamp > now + LONG_TERM_EXPIRE_DAYS * 86400000
+      ? null : timestamp;
+  };
+  return details.slice().sort((a, b) => {
+    if (field === "expiry") {
+      const left = expiry(a), right = expiry(b);
+      // Unknown/lifetime entries stay last in both directions. Asset eligibility
+      // must not hide an imminent renewal when sorting by expiry.
+      if ((left == null) !== (right == null)) return left == null ? 1 : -1;
+      if (left != null && right != null && left !== right) return (left - right) * order;
+    } else {
+      if (a.counted !== b.counted) return a.counted ? -1 : 1;
+      const key = field === "price" ? "priceCny" : field === "remain" ? "remainingCny" : "weight";
+      if (a[key] !== b[key]) return (a[key] - b[key]) * order;
+    }
+    return a.name.localeCompare(b.name, "zh-CN") || a.uuid.localeCompare(b.uuid);
+  });
 }
 
 interface ExchangeRateData {

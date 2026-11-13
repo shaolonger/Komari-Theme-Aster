@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { checkCupertinoStyles } from "./cupertino-style-browser-gates.mjs";
+import { checkCupertinoResources } from "./cupertino-resources-browser-gates.mjs";
 export async function checkCupertino({
   cdp,
   origin,
@@ -26,6 +27,17 @@ export async function checkCupertino({
     `localStorage.clear();sessionStorage.clear();localStorage.setItem('appearance',JSON.stringify(${JSON.stringify(appearance)}))`,
   );
   await cdp.call("Page.reload");
+  if (process.env.BROWSER_CUPERTINO_RESOURCES_ONLY) {
+    await waitUntil(cdp, "document.querySelector('.cupertino-toolbar')!==null", 10000);
+    await enableNetworkCards();
+    await cdp.call("Page.reload");
+    await waitUntil(cdp, "document.querySelector('.cupertino-toolbar')!==null", 10000);
+    const width = async (value) => {
+      await cdp.call("Emulation.setDeviceMetricsOverride", { width: value, height: 941, deviceScaleFactor: 1, mobile: value < 721 });
+      await cdp.value("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
+    };
+    return { appearance, resources: await checkCupertinoResources({ cdp, waitUntil, failGate, captureScreenshot, base, width }) };
+  }
   const measurements = {};
   for (const [name, path, ready, selectors] of [
     [
@@ -456,6 +468,7 @@ export async function checkCupertino({
     "document.querySelector('.cupertino-toolbar')!==null",
     10000,
   );
+  const resources = await checkCupertinoResources({ cdp, waitUntil, failGate, captureScreenshot, base, width });
   for (const w of [1672, 320]) {
     await width(w);
     for (const [label, selector] of [
@@ -490,5 +503,6 @@ export async function checkCupertino({
       "reference geometry, four full views, multi-search, favorites, metrics/settings, carrier modules, persistent tabs, unique search, offline report entry, Studio persistence, original themes, 320–1920px",
     measurements,
     styleIsolation,
+    resources,
   };
 }
