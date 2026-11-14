@@ -2,7 +2,7 @@ import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { Flag } from "@/components/ui/Flag";
 import { Cpu, MemoryStick, Network } from "lucide-react";
 import { formatBytes } from "@/utils/format";
-import { regionLabel } from "@/components/glacier/regionLabel";
+import { regionLabel } from "@/utils/regionLabel";
 import { instanceViews, type InstanceView } from "@/utils/instanceView";
 export default function CupertinoInstanceHeading({
   uuid,

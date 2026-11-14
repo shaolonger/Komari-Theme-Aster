@@ -17,8 +17,6 @@ export const CHART_PALETTE = {
   warning: "#d4a54a",
 } as const;
 
-export const CLEAR_SKY_SERIES = ["#486bc2", "#8a75bc", "#ae7746", "#2a899c", "#b56577", "#7986be"];
-
 // 备用定性色板（仅缺少总数时用）；正常走下面的 OKLCH 生成。
 const CHART_SERIES_COLORS = [
   "#4878d0", // 蓝

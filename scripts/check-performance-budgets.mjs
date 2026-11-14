@@ -39,17 +39,8 @@ const iconAsset = [...assets].find((file) => {
   return source.includes("createLucideIcon") || source.includes("CircleDollarSign");
 });
 const iconBytes = iconAsset ? brotliBytes(iconAsset) : 0;
-// Obsidian adds a shared fleet route query, public-summary validation and
-// independent per-task history strips. Allow 2 KiB for these features; its
-// visual stylesheet stays lazy. Native evidence adds up to 1 KiB for shared
-// summary validation/status; the drawer, report UI and route renderer are lazy.
-// Keep the CSS/font/icon limits unchanged.
-// The fleet-wide speed-summary query adds up to 1 KiB; its schema, card and
-// evidence drawer remain lazy. It does not add a request per card.
-// Shared, cached daily traffic history adds a small coordinator; the chart and
-// aggregation are lazy-loaded and do not add per-card network requests.
-// Glacier keeps its workspace and stylesheet lazy. Shared appearance selection,
-// theme-aware view defaults and the new lazy boundaries add at most 3 KiB.
+// Shared queries, summary schemas and appearance selection count toward Home.
+// Theme workspaces, styles, charts and evidence drawers stay lazy-loaded.
 const limits = { js: 170 * 1024, css: 25 * 1024, font: 50 * 1024, icon: 16 * 1024 };
 const failures = [];
 if (jsBytes > limits.js) failures.push(`Home JS Brotli ${jsBytes} > ${limits.js}`);

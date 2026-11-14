@@ -49,12 +49,6 @@ const CupertinoInstanceHeading = lazy(() => import("@/components/cupertino/Cuper
 const LuminousInstanceHeading = lazy(
   () => import("@/components/luminous/LuminousInstanceHeading"),
 );
-const OrbitalInstanceHeading = lazy(
-  () => import("@/components/orbital/OrbitalInstanceHeading"),
-);
-const GlacierInstanceHeading = lazy(
-  () => import("@/components/glacier/GlacierInstanceHeading"),
-);
 const DEFAULT_PING_HOURS = 6;
 const NetworkWorkspace = lazy(() =>
   import("@/components/network/NetworkWorkspace").then((m) => ({
@@ -73,8 +67,6 @@ export function Instance() {
   const luminous = appearance === "luminous";
   const cupertino = isCupertinoAppearance(appearance);
   const workspaceLayout = luminous || cupertino;
-  const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital" || appearance === "luminous";
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
   const [localChartType, setChartType] = useState<InstanceView>(() =>
@@ -97,9 +89,6 @@ export function Instance() {
         navigate(`/instance/${uuid}`, { replace: true });
     }
   };
-  const [pingSummarySlot, setPingSummarySlot] = useState<HTMLDivElement | null>(
-    null,
-  );
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
   const [trafficHours, setTrafficHours] = useState(24);
@@ -153,17 +142,15 @@ export function Instance() {
               ? "instance-expiry"
               : focus === "status"
                 ? "instance-summary"
-                : focus === "ping"
-                  ? "instance-chart-controls"
-                  : "instance-chart-controls",
+                : "instance-chart-controls",
         ) ?? chartControlsRef.current;
       if (target?.closest("details") && (!luminous || focus === "expiry"))
         target.closest("details")!.open = true;
-      if (!luminous && (!(glacier || orbital) || focus !== "ping"))
+      if (!luminous)
         target?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focus, uuid, glacier, orbital, luminous]);
+  }, [focus, uuid, luminous]);
 
   const nodeOptions = useMemo(() => {
     const nodeByUuid = new Map(allNodes.map((node) => [node.uuid, node]));
@@ -212,8 +199,6 @@ export function Instance() {
   // 又不重新调度,导致这次性的 scroll-into-view 丢失。
   const alignCharts = useCallback(() => {
     if (
-      appearance === "glacier" ||
-      appearance === "orbital" ||
       appearance === "luminous" || isCupertinoAppearance(appearance)
     )
       return;
@@ -441,13 +426,7 @@ export function Instance() {
                 ? chartType === "traffic"
                   ? "区间用量"
                   : "性能趋势"
-                : glacier || orbital
-                  ? chartType === "ping"
-                    ? "Ping · 延迟趋势"
-                    : chartType === "network"
-                      ? "网络检测"
-                      : "性能趋势"
-                  : "节点诊断"}
+                : "节点诊断"}
             </h2>
             <p className="instance-panel-description">
               {workspaceLayout
@@ -528,9 +507,6 @@ export function Instance() {
           >
             {showPingChart ? (
               <PingChart
-                summaryTarget={
-                  glacier && chartType === "ping" ? pingSummarySlot : null
-                }
                 uuid={uuid}
                 hours={customPing ? appliedRangeHours : pingHours}
                 range={customPing ? appliedRange : undefined}
@@ -623,21 +599,13 @@ export function Instance() {
   );
   return (
     <div
-      className={`flex flex-col gap-5 py-2${cupertino ? " cupertino-instance" : luminous ? " luminous-instance-page" : glacier ? " glacier-instance" : orbital ? " orbital-instance" : ""}`}
+      className={`flex flex-col gap-5 py-2${cupertino ? " cupertino-instance" : luminous ? " luminous-instance-page" : ""}`}
       data-chart={chartType}
     >
       <div className="instance-topbar">
         {cupertino ? <Suspense fallback={null}><CupertinoInstanceHeading uuid={uuid} view={chartType}/></Suspense> : luminous ? (
           <Suspense fallback={null}>
             <LuminousInstanceHeading uuid={uuid} view={chartType} />
-          </Suspense>
-        ) : orbital ? (
-          <Suspense fallback={null}>
-            <OrbitalInstanceHeading uuid={uuid} ping={chartType === "ping"} />
-          </Suspense>
-        ) : glacier ? (
-          <Suspense fallback={null}>
-            <GlacierInstanceHeading uuid={uuid} ping={chartType === "ping"} />
           </Suspense>
         ) : (
           <Link to="/" className="instance-page-back">
@@ -672,7 +640,7 @@ export function Instance() {
         </div>
       </div>
       {luminous && workspaceNavigation}
-      {!workspaceLayout && <InstanceDetails uuid={uuid} onNodeReady={alignCharts} onPingSummarySlot={setPingSummarySlot}/>}
+      {!workspaceLayout && <InstanceDetails uuid={uuid} onNodeReady={alignCharts}/>}
       {!workspaceLayout && chartType !== "network" && (
         <Link
           className="network-instance-shortcut"

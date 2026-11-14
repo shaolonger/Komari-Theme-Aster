@@ -6,15 +6,14 @@ import {
 import { isAppearance, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
-  it.each(["slate", "slate-light", "glacier", "orbital", "luminous", "cupertino", "cupertino-dark"] as const)("preserves the %s appearance", (appearance) => {
+  it.each(["system", "light", "dark", "luminous", "cupertino", "cupertino-dark"] as const)("preserves the %s appearance", (appearance) => {
     expect(isAppearance(appearance)).toBe(true);
     expect(normalizeThemeSettings({ defaultAppearance: appearance }).defaultAppearance).toBe(appearance);
   });
-  it("preserves the Clear Sky default through saved settings and rejects unknown appearances", () => {
-    expect(isAppearance("clearsky")).toBe(true);
-    expect(normalizeThemeSettings({ defaultAppearance: "clearsky" }).defaultAppearance).toBe("clearsky");
-    expect(isAppearance("unknown")).toBe(false);
-    expect(normalizeThemeSettings({ defaultAppearance: "unknown" as never }).defaultAppearance).toBe("system");
+
+  it.each(["diagnostic", "clearsky", "slate", "slate-light", "glacier", "orbital"])("falls back from removed %s appearances", (appearance) => {
+    expect(isAppearance(appearance)).toBe(false);
+    expect(normalizeThemeSettings(JSON.parse(JSON.stringify({ defaultAppearance: appearance }))).defaultAppearance).toBe("system");
   });
   it("defaults desktop and mobile node cards to the standard scanning view", () => {
     expect(normalizeThemeSettings({}).desktopNodeViewMode).toBe("standard");
@@ -29,7 +28,6 @@ describe("normalizeThemeSettings", () => {
       normalizeThemeSettings({ desktopNodeViewMode: "table" as never }).desktopNodeViewMode,
     ).toBe("standard");
     expect(normalizeThemeSettings({ desktopNodeViewMode: "standard" }).desktopNodeViewMode).toBe("standard");
-    expect(isAppearance("diagnostic")).toBe(true);
   });
 
   it("defaults overview ratings on unless explicitly disabled", () => {

@@ -59,14 +59,14 @@ export async function checkLuminous({
       [
         "ping",
         "/instance/node-0?focus=ping",
-        "document.querySelectorAll('.instance-ping-task').length===6 && document.querySelector('.orbital-event-timeline')!==null",
+        "document.querySelectorAll('.instance-ping-task').length===6 && document.querySelector('.instance-event-timeline')!==null",
         [
           ".instance-topbar",
           ".luminous-ping-summary",
           ".instance-ping-panel>.instance-uplot-wrap",
           ".instance-ping-task-groups",
           ".luminous-event-cards",
-          ".glacier-anomaly-summary",
+          ".workspace-anomaly-summary",
         ],
       ],
     ]) {
@@ -243,7 +243,7 @@ export async function checkLuminous({
     await cdp.value(
       "getComputedStyle(document.querySelector('.luminous-orbit>i')).animationPlayState==='paused'",
     ),
-    "Pause did not stop the orbital scene",
+    "Pause did not stop the scene animation",
   );
   const pausedFrame = await cdp.value(
     "Number(document.querySelector('.luminous-earth canvas').dataset.frame)",
@@ -519,12 +519,12 @@ export async function checkLuminous({
   await navigate("/instance/node-1");
   await waitUntil(
     cdp,
-    "document.querySelectorAll('.orbital-instance-metrics article').length===5 && document.querySelectorAll('.instance-chart-card .uplot').length===6",
+    "document.querySelectorAll('.luminous-instance-metrics article').length===5 && document.querySelectorAll('.instance-chart-card .uplot').length===6",
     10000,
   );
   await shot("instance");
   await cdp.value(
-    `document.querySelector('.glacier-metric-tabs button:nth-child(3)').click()`,
+    `document.querySelector('.workspace-metric-tabs button:nth-child(3)').click()`,
   );
   await waitUntil(
     cdp,
@@ -544,7 +544,7 @@ export async function checkLuminous({
   await navigate("/instance/node-1?focus=ping");
   await waitUntil(
     cdp,
-    "document.querySelector('.orbital-event-timeline')!==null && document.querySelectorAll('.instance-ping-task').length===6",
+    "document.querySelector('.instance-event-timeline')!==null && document.querySelectorAll('.instance-ping-task').length===6",
     10000,
   );
   await shot("ping");
@@ -818,10 +818,8 @@ export async function checkLuminous({
     8000,
   );
   for (const [value, label] of [
-    ["glacier", "冰川"],
     ["light", "浅色"],
     ["dark", "深色"],
-    ["orbital", "星轨"],
     ["luminous", "光域未来"],
   ]) {
     await cdp.value(

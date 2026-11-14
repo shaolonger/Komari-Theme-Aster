@@ -1,5 +1,4 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { PingHistoryBars } from "./PingHistoryBars";
 import { Link } from "react-router-dom";
 import { BarChart3 } from "lucide-react";
 import type { HomepagePingSourceRow } from "@/utils/homepagePingSources";
@@ -69,11 +68,9 @@ function PingTaskSparkline({
 function PingTaskTile({
   source,
   density,
-  segmented = false,
 }: {
   source: HomepagePingSourceRow;
   density: "regular" | "compact";
-  segmented?: boolean;
 }) {
   const latencyColor = latencyHeatColor(source.latencyMs);
   const hasLoss = (source.lossPercent ?? 0) > 0;
@@ -108,7 +105,7 @@ function PingTaskTile({
         </span>
       </div>
       {density === "regular" && <small className="ping-task-meta">{sourceMeta(source)}</small>}
-      {segmented ? <PingHistoryBars source={source} /> : <PingTaskSparkline source={source} />}
+      <PingTaskSparkline source={source} />
     </article>
   );
 }
@@ -151,12 +148,10 @@ export function PingSourceMatrix({
   rows,
   compareUrl,
   density = "regular",
-  segmented = false,
 }: {
   rows: HomepagePingSourceRow[];
   compareUrl: string;
   density?: "regular" | "compact";
-  segmented?: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
   if (rows.length === 0) return null;
@@ -182,9 +177,8 @@ export function PingSourceMatrix({
     <section className="ping-source-matrix" data-density={density}>
       {density === "regular" && (
         <header className="ping-source-matrix-head">
-          {segmented && <small className="slate-network-caption">延迟 丢包趋势</small>}
           <span className="ping-source-matrix-title">
-            {segmented ? "网络质量" : "监测任务"}
+            监测任务
             <b>{rows.length}</b>
           </span>
           <span className="ping-source-summary" aria-label="Ping 聚合摘要">
@@ -209,7 +203,7 @@ export function PingSourceMatrix({
           compact ? (
             <CompactPingTaskLane key={source.taskId} source={source} />
           ) : (
-            <PingTaskTile key={source.taskId} source={source} density={density} segmented={segmented} />
+            <PingTaskTile key={source.taskId} source={source} density={density} />
           )
         ))}
         {hiddenCount > 0 && (

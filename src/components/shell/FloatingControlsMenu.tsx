@@ -1,5 +1,4 @@
 import {
-  Activity,
   LayoutGrid,
   List,
   Monitor,
@@ -21,15 +20,9 @@ const APPEARANCE_OPTIONS = [
   { value: "light", icon: Sun, label: "浅色" },
   { value: "system", icon: Monitor, label: "跟随系统" },
   { value: "dark", icon: Moon, label: "深色" },
-  { value: "diagnostic", icon: Activity, label: "诊断" },
-  { value: "slate", icon: Moon, label: "曜石" },
-  { value: "slate-light", icon: Sun, label: "曜石·明" },
-  { value: "clearsky", icon: Sparkles, label: "澄空" },
   { value: "cupertino", icon: Sparkles, label: "原生 · Cupertino" },
   { value: "cupertino-dark", icon: Moon, label: "原生 · 暗色" },
   { value: "luminous", icon: Sparkles, label: "光域未来" },
-  { value: "orbital", icon: Sparkles, label: "星轨" },
-  { value: "glacier", icon: Sparkles, label: "冰川" },
 ] as const;
 
 const VIEW_OPTIONS = [

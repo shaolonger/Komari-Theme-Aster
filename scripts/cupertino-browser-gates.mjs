@@ -77,7 +77,7 @@ export async function checkCupertino({
         ".instance-ping-panel>.instance-uplot-wrap",
         ".instance-ping-task-groups",
         ".luminous-event-cards",
-        ".glacier-anomaly-summary",
+        ".workspace-anomaly-summary",
       ],
     ],
   ]) {
@@ -249,7 +249,7 @@ export async function checkCupertino({
     10000,
   );
   for (let i = 0; i < 6; i++) {
-    await click(".glacier-metric-tabs button:nth-child(" + (i + 1) + ")");
+    await click(".workspace-metric-tabs button:nth-child(" + (i + 1) + ")");
     await waitUntil(
       cdp,
       "(document.querySelector('.instance-chart-card[data-selected=true] .uplot')?.getBoundingClientRect().width||0)>600",
@@ -432,8 +432,6 @@ export async function checkCupertino({
   for (const theme of [
     "light",
     "dark",
-    "glacier",
-    "orbital",
     "luminous",
     "cupertino",
     "cupertino-dark",

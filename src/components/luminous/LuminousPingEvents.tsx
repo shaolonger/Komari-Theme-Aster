@@ -44,7 +44,7 @@ export default function LuminousPingEvents({
       hourCycle: "h23",
     });
   return (
-    <section className="orbital-event-timeline luminous-event-cards luminous-glass">
+    <section className="instance-event-timeline luminous-event-cards luminous-glass">
       <header>
         <AlertTriangle size={22} />
         <h3>异常摘要</h3>

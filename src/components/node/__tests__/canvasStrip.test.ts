@@ -22,7 +22,7 @@ describe("Canvas palette invalidation", () => {
     vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => color }));
     try {
       expect(resolveCssColor("var(--progress-cpu)")).toBe("#5d88ff");
-      dataset.themeStyle = "slate"; color = "#559aee";
+      dataset.themeStyle = "cupertino"; color = "#559aee";
       expect(resolveCssColor("var(--progress-cpu)")).toBe("#559aee");
       color = "#abcdef"; notifyPaletteChanged();
       expect(resolveCssColor("var(--progress-cpu)")).toBe("#abcdef");

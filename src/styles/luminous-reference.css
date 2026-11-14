@@ -717,7 +717,7 @@
   margin-top: 5px;
   letter-spacing: -0.02em;
 }
-:where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
+:where([data-theme-style="luminous"]) .luminous-bandwidth > .workspace-fleet-chart {
   position: absolute;
   width: 150px;
   height: 65px;
@@ -726,7 +726,7 @@
   margin: 0;
   pointer-events: auto;
 }
-:where([data-theme-style="luminous"]) .luminous-bandwidth .glacier-chart-axis {
+:where([data-theme-style="luminous"]) .luminous-bandwidth .workspace-chart-axis {
   display: none;
 }
 :where([data-theme-style="luminous"]) .luminous-bandwidth p {
@@ -1541,7 +1541,7 @@
   animation-play-state: paused !important;
 }
 /* Instance composition: header, four small metrics, wide chart and narrow rail. */
-[data-theme-style="luminous"] .orbital-instance {
+[data-theme-style="luminous"] .luminous-instance {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(310px, 26.8%);
@@ -2094,7 +2094,7 @@
   .instance-panel-title {
   font-size: 10px;
 }
-[data-theme-style="luminous"] .glacier-metric-tabs {
+[data-theme-style="luminous"] .workspace-metric-tabs {
   order: 0;
   margin: 0;
   padding: 0 380px 0 0;
@@ -2102,7 +2102,7 @@
   flex-wrap: nowrap;
   gap: 5px;
 }
-[data-theme-style="luminous"] .glacier-metric-tabs button {
+[data-theme-style="luminous"] .workspace-metric-tabs button {
   flex: 1;
   justify-content: center;
   border-radius: 20px;
@@ -2111,8 +2111,8 @@
   font-size: 10px;
   white-space: nowrap;
 }
-[data-theme-style="luminous"] .glacier-metric-tabs button svg,
-[data-theme-style="luminous"] .glacier-metric-tabs button strong {
+[data-theme-style="luminous"] .workspace-metric-tabs button svg,
+[data-theme-style="luminous"] .workspace-metric-tabs button strong {
   display: none;
 }
 [data-theme-style="luminous"] .instance-chart-grid {
@@ -2337,7 +2337,7 @@
   color: #00bb7e;
 }
 /* Ping reference: 110px summaries; a 920/477 plot and inspector split. */
-[data-theme-style="luminous"] .orbital-instance[data-chart="ping"] {
+[data-theme-style="luminous"] .luminous-instance[data-chart="ping"] {
   gap: 14px;
 }
 :where([data-theme-style="luminous"])[data-luminous-page="ping"] .instance-topbar {
@@ -2385,13 +2385,13 @@
   display: none;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-workspace {
   grid-row: 2;
   padding: 0;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-workspace-header {
   position: absolute;
   top: 34px;
@@ -2402,19 +2402,19 @@
   margin: 0;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-workspace-header
   > .instance-panel-headings {
   display: none;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-controls
   > .instance-segmented:first-child {
   display: none;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-controls
   > .instance-segmented.is-scrollable {
   position: static;
@@ -2424,7 +2424,7 @@
   box-shadow: 0 4px 11px #568bc40e;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-chart-controls
   > .is-scrollable
   button {
@@ -2678,20 +2678,20 @@
   > .uplot {
   width: 100% !important;
 }
-[data-theme-style="luminous"] .glacier-ping-legend {
+[data-theme-style="luminous"] .workspace-ping-legend {
   grid-row: 4;
   margin-top: -10px;
   padding: 0 8px;
   gap: 6px;
 }
-[data-theme-style="luminous"] .glacier-ping-legend button {
+[data-theme-style="luminous"] .workspace-ping-legend button {
   font-size: 10px;
   color: #56749b;
   padding: 7px 8px;
   border-radius: 10px;
   background: #f9fcff;
 }
-[data-theme-style="luminous"] .glacier-ping-legend button > span {
+[data-theme-style="luminous"] .workspace-ping-legend button > span {
   display: none;
 }
 [data-theme-style="luminous"] .instance-ping-task-groups {
@@ -2702,18 +2702,18 @@
   gap: 10px;
   align-self: start;
 }
-[data-theme-style="luminous"] .glacier-inspector-title {
+[data-theme-style="luminous"] .workspace-inspector-title {
   margin: 0 6px 6px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 5px;
 }
-[data-theme-style="luminous"] .glacier-inspector-title strong {
+[data-theme-style="luminous"] .workspace-inspector-title strong {
   font-size: 15px;
   color: #173265;
 }
-[data-theme-style="luminous"] .glacier-inspector-title span {
+[data-theme-style="luminous"] .workspace-inspector-title span {
   font-size: 10px;
   color: #8c9fbc;
 }
@@ -2798,7 +2798,7 @@
 [data-theme-style="luminous"] .instance-ping-task-loss {
   margin: 0;
 }
-[data-theme-style="luminous"] .glacier-task-trend {
+[data-theme-style="luminous"] .workspace-task-trend {
   flex-shrink: 0;
   width: 78px;
   height: 29px;
@@ -2942,7 +2942,7 @@
   padding: 15px;
   font-size: 12px;
 }
-[data-theme-style="luminous"] .glacier-anomaly-summary {
+[data-theme-style="luminous"] .workspace-anomaly-summary {
   grid-column: 2;
   grid-row: 5;
   padding: 13px 14px 12px;
@@ -2950,42 +2950,42 @@
   background: linear-gradient(115deg, #e5f1ff, #ddebffbf);
   align-self: start;
 }
-[data-theme-style="luminous"] .glacier-anomaly-summary > span {
+[data-theme-style="luminous"] .workspace-anomaly-summary > span {
   font-size: 0;
   width: 24px;
   height: 24px;
   flex-shrink: 0;
   position: relative;
 }
-[data-theme-style="luminous"] .glacier-anomaly-summary > span::after {
+[data-theme-style="luminous"] .workspace-anomaly-summary > span::after {
   content: "☀";
   color: #0085ff;
   font-size: 25px;
   line-height: 24px;
 }
-[data-theme-style="luminous"] .glacier-anomaly-summary strong {
+[data-theme-style="luminous"] .workspace-anomaly-summary strong {
   color: #0085ff;
   font-size: 12px;
 }
-[data-theme-style="luminous"] .glacier-anomaly-summary p {
+[data-theme-style="luminous"] .workspace-anomaly-summary p {
   font-size: 10px;
   color: #6c86ad;
   margin: 5px 0 0;
   line-height: 1.65;
 }
-[data-theme-style="luminous"] .orbital-diagnostic-report {
+[data-theme-style="luminous"] .instance-diagnostic-report {
   display: block;
   text-align: right;
   font-size: 10px;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-decision-grid {
   grid-column: 1/-1;
   grid-row: 7;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-info-groups {
   grid-column: 1/-1;
   grid-row: 8;
@@ -2993,12 +2993,12 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .instance-info-groups::before {
   grid-column: 1/-1;
 }
 [data-theme-style="luminous"]
-  .orbital-instance[data-chart="ping"]
+  .luminous-instance[data-chart="ping"]
   .network-instance-shortcut {
   grid-row: 9;
 }
@@ -3052,7 +3052,7 @@
     margin-left: -290px;
     top: 0;
   }
-  :where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth > .workspace-fleet-chart {
     left: 92px;
     width: 137px;
   }
@@ -3080,7 +3080,7 @@
   :where([data-theme-style="luminous"]) .luminous-notices a > strong {
     max-width: 99px;
   }
-  [data-theme-style="luminous"] .orbital-instance {
+  [data-theme-style="luminous"] .luminous-instance {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
   [data-theme-style="luminous"]
@@ -3088,7 +3088,7 @@
     > .instance-segmented.is-scrollable {
     max-width: 320px;
   }
-  [data-theme-style="luminous"] .glacier-metric-tabs {
+  [data-theme-style="luminous"] .workspace-metric-tabs {
     padding-right: 0;
     margin-top: 43px;
   }
@@ -3189,7 +3189,7 @@
       minmax(43px, 0.8fr);
     gap: 5px;
   }
-  [data-theme-style="luminous"] .glacier-task-trend {
+  [data-theme-style="luminous"] .workspace-task-trend {
     width: 55px;
   }
 }
@@ -3240,7 +3240,7 @@
   :where([data-theme-style="luminous"]) .luminous-bandwidth {
     padding-left: 13px;
   }
-  :where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth > .workspace-fleet-chart {
     width: 110px;
     left: 84px;
   }
@@ -3292,7 +3292,7 @@
   [data-theme-style="luminous"] .home-node-results[data-view-mode="standard"] {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-  [data-theme-style="luminous"] .orbital-instance {
+  [data-theme-style="luminous"] .luminous-instance {
     grid-template-columns: 1fr;
     gap: 12px;
   }
@@ -3349,7 +3349,7 @@
     > .instance-segmented.is-scrollable {
     max-width: 310px;
   }
-  [data-theme-style="luminous"] .glacier-metric-tabs {
+  [data-theme-style="luminous"] .workspace-metric-tabs {
     padding-right: 0;
     margin-top: 40px;
   }
@@ -3417,7 +3417,7 @@
   [data-theme-style="luminous"] .luminous-route-icon {
     grid-row: 1/3;
   }
-  [data-theme-style="luminous"] .glacier-task-trend {
+  [data-theme-style="luminous"] .workspace-task-trend {
     width: 46px;
   }
   [data-theme-style="luminous"] .instance-ping-task-primary::before,
@@ -3646,7 +3646,7 @@
   :where([data-theme-style="luminous"]) .luminous-bandwidth strong {
     font-size: 20px;
   }
-  :where([data-theme-style="luminous"]) .luminous-bandwidth > .glacier-fleet-chart {
+  :where([data-theme-style="luminous"]) .luminous-bandwidth > .workspace-fleet-chart {
     width: calc(100% - 20px);
     height: 35px;
     left: 10px;
@@ -3764,7 +3764,7 @@
   :where([data-theme-style="luminous"]) .luminous-card-gauge b {
     font-size: 11px;
   }
-  [data-theme-style="luminous"] .orbital-instance {
+  [data-theme-style="luminous"] .luminous-instance {
     display: grid;
     grid-template-columns: 1fr;
     gap: 12px;
@@ -3945,14 +3945,14 @@
     font-size: 9px;
     padding: 5px 9px;
   }
-  [data-theme-style="luminous"] .glacier-metric-tabs {
+  [data-theme-style="luminous"] .workspace-metric-tabs {
     min-height: 34px;
     padding: 0;
     gap: 3px;
     margin: 0;
     flex-wrap: wrap;
   }
-  [data-theme-style="luminous"] .glacier-metric-tabs button {
+  [data-theme-style="luminous"] .workspace-metric-tabs button {
     min-width: 40px;
     padding: 6px;
     font-size: 9px;
@@ -4081,7 +4081,7 @@
     bottom: auto;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .instance-chart-workspace-header {
     position: relative;
     top: 0;
@@ -4090,7 +4090,7 @@
     margin: 0 0 10px;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .instance-chart-controls
     > .is-scrollable {
     position: static;
@@ -4099,7 +4099,7 @@
     height: 34px;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .instance-chart-controls
     > .is-scrollable
     button {
@@ -4211,7 +4211,7 @@
       minmax(46px, 0.8fr);
     gap: 5px;
   }
-  [data-theme-style="luminous"] .glacier-task-trend {
+  [data-theme-style="luminous"] .workspace-task-trend {
     width: 55px;
   }
   [data-theme-style="luminous"] .instance-ping-task-name {
@@ -4235,25 +4235,25 @@
   :where([data-theme-style="luminous"]) .luminous-events-grid > article {
     min-height: 87px;
   }
-  [data-theme-style="luminous"] .glacier-anomaly-summary {
+  [data-theme-style="luminous"] .workspace-anomaly-summary {
     grid-column: 1;
     grid-row: 7;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .instance-info-groups {
     grid-column: 1;
     grid-row: 9;
     display: flex;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .instance-decision-grid {
     grid-column: 1;
     grid-row: 8;
   }
   [data-theme-style="luminous"]
-    .orbital-instance[data-chart="ping"]
+    .luminous-instance[data-chart="ping"]
     .network-instance-shortcut {
     grid-column: 1;
     grid-row: 10;
@@ -4299,7 +4299,7 @@
     gap: 6px;
     padding: 12px 8px;
   }
-  [data-theme-style="luminous"] .glacier-task-trend {
+  [data-theme-style="luminous"] .workspace-task-trend {
     width: 43px;
   }
   [data-theme-style="luminous"] .instance-ping-task {
@@ -4547,7 +4547,7 @@ html[data-theme-style="luminous"]::-webkit-scrollbar {
     font-size: 9px;
   }
 }
-[data-theme-style="luminous"] .glacier-ping-legend button > em {
+[data-theme-style="luminous"] .workspace-ping-legend button > em {
   font-size: 10px;
   font-style: normal;
   margin-left: 3px;
@@ -4632,7 +4632,7 @@ html[data-theme-style="luminous"]::-webkit-scrollbar {
   [data-theme-style="luminous"] .instance-ping-panel > .instance-uplot-wrap {
     border-radius: 0;
   }
-  [data-theme-style="luminous"] .glacier-ping-legend {
+  [data-theme-style="luminous"] .workspace-ping-legend {
     margin-top: -10px;
     padding: 0 8px 10px;
     background: #f9fcffe0;
@@ -4654,7 +4654,7 @@ html[data-theme-style="luminous"]::-webkit-scrollbar {
     font-size: 9px;
     line-height: 1.6;
   }
-  [data-theme-style="luminous"] .glacier-anomaly-summary {
+  [data-theme-style="luminous"] .workspace-anomaly-summary {
     margin-top: 19px;
   }
   :where([data-theme-style="luminous"])[data-luminous-page="ping"] .luminous-instance-heading .luminous-world {

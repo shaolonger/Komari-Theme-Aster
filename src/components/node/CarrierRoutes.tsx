@@ -50,7 +50,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
 }) {
   const [selectedFamily, setFamily] = useState<"4" | "6" | null>(null);
   const routes = useHomeRoutes();
-  const { displayTimeZone, isSlate } = routes;
+  const { displayTimeZone } = routes;
   const node = routes.data?.nodes[uuid];
   const configured = routes.data?.quickFamilies[uuid] || [];
   const family = selectedFamily || (node?.["4"].some(r => r.forward || r.return) ? "4" : node?.["6"].some(r => r.forward || r.return) ? "6" : configured[0] || "4");
@@ -62,7 +62,7 @@ export const CarrierRoutes = memo(function CarrierRoutes({
     Object.values(node).some((rows) =>
       rows.some((row) => row.forward || row.return),
     );
-  if (routes.data?.display === false || (!hasMeasurements && !isSlate && !configured.length))
+  if (routes.data?.display === false || (!hasMeasurements && !configured.length))
     return null;
   const rows =
     node?.[family] ||

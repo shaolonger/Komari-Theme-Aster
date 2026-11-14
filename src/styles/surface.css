@@ -240,19 +240,6 @@ body::after {
   background: var(--status-offline);
 }
 
-[data-theme-style="diagnostic"] .floating-controls-inner {
-  gap: 6px;
-}
-
-[data-theme-style="diagnostic"] .floating-controls-trigger {
-  width: 32px;
-  height: 32px;
-  border-color: var(--border-subtle);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  color: var(--text-secondary);
-  box-shadow: 0 5px 16px -12px rgba(27, 39, 56, 0.4);
-}
-
 @media (min-width: 640px) {
   .floating-controls {
     top: max(1.25rem, env(safe-area-inset-top));
@@ -834,37 +821,6 @@ body::after {
 .instance-chart-stage {
   width: 100%;
   min-height: 560px;
-}
-
-[data-theme-style="diagnostic"] .instance-chart-workspace {
-  border-radius: 18px;
-  padding: 18px;
-}
-
-[data-theme-style="diagnostic"] .instance-chart-workspace > .instance-chart-stage .instance-panel {
-  border-color: var(--border-subtle);
-  border-radius: 13px;
-  background: transparent;
-  box-shadow: none;
-}
-
-[data-theme-style="diagnostic"] .instance-summary-panel {
-  background: linear-gradient(180deg, #fff 0%, #f8fafd 100%);
-}
-
-[data-theme-style="diagnostic"] .instance-summary-panel .instance-panel-aside {
-  flex: 0 0 auto;
-}
-
-.instance-status-explanation {
-  margin: -3px 0 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-[data-theme-style="diagnostic"] .instance-decision-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
 }
 
 .instance-chart-view[hidden] {
@@ -1526,19 +1482,6 @@ body::after {
   color: var(--accent-500);
 }
 
-[data-theme-style="diagnostic"] .instance-ping-summary > div {
-  border-radius: 9px;
-  background: #f3f6fa;
-}
-
-[data-theme-style="diagnostic"] .instance-ping-task-row[data-severity="critical"] {
-  border-color: color-mix(in srgb, var(--status-error) 18%, transparent);
-}
-
-[data-theme-style="diagnostic"] .instance-ping-task-row[data-severity="warning"] {
-  border-color: color-mix(in srgb, var(--status-warning) 18%, transparent);
-}
-
 .instance-loss-stack {
   display: flex;
   flex-direction: column;
@@ -1652,10 +1595,6 @@ body::after {
 
   .instance-chart-workspace .instance-chart-controls {
     justify-content: flex-start;
-  }
-
-  [data-theme-style="diagnostic"] .instance-chart-workspace {
-    padding: 12px;
   }
 
   .instance-ping-diagnostic-controls .instance-segmented {

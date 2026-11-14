@@ -124,7 +124,7 @@ export default function LuminousInstanceSummary({
       )}
       {view === "load" && (
         <section
-          className="orbital-instance-metrics luminous-instance-metrics"
+          className="luminous-instance-metrics"
           aria-label="节点实时指标"
         >
           {metrics.map(

@@ -2,7 +2,7 @@ import { useLayoutEffect } from "react";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { Flag } from "@/components/ui/Flag";
 import { formatUptimeDays } from "@/utils/format";
-import { regionLabel } from "@/components/glacier/regionLabel";
+import { regionLabel } from "@/utils/regionLabel";
 import { instanceViews, type InstanceView } from "@/utils/instanceView";
 import LuminousScene from "./LuminousScene";
 export default function LuminousInstanceHeading({

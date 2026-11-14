@@ -158,39 +158,6 @@
 }
 
 /* 诊断风格沿用浅色底色，收紧灰阶并把高对比色留给状态和图表。 */
-[data-theme-style="diagnostic"] {
-  --bg-0: #f1f4f8;
-  --bg-1: #f7f9fc;
-  --surface: #ffffff;
-  --surface-elev: #ffffff;
-  --surface-sunken: #edf1f6;
-  --border: rgba(27, 39, 56, 0.1);
-  --border-subtle: rgba(27, 39, 56, 0.075);
-  --border-strong: rgba(27, 39, 56, 0.16);
-  --hairline: rgba(27, 39, 56, 0.09);
-  --text-primary: #182230;
-  --text-secondary: #455367;
-  --text-tertiary: #647184;
-  --hover-bg: #edf2f8;
-  --accent-500: #2863ad;
-  --status-success: #23835c;
-  --status-warning: #b96a10;
-  --status-error: #c23c3c;
-  --status-info: #2863ad;
-  --status-online: #23835c;
-  --status-offline: #c23c3c;
-  --progress-cpu: #5680c4;
-  --progress-memory: #8276bd;
-  --progress-swap: #727cc2;
-  --progress-disk: #c78652;
-  --progress-network: #4c9a79;
-  --progress-traffic-from: #5680c4;
-  --progress-traffic-to: #8276bd;
-  --shadow-card:
-    0 1px 2px rgba(27, 39, 56, 0.045),
-    0 12px 28px -20px rgba(27, 39, 56, 0.2);
-  --ring: rgba(40, 99, 173, 0.35);
-}
 
 /* 标签配色 — DStatus 风格 pill,按标签颜色名取色 */
 [data-tag="ruby"],
@@ -255,46 +222,3 @@
 }
 
 /* Clear Sky palette is available before its optional visual layer loads. */
-[data-theme-style="clearsky"] {
-  --bg-0: #e7f1fc;
-  --bg-1: #eef3fc;
-  --surface: #f9fcff;
-  --surface-elev: #fbfdff;
-  --surface-sunken: #eaf1fc;
-  --border: #dce5f2;
-  --border-subtle: #e2e9f5;
-  --border-strong: #bdcee6;
-  --hairline: #dce5f2;
-  --text-primary: #263551;
-  --text-secondary: #536680;
-  --text-tertiary: #617089;
-  --text-on-strong: #ffffff;
-  --fill-primary: #486bc2;
-  --fill-secondary: #dfe8f7;
-  --fill-tertiary: #eaf0fa;
-  --hover-bg: #e8f0fc;
-  --accent-500: #486bc2;
-  --progress-bg: #dce5f3;
-  --progress-cpu: #486bc2;
-  --progress-memory: #8a75bc;
-  --progress-swap: #7986be;
-  --progress-disk: #ae7746;
-  --progress-network: #2a899c;
-  --progress-traffic-from: #6b91d2;
-  --progress-traffic-to: #5bafc2;
-  --status-success: #2a899c;
-  --status-online: #2a899c;
-  --status-warning: #a66b36;
-  --status-error: #b04e66;
-  --status-offline: #b04e66;
-  --status-info: #486bc2;
-  --speed-kb: #2a899c;
-  --speed-mb: #a66b36;
-  --speed-gb: #ad6139;
-  --speed-tb: #b04e66;
-  --tag-gray-bg: #e9eef8;
-  --tag-gray-fg: #536680;
-  --ring: #486bc27a;
-  --shadow-card: 0 13px 25px -18px #6a89b875, 0 2px 4px #7899c109;
-  --sky-surface: linear-gradient(135deg, color-mix(in srgb, var(--surface-a) 98%, white) 12%, var(--surface-a) 65%, color-mix(in srgb, var(--surface-a) 94%, #b9d1f4));
-}

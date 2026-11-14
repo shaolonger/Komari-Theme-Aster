@@ -158,14 +158,10 @@ export function useViewMode() {
   const themeSettings = useThemeSettings();
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { appearance } = usePreferences();
-  // Visiting Glacier gives it the reference layout without overwriting either
-  // device's saved Studio layout or an explicit session override.
   const defaultMode: NodeViewMode =
-    appearance === "glacier" && themeSettings.defaultAppearance !== "glacier"
-      ? state.device === "mobile" ? "compact" : "list"
-      : (appearance === "orbital" || appearance === "luminous" || isCupertinoAppearance(appearance)) && themeSettings.defaultAppearance !== appearance
-        ? state.device === "mobile" ? "compact" : "standard"
-        : state.device === "mobile"
+    (appearance === "luminous" || isCupertinoAppearance(appearance)) && themeSettings.defaultAppearance !== appearance
+      ? state.device === "mobile" ? "compact" : "standard"
+      : state.device === "mobile"
         ? themeSettings.mobileNodeViewMode
         : themeSettings.desktopNodeViewMode;
   const mode = state.override ?? defaultMode;

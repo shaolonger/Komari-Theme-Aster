@@ -50,12 +50,9 @@ const CONNECTION_KEYS = ["connections", "udp"];
 const CONNECTION_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.cpu];
 const PROCESS_KEYS = ["process"];
 const PROCESS_COLORS = [CHART_PALETTE.warning];
-const ORBITAL_COLORS = { cpu: ["#14d8ff"], memory: ["#a46aff", "#ffb24c"], disk: ["#ffb24c"], network: ["#14d8ff", "#a46aff"], connections: ["#14d8ff", "#a46aff"], process: ["#59dc9a"] };
-const GLACIER_COLORS = { cpu: ["#1768ff"], memory: ["#a044ff", "#ffb122"], disk: ["#ff9600"], network: ["#08b98c", "#1768ff"], connections: ["#1768ff", "#9b44ff"], process: ["#4a71a3"] };
 const CUPERTINO_COLORS = { cpu: ["#007aff"], memory: ["#af52de", "#ff9500"], disk: ["#29b945"], network: ["#007aff", "#00b9bb"], connections: ["#007aff", "#00b9bb"], process: ["#007aff"] };
 const CUPERTINO_DARK_COLORS = { cpu: ["#0a84ff"], memory: ["#bf5af2", "#ff9f0a"], disk: ["#32d74b"], network: ["#0a84ff", "#64d2ff"], connections: ["#0a84ff", "#64d2ff"], process: ["#0a84ff"] };
 const LUMINOUS_COLORS = { cpu: ["#0085ff"], memory: ["#9852ff", "#e3ac5e"], disk: ["#ff980f"], network: ["#00b58a", "#0085ff"], connections: ["#9852ff", "#0085ff"], process: ["#0085ff"] };
-const SKY_COLORS = { cpu: ["#486bc2"], memory: ["#8a75bc", "#ae7746"], disk: ["#ae7746"], network: ["#2a899c", "#486bc2"], connections: ["#8a75bc", "#486bc2"], process: ["#486bc2"] };
 const SERIES_LABELS: Record<string, string> = {
   cpu: "CPU",
   ram: "内存",
@@ -87,7 +84,6 @@ interface ChartPoint {
   time: number;
   [key: string]: number | null;
 }
-
 
 function metricData(points: ChartPoint[], keys: string[]): uPlot.AlignedData {
   const times = points.map((point) => point.time);
@@ -268,7 +264,6 @@ const ChartCard = memo(function ChartCard({
   spanGaps,
   axisKind,
   axisSize,
-  hidden = false,
   selected = false,
   luminous = false,
   active = true,
@@ -277,7 +272,6 @@ const ChartCard = memo(function ChartCard({
   selected?: boolean;
   luminous?: boolean;
   active?: boolean;
-  hidden?: boolean;
   workspace?: boolean;
   icon: ReactNode;
   title: string;
@@ -433,7 +427,6 @@ const ChartCard = memo(function ChartCard({
   const showPlot = !luminous || (active && measuredWidth > 100);
   return (
     <div
-      hidden={hidden}
       data-selected={selected}
       data-metric={title}
       className="instance-chart-card"
@@ -535,9 +528,7 @@ export function LoadChart({
   const displayTimeZone = themeSettings.displayTimeZone;
   const native = appearance === "luminous" || isCupertinoAppearance(appearance);
   const cupertinoColors = appearance === "cupertino-dark" ? CUPERTINO_DARK_COLORS : CUPERTINO_COLORS;
-  const glacier = appearance === "glacier";
-  const orbital = appearance === "orbital" || native;
-  const { w, h } = useResponsiveChartSize(glacier || orbital ? "workspace" : "grid");
+  const { w, h } = useResponsiveChartSize(native ? "workspace" : "grid");
   const [selectedMetric, setSelectedMetric] = useState(0);
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
   const [connectNulls, setConnectNulls] = useState(false);
@@ -662,16 +653,15 @@ export function LoadChart({
   return (
     <InstancePanel
       title="负载图表"
-      aside={isCupertinoAppearance(appearance) ? <details className="cupertino-load-settings"><summary aria-label="图表设置与采样范围">采样设置</summary>{chartMetadata}</details> : glacier ? <details className="glacier-load-settings"><summary>图表设置与采样范围</summary>{chartMetadata}</details> : chartMetadata}
+      aside={isCupertinoAppearance(appearance) ? <details className="cupertino-load-settings"><summary aria-label="图表设置与采样范围">采样设置</summary>{chartMetadata}</details> : chartMetadata}
       className="instance-chart-panel"
     >
       <div className="instance-chart-grid">
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 0}
-          hidden={glacier && selectedMetric !== 0}
+          selected={native && selectedMetric === 0}
           icon={<Cpu size={13} />}
           title="CPU"
           uuid={uuid}
@@ -683,9 +673,9 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.cpu : native ? LUMINOUS_COLORS.cpu : orbital ? ORBITAL_COLORS.cpu : glacier ? GLACIER_COLORS.cpu : appearance === "clearsky" ? SKY_COLORS.cpu : CPU_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.cpu : native ? LUMINOUS_COLORS.cpu : CPU_COLORS}
           width={w}
-          height={native ? selectedMetric === 0 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 0 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 0 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -696,10 +686,9 @@ export function LoadChart({
         />
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 1}
-          hidden={glacier && selectedMetric !== 1}
+          selected={native && selectedMetric === 1}
           icon={<MemoryStick size={13} />}
           title="内存"
           uuid={uuid}
@@ -721,9 +710,9 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.memory : native ? LUMINOUS_COLORS.memory : orbital ? ORBITAL_COLORS.memory : glacier ? GLACIER_COLORS.memory : appearance === "clearsky" ? SKY_COLORS.memory : MEMORY_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.memory : native ? LUMINOUS_COLORS.memory : MEMORY_COLORS}
           width={w}
-          height={native ? selectedMetric === 1 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 1 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 1 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -734,10 +723,9 @@ export function LoadChart({
         />
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 2}
-          hidden={glacier && selectedMetric !== 2}
+          selected={native && selectedMetric === 2}
           icon={<HardDrive size={13} />}
           title="磁盘"
           uuid={uuid}
@@ -751,9 +739,9 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.disk : native ? LUMINOUS_COLORS.disk : orbital ? ORBITAL_COLORS.disk : glacier ? GLACIER_COLORS.disk : appearance === "clearsky" ? SKY_COLORS.disk : DISK_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.disk : native ? LUMINOUS_COLORS.disk : DISK_COLORS}
           width={w}
-          height={native ? selectedMetric === 2 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 2 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 2 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -764,10 +752,9 @@ export function LoadChart({
         />
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 3}
-          hidden={glacier && selectedMetric !== 3}
+          selected={native && selectedMetric === 3}
           icon={<Network size={13} />}
           title="网络"
           uuid={uuid}
@@ -786,9 +773,9 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.network : native ? LUMINOUS_COLORS.network : orbital ? ORBITAL_COLORS.network : glacier ? GLACIER_COLORS.network : appearance === "clearsky" ? SKY_COLORS.network : NETWORK_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.network : native ? LUMINOUS_COLORS.network : NETWORK_COLORS}
           width={w}
-          height={native ? selectedMetric === 3 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 3 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 3 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -799,10 +786,9 @@ export function LoadChart({
         />
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 4}
-          hidden={glacier && selectedMetric !== 4}
+          selected={native && selectedMetric === 4}
           icon={<Workflow size={13} />}
           title="连接数"
           uuid={uuid}
@@ -816,9 +802,9 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.connections : native ? LUMINOUS_COLORS.connections : orbital ? ORBITAL_COLORS.connections : glacier ? GLACIER_COLORS.connections : appearance === "clearsky" ? SKY_COLORS.connections : CONNECTION_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.connections : native ? LUMINOUS_COLORS.connections : CONNECTION_COLORS}
           width={w}
-          height={native ? selectedMetric === 4 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 4 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 4 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -828,10 +814,9 @@ export function LoadChart({
         />
         <ChartCard
           active={active}
-          workspace={glacier || orbital}
+          workspace={native}
           luminous={native}
-          selected={orbital && selectedMetric === 5}
-          hidden={glacier && selectedMetric !== 5}
+          selected={native && selectedMetric === 5}
           icon={<Gauge size={13} />}
           title="进程"
           uuid={uuid}
@@ -851,9 +836,9 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.process : native ? LUMINOUS_COLORS.process : orbital ? ORBITAL_COLORS.process : glacier ? GLACIER_COLORS.process : appearance === "clearsky" ? SKY_COLORS.process : PROCESS_COLORS}
+          colors={isCupertinoAppearance(appearance) ? cupertinoColors.process : native ? LUMINOUS_COLORS.process : PROCESS_COLORS}
           width={w}
-          height={native ? selectedMetric === 5 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : orbital ? selectedMetric === 5 ? 300 : 150 : glacier ? 180 : h}
+          height={native ? selectedMetric === 5 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -862,7 +847,7 @@ export function LoadChart({
           axisKind="count"
         />
       </div>
-      {(glacier || orbital) && <div className="glacier-metric-tabs" role="group" aria-label="性能指标">{[
+      {native && <div className="workspace-metric-tabs" role="group" aria-label="性能指标">{[
         { label: "CPU", icon: Cpu, value: formatMetricPercent(isRealtime && node ? node.cpuPct : points.at(-1)?.cpu ?? 0) },
         { label: "内存", icon: MemoryStick, value: isRealtime && node ? `${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}` : `${formatMetricPercent(points.at(-1)?.ram ?? 0)}` },
         { label: "磁盘", icon: HardDrive, value: isRealtime && node ? `${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}` : formatMetricPercent(points.at(-1)?.disk ?? 0) },

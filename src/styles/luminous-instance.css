@@ -35,7 +35,7 @@
 [data-theme-style="luminous"] .luminous-instance-page .instance-chart-controls>.instance-segmented.is-scrollable { position:static; top:auto; right:auto; height:auto; min-height:35px; max-width:100%; overflow-x:auto; flex-wrap:nowrap; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-chart-controls>.is-scrollable button { padding:6px 10px; font-size:10px; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-chart-stage { min-height:0; }
-[data-theme-style="luminous"] .luminous-instance-page .glacier-metric-tabs { margin:0; padding:0; flex-wrap:wrap; }
+[data-theme-style="luminous"] .luminous-instance-page .workspace-metric-tabs { margin:0; padding:0; flex-wrap:wrap; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-chart-grid { gap:11px; }
 [data-theme-style="luminous"] .luminous-instance-page[data-chart="ping"] .instance-chart-workspace { background:transparent; border:0; padding:0; }
 [data-theme-style="luminous"] .luminous-instance-page[data-chart="ping"] .instance-chart-workspace-header { padding:0 3px; }
@@ -44,7 +44,7 @@
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-task-groups { grid-column:2; grid-row:2/span 3; align-self:start; }
 [data-theme-style="luminous"] .luminous-instance-page .luminous-ping-summary { grid-column:1/-1; grid-row:1; }
 [data-theme-style="luminous"] .luminous-instance-page .luminous-event-cards { margin-top:0; }
-[data-theme-style="luminous"] .luminous-instance-page .glacier-anomaly-summary { margin-top:0; }
+[data-theme-style="luminous"] .luminous-instance-page .workspace-anomaly-summary { margin-top:0; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-chart-stage .instance-traffic-panel { display:flex; flex-direction:column; gap:12px; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-traffic-panel>.instance-panel-header { order:0; margin:0; padding:0; border:0; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-traffic-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
@@ -105,9 +105,9 @@
  [data-theme-style="luminous"] .luminous-instance-page .instance-chart-card[data-selected="true"]>.instance-uplot-wrap { width:100%; }
  [data-theme-style="luminous"] .luminous-instance-page[data-chart="ping"] .instance-ping-panel { grid-template-columns:minmax(0,1fr); gap:12px; }
  [data-theme-style="luminous"] .luminous-instance-page .instance-ping-task-groups { grid-column:1; grid-row:4; }
- [data-theme-style="luminous"] .luminous-instance-page .glacier-ping-legend { grid-column:1; grid-row:5; margin:0; }
+ [data-theme-style="luminous"] .luminous-instance-page .workspace-ping-legend { grid-column:1; grid-row:5; margin:0; }
  [data-theme-style="luminous"] .luminous-instance-page .luminous-event-cards { grid-column:1; grid-row:6; }
- [data-theme-style="luminous"] .luminous-instance-page .glacier-anomaly-summary { grid-column:1; grid-row:7; }
+ [data-theme-style="luminous"] .luminous-instance-page .workspace-anomaly-summary { grid-column:1; grid-row:7; }
  [data-theme-style="luminous"] .luminous-instance-page .instance-traffic-summary { grid-template-columns:minmax(0,1fr); }
  [data-theme-style="luminous"] .luminous-instance-page .instance-decision-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
  [data-theme-style="luminous"] .luminous-node-details>summary { flex-wrap:wrap; padding:13px; }
@@ -120,18 +120,18 @@
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel>.instance-ping-retention-notice { grid-column:1/-1; grid-row:2; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.instance-ping-diagnostic-controls { grid-row:3; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.instance-uplot-wrap { grid-row:4; }
-[data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.glacier-ping-legend { grid-row:5; }
+[data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.workspace-ping-legend { grid-row:5; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.instance-ping-task-groups { grid-row:3/span 3; }
 [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.luminous-event-cards,
-[data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.glacier-anomaly-summary { grid-row:6; }
+[data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.workspace-anomaly-summary { grid-row:6; }
 @media(min-width:721px) { :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] { height:190px; min-height:190px; } :where([data-theme-style="luminous"])[data-luminous-page="instance"] .luminous-sidebar-art[data-kind="planet"] .luminous-promo-planet { height:108px; } }
 @media(max-width:1199px) { [data-theme-style="luminous"] .luminous-instance-navigation { flex-wrap:wrap; gap:6px; } [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice) { grid-template-rows:auto; } }
 @media(max-width:720px) {
  [data-theme-style="luminous"] .luminous-instance-navigation>.instance-chart-controls { width:100%; justify-content:flex-start; }
  [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.instance-ping-task-groups { grid-row:5; }
- [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.glacier-ping-legend { grid-row:6; }
+ [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.workspace-ping-legend { grid-row:6; }
  [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.luminous-event-cards { grid-row:7; }
- [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.glacier-anomaly-summary { grid-row:8; }
+ [data-theme-style="luminous"] .luminous-instance-page .instance-ping-panel:has(.instance-ping-retention-notice)>.workspace-anomaly-summary { grid-row:8; }
 }
 
 [data-theme-style="luminous"] .luminous-node-cache-notice { margin:0; padding:11px 14px; border:1px solid #ffe1aa; border-radius:12px; background:#fff8e9; color:#a57a2e; font-size:12px; }

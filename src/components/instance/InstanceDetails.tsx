@@ -1,8 +1,5 @@
 import { isCupertinoAppearance } from "@/utils/themeSettings";
-import { lazy, Suspense, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
-import { AlertCircle, ChevronRight } from "lucide-react";
-import { Link } from "react-router-dom";
-import { Flag } from "@/components/ui/Flag";
+import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
@@ -31,11 +28,9 @@ import {
 import type { InstanceView } from "@/utils/instanceView";
 import { InstancePanel } from "./InstancePanel";
 import { usePreferences } from "@/hooks/usePreferences";
-import { getHostHealthStatus, NodeStatusSummary, type NetworkHealthStatus } from "@/components/node/NodeStatusSummary";
 
 const CupertinoInstanceSummary = lazy(() => import("@/components/cupertino/CupertinoInstanceSummary"));
 const LuminousInstanceSummary = lazy(() => import("@/components/luminous/LuminousInstanceSummary"));
-const OrbitalInstanceSummary = lazy(() => import("@/components/orbital/OrbitalInstanceSummary"));
 
 function formatCapability(value: boolean | null, enabled = "已启用", disabled = "未启用") {
   if (value === true) return enabled;
@@ -100,7 +95,6 @@ function DecisionSummaryItem({
 export function InstanceDetails({
   uuid,
   onNodeReady,
-  onPingSummarySlot,
   view = "load",
   children,
   navigation,
@@ -110,7 +104,6 @@ export function InstanceDetails({
   children?: ReactNode;
   navigation?: ReactNode;
   onNodeReady?: () => (() => void) | void;
-  onPingSummarySlot?: (node: HTMLDivElement | null) => void;
 }) {
   const meta = useNodeMeta(uuid);
   const metrics = useNodeMetrics(uuid);
@@ -158,9 +151,6 @@ export function InstanceDetails({
 
   const nodeMeta = overlayAdminClientMeta(meta, adminClient);
   const isOnline = metrics.online;
-  const diagnosticAppearance = appearance === "diagnostic";
-  const glacier = appearance === "glacier";
-  const hostStatus = getHostHealthStatus(metrics.online, metrics.updatedAt);
   const uptime = formatUptimeDays(metrics.uptime);
   // 按 traffic_limit_type (max/sum/up/down/min) 归并上下行，和卡片、后端保持一致——
   // 对非 "sum" 节点直接把上下行相加是错的。
@@ -200,22 +190,6 @@ export function InstanceDetails({
     }),
     ping,
   });
-  const networkStatus: NetworkHealthStatus = workbenchNode.ping.state === "critical"
-    ? "critical"
-    : workbenchNode.ping.state === "warning"
-      ? "warning"
-      : workbenchNode.ping.state === "ok"
-        ? "ok"
-        : workbenchNode.ping.state === "disabled" || workbenchNode.ping.state === "unbound"
-          ? "unmonitored"
-          : "empty";
-  const hostStatusLabel = hostStatus === "online" ? "在线" : hostStatus === "offline" ? "离线" : "上报异常";
-  const assetStatus = workbenchNode.expiryBucket === "expired" || workbenchNode.traffic.status === "exhausted"
-    ? "需处理"
-    : workbenchNode.completeness.ratio < 1 || ["soon", "month", "unknown"].includes(workbenchNode.expiryBucket) || ["warning", "critical"].includes(workbenchNode.traffic.status)
-      ? "需关注"
-      : "正常";
-  const assetTone = assetStatus === "需处理" ? "critical" : assetStatus === "需关注" ? "warning" : "ok";
   const completenessDetail =
     workbenchNode.completeness.missing.length > 0
       ? `缺少 ${workbenchNode.completeness.missing
@@ -236,28 +210,7 @@ export function InstanceDetails({
 
   const decisionGrid = (
     <div className="instance-decision-grid">
-        {glacier && <><h2 className="glacier-asset-title">流量与续费</h2><div className="glacier-quota"><div className="glacier-quota-ring" style={{ "--quota": `${Math.min(100, Math.max(0, trafficUsage.fraction * 100))}%` } as CSSProperties}><strong>{trafficUsage.unlimited ? "∞" : `${(trafficUsage.used / trafficUsage.limit * 100).toFixed(2)}%`}</strong><span>{trafficUsage.unlimited ? "未设限" : "已使用"}</span></div><div><small>流量使用 · {trafficTypeLabel(nodeMeta.traffic_limit_type)}</small><strong>{formatBytes(trafficUsage.used)}</strong><p>/ {trafficLimitLabel}</p><p>剩余 {trafficUsage.unlimited ? "不限" : formatBytes(Math.max(0, trafficUsage.remaining))}</p><p>{workbenchNode.traffic.exhaustLabel}</p></div></div></>}
 
-        {diagnosticAppearance && <>
-          <DecisionSummaryItem
-            label="主机状态"
-            value={hostStatusLabel}
-            detail={hostStatus === "online" ? `最近上报 ${lastUpdated}` : hostStatus === "offline" ? "当前没有实时上报" : `最近上报 ${lastUpdated}，数据可能已过期`}
-            tone={hostStatus === "online" ? "ok" : hostStatus === "offline" ? "critical" : "warning"}
-          />
-          <DecisionSummaryItem
-            label="网络监控"
-            value={workbenchNode.ping.label}
-            detail={workbenchNode.ping.detail}
-            tone={decisionToneFromPing(workbenchNode.ping.state)}
-          />
-          <DecisionSummaryItem
-            label="资产状态"
-            value={assetStatus}
-            detail={`${formatExpirePressure(workbenchNode)} · 流量使用 ${trafficDecisionValue}`}
-            tone={assetTone}
-          />
-        </>}
         <DecisionSummaryItem
           id="instance-completeness"
           label="资料完整度"
@@ -272,7 +225,7 @@ export function InstanceDetails({
           detail={`续费 ${renewalPrice}`}
           tone={decisionToneFromExpiry(workbenchNode.expiryBucket)}
         />
-        {!glacier && <>
+        <>
         <DecisionSummaryItem
           id="instance-traffic"
           label="流量预估"
@@ -287,7 +240,7 @@ export function InstanceDetails({
           detail={workbenchNode.ping.detail}
           tone={decisionToneFromPing(workbenchNode.ping.state)}
         />
-        </>}
+        </>
       </div>
   );
   const infoGroups = (
@@ -393,14 +346,11 @@ export function InstanceDetails({
       id="instance-summary"
       title={panelTitle}
       className="instance-summary-panel"
-      aside={diagnosticAppearance && <NodeStatusSummary hostStatus={hostStatus} networkStatus={networkStatus} />}
       description={
         isOnline ? undefined : "节点当前离线，以下展示最近一次上报的缓存数据。"
       }
     >
-      {appearance === "orbital" && <Suspense fallback={null}><OrbitalInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} state={workbenchNode.riskSeverity} /></Suspense>}
-      {glacier && <div className="glacier-identity glacier-panel"><span className="glacier-flag"><Flag region={nodeMeta.region} size={48} /></span><div><h2>{nodeMeta.name}</h2><p>{[nodeMeta.region, nodeMeta.os, nodeMeta.virtualization, nodeMeta.cpu_name].filter(Boolean).join(" · ")}</p></div><div className="glacier-ping-summary-slot" ref={onPingSummarySlot} /><Link className="glacier-identity-alert" title={workbenchNode.ping.detail} data-ok={workbenchNode.ping.state === "ok"} to={`/instance/${uuid}?focus=ping`}><AlertCircle size={22} /><span>{workbenchNode.ping.label}{ping.loss != null ? ` · 丢包 ${ping.loss.toFixed(2)}%` : ""}</span><ChevronRight size={16} /></Link></div>}
-      {diagnosticAppearance && <p className="instance-status-explanation">主机状态根据 agent 在线与上报时间判断；网络状态仅反映 Ping 任务表现，单条线路异常不会覆盖主机状态。</p>}
+
       {decisionGrid}
       {infoGroups}
     </InstancePanel>

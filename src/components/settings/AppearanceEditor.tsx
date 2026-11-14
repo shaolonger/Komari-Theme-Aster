@@ -1,20 +1,14 @@
 import { useId } from 'react';
-import { Activity, Check, Monitor, Smartphone } from 'lucide-react';
+import { Check, Monitor, Smartphone } from 'lucide-react';
 import type { Appearance, NodeViewMode } from '@/utils/themeSettings';
 
 const appearances: { value: Appearance; label: string; detail: string }[] = [
   { value: 'light', label: '浅色', detail: '明亮、清晰，适合日间工作' },
   { value: 'system', label: '跟随系统', detail: '随设备的深浅色模式自动切换' },
   { value: 'dark', label: '深色', detail: '柔和暗面，适合夜间持续观测' },
-  { value: 'diagnostic', label: '诊断', detail: '突出异常、收敛色彩，适合快速巡检' },
-  { value: 'slate', label: '曜石', detail: '石墨灰、彩色指标与分段网络趋势' },
-  { value: 'slate-light', label: '曜石·明', detail: '曜石的亮色版本，保留相同卡片层次' },
-  { value: 'clearsky', label: '澄空', detail: '冷白冰蓝、薄片叠层与轻微空间视差' },
   { value: 'cupertino', label: '原生 · Cupertino', detail: '珍珠白、石墨文字与系统蓝，清晰而克制的监控工作台' },
   { value: 'cupertino-dark', label: '原生 · 暗色', detail: '深石墨、柔和灰白与系统蓝，苹果风格的暗色监控工作台' },
   { value: 'luminous', label: '光域未来', detail: '蓝白玻璃、实时三维地球与动态云端装置' },
-  { value: 'orbital', label: '星轨', detail: '深海蓝、青紫光效与环形节点仪表工作台' },
-  { value: 'glacier', label: '冰川', detail: '冰蓝玻璃侧栏、全网总览与双栏诊断工作台' },
 ];
 const layouts: { value: NodeViewMode; label: string; detail: string }[] = [
   { value: 'compact', label: '紧凑', detail: '压缩信息，快速浏览' },
@@ -31,7 +25,7 @@ export function AppearanceEditor({ value, onChange }: { value: Appearance; onCha
   const name = useId();
   return <fieldset className="studio-visual-options"><legend className="sr-only">默认外观</legend>{appearances.map(option => <label key={option.value} className="studio-visual-choice" data-selected={value === option.value}>
     <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)}/>
-    <div className="studio-appearance-drawing" data-appearance={option.value} aria-hidden="true"><div className="studio-mini-sidebar"><i/><i/><i/></div><div className="studio-mini-main"><strong>ASTER</strong><div className="studio-mini-metrics"><i/><i/><i/></div><LayoutDrawing mode="standard"/>{option.value === 'diagnostic' && <Activity size={12}/>}</div></div>
+    <div className="studio-appearance-drawing" data-appearance={option.value} aria-hidden="true"><div className="studio-mini-sidebar"><i/><i/><i/></div><div className="studio-mini-main"><strong>ASTER</strong><div className="studio-mini-metrics"><i/><i/><i/></div><LayoutDrawing mode="standard"/></div></div>
     <span className="studio-choice-title">{option.label}{value === option.value && <Check size={16}/>}</span><span className="studio-choice-detail">{option.detail}</span>
   </label>)}</fieldset>;
 }

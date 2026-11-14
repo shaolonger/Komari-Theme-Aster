@@ -85,6 +85,8 @@ Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、
 
 1.37.1 补齐光域未来在线筛选回归的异步等待条件，保留完整断言；原生亮暗主题资源概览、到期排序与完整标签继续可用。插件 **1.22.7** 仅同步发布指针，探测器仍为 **1.14.0**。
 
+1.38.0 精简外观选项，保留浅色、深色、跟随系统、光域未来、原生 · Cupertino 与原生 · 暗色。旧外观偏好自动回退到有效默认外观。网络观测插件 **1.22.8** 同步发布指针并移除旧主题说明，探测器仍为 **1.14.0**。
+
 ## 效果预览
 
 以下图片由当前仓库代码在官方 Komari 兼容模拟环境中直接运行并截图，展示 Aster 当前界面；演示节点和监控数值均为模拟数据。
@@ -117,45 +119,6 @@ v1.29.0 新增「光域未来」：蓝白玻璃工作区、实时渲染的三维
 
 <p align="center">
   <img src="docs/images/current/luminous-reference-home.png" alt="光域未来动态主题总览" width="90%">
-</p>
-
-### 星轨暗色外观
-
-v1.28.0 新增「星轨 · Orbital」：深海蓝、青紫光效、全网态势与地区分布、环形节点矩阵、实例性能和 Ping 网络诊断。保留列表、标准、紧凑、大卡片及全部原有内容。展开快捷按钮选择「星轨」，或在工作室保存为默认外观。详见[使用说明与验证截图](docs/orbital.md)。
-
-v1.28.1 让工作室生成的 VPS 探测器安装和保留凭证升级命令默认启用 TcpQuality / NodeQuality 共用的完整检测执行器。现有探测器需运行一次升级命令启用；测量点和自动更新设置不变。
-
-<p align="center">
-  <img src="docs/images/current/orbital-overview.png" alt="星轨暗色主题总览" width="90%">
-</p>
-
-### 冰川外观
-
-v1.27.0 新增「冰川」：按高保真设计实现冰蓝玻璃侧栏、全网运行总览、节点列表、性能详情和 Ping 线路检查器。列表、紧凑、标准、大卡片均保留，卡片原有内容完整延续。展开快捷按钮选择「冰川」，或在工作室保存为默认外观。详见[使用说明与验证截图](docs/glacier.md)。
-
-<p align="center">
-  <img src="docs/images/current/glacier-overview.png" alt="冰川基础设施总览与节点列表" width="90%">
-</p>
-
-### 曜石外观与三网线路
-
-v1.11.1 新增「曜石」石墨灰和对应的「曜石·明」亮色外观，按参考图呈现四宫格资源、分段指标、逐任务延迟 / 丢包趋势及 IPv4 / IPv6 三网去程和回程。三网线路同步支持全部既有外观；使用真实路径 ASN，需要网络观测插件 **1.9.1**；管理员直接预览，访客需选择发布节点。缺测、未识别、部分路径和过期结果明确区分。详见[使用与配置指南](docs/obsidian.md)。
-
-<p align="center">
-  <img src="docs/images/current/obsidian-dark-card.png" alt="曜石深色卡片" width="40%">
-  <img src="docs/images/current/obsidian-light-card.png" alt="曜石浅色卡片" width="40%">
-</p>
-
-### 澄空外观
-
-v1.10.0 新增「澄空」：冷白冰蓝、薄片叠层卡片和轻微空间视差。首页右上角展开快捷按钮后选择「澄空」，或在 Aster 工作室将其保存为默认外观。小卡片同时显示已用 / 总流量、剩余额度、占比及进度；不限量和超额情况会明确区分。触屏与系统「减少动态效果」自动停用立体动效。详见[使用说明与实际截图](docs/clear-sky.md)。
-
-<p align="center">
-  <img src="docs/images/current/clear-sky-compact.png" alt="澄空外观：小卡片与独立流量使用区域" width="90%">
-</p>
-
-<p align="center">
-  <img src="docs/images/current/clear-sky-detail.png" alt="澄空外观：实例信息与负载图表" width="90%">
 </p>
 
 ### 实例详情

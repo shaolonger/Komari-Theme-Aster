@@ -1,8 +1,6 @@
 import { isCupertinoAppearance } from "@/utils/themeSettings";
 import { Link } from "react-router-dom";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { CLEAR_SKY_SERIES } from "./chartShared";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Activity, AlertTriangle, BarChart3, CircleAlert, Expand, Eye, EyeOff, Gauge, MapPin, Network, RefreshCw, Star } from "lucide-react";
@@ -83,14 +81,12 @@ function weightedPercentileFromSorted(
 }
 
 export function PingChart({
-  summaryTarget,
-  uuid,
+    uuid,
   hours,
   active = true,
   range,
   retentionHours,
 }: {
-  summaryTarget?: HTMLDivElement | null;
   uuid: string;
   hours: number;
   active?: boolean;
@@ -108,11 +104,11 @@ export function PingChart({
   const native = appearance === "luminous" || isCupertinoAppearance(appearance);
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
-  const orbital = appearance === "orbital" || native;
-  const workspace = appearance === "glacier" || orbital;
+
+  const workspace = native;
   const { w, h, ref: chartSizeRef } = useResponsiveChartSize(workspace ? "workspace" : "wide");
   const [hiddenTasks, setHiddenTasks] = useState<Set<number>>(new Set());
-  const [glacierAdvanced, setGlacierAdvanced] = useState(false);
+  const [advancedSettings, setAdvancedSettings] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(()=>{const sync=()=>setFullscreen(document.fullscreenElement?.id === "ping-chart-plot-"+uuid);document.addEventListener("fullscreenchange",sync);return()=>document.removeEventListener("fullscreenchange",sync);},[uuid]);
   const [connectNulls, setConnectNulls] = useState(false);
@@ -148,8 +144,8 @@ export function PingChart({
     );
   }, [tasks]);
   const taskColors = useMemo(
-    () => new Map(tasks.map((task, index) => [task.id, orbital ? (native ? (appearance === "cupertino-dark" ? ["#ff453a", "#ff9f0a", "#32d74b", "#64d2ff", "#0a84ff", "#bf5af2"] : [isCupertinoAppearance(appearance) ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"]) : ["#ed35c8", "#ffa63f", "#9ce84c", "#12dcee", "#258dff", "#a46aff"])[index % 6] : appearance === "clearsky" ? CLEAR_SKY_SERIES[index % CLEAR_SKY_SERIES.length] : colorForSeries(index, tasks.length)] as const)),
-    [tasks, appearance, orbital, native],
+    () => new Map(tasks.map((task, index) => [task.id, native ? (appearance === "cupertino-dark" ? ["#ff453a", "#ff9f0a", "#32d74b", "#64d2ff", "#0a84ff", "#bf5af2"] : [isCupertinoAppearance(appearance) ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"])[index % 6] : colorForSeries(index, tasks.length)] as const)),
+    [tasks, appearance, native],
   );
   const taskKeySet = useMemo(() => new Set(tasks.map((task) => String(task.id))), [tasks]);
   const taskKeys = useMemo(() => tasks.map((task) => String(task.id)), [tasks]);
@@ -491,8 +487,8 @@ export function PingChart({
             taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
             hoveredTaskId == null ? 0.88 : hoveredTaskId === task.id ? 1 : 0.14,
           ),
-          width: hoveredTaskId === task.id ? 2.7 : diagnosticsById.get(task.id)?.severity !== "ok" ? 2.1 : orbital ? 1.8 : 1.5,
-          fill: orbital ? rgbaSeriesColor(taskColors.get(task.id) ?? colorForSeries(index, tasks.length), .045) : undefined,
+          width: hoveredTaskId === task.id ? 2.7 : diagnosticsById.get(task.id)?.severity !== "ok" ? 2.1 : native ? 1.8 : 1.5,
+          fill: native ? rgbaSeriesColor(taskColors.get(task.id) ?? colorForSeries(index, tasks.length), .045) : undefined,
           spanGaps: connectNulls,
           show: visibleTaskIds.has(task.id),
           points: { show: false },
@@ -516,7 +512,7 @@ export function PingChart({
       },
     };
   }, [
-    orbital,
+    native,
     chartWindow,
     anomalyIntervals,
     connectNulls,
@@ -687,11 +683,11 @@ export function PingChart({
     <div><span className="luminous-summary-icon"><Gauge/></span><span className="luminous-summary-copy"><span>平均丢包</span><strong>{averageLoss==null?"—":formatPacketLoss(averageLoss)}</strong><small>全部监控线路平均丢包</small></span></div>
     <div className="luminous-worst-route" data-tone={worstTask?.severity!=="ok"?"warning":"ok"}><span className="luminous-summary-icon"><CircleAlert/></span><span className="luminous-summary-copy"><span>{worstTask?taskLabels.get(worstTask.id):"最差线路"}丢包</span><strong>{worstTask?.loss==null?"—":formatPacketLoss(worstTask.loss)}</strong><small>{worstTask?.severity==="critical"?"高丢包 · 需要关注":worstTask?.severity==="warning"?"存在波动":"最近区间观测"}</small></span></div>
   </div> : (<div className="instance-ping-summary" aria-label="Ping 诊断摘要">
-        <div>{orbital && <Network className="orbital-ping-stat-icon"/>}<span>监控任务</span><strong>{tasks.length}</strong></div>
-        <div data-tone={anomalyCount > 0 ? "warning" : "ok"}>{orbital && <AlertTriangle className="orbital-ping-stat-icon"/>}<span>异常线路</span><strong>{anomalyCount}</strong></div>
+        <div>{native && <Network className="instance-ping-stat-icon"/>}<span>监控任务</span><strong>{tasks.length}</strong></div>
+        <div data-tone={anomalyCount > 0 ? "warning" : "ok"}>{native && <AlertTriangle className="instance-ping-stat-icon"/>}<span>异常线路</span><strong>{anomalyCount}</strong></div>
         <div><span>最差线路</span><strong title={worstTask ? taskLabels.get(worstTask.id) : undefined}>{worstTask ? `${taskLabels.get(worstTask.id)} · ${formatLatency(worstTask.latest)}` : "—"}</strong></div>
-        <div>{orbital && <Activity className="orbital-ping-stat-icon"/>}<span>平均 RTT</span><strong>{averageRtt == null ? "—" : formatLatency(averageRtt)}</strong></div>
-        <div>{orbital && <Gauge className="orbital-ping-stat-icon"/>}<span>平均丢包</span><strong>{averageLoss == null ? "—" : formatPacketLoss(averageLoss)}</strong></div>
+        <div>{native && <Activity className="instance-ping-stat-icon"/>}<span>平均 RTT</span><strong>{averageRtt == null ? "—" : formatLatency(averageRtt)}</strong></div>
+        <div>{native && <Gauge className="instance-ping-stat-icon"/>}<span>平均丢包</span><strong>{averageLoss == null ? "—" : formatPacketLoss(averageLoss)}</strong></div>
       </div>);
 
   return (
@@ -708,14 +704,13 @@ export function PingChart({
           </span>
         </div>
       )}
-      {appearance === "glacier" && summaryTarget ? createPortal(summaryContent, summaryTarget) : summaryContent}
+      {summaryContent}
 
-
-      <div className="instance-ping-diagnostic-controls" data-advanced={glacierAdvanced}>
+      <div className="instance-ping-diagnostic-controls" data-advanced={advancedSettings}>
         {native && <div className="luminous-ping-chart-title"><BarChart3/><span><strong>{tasks.length} 线路 {metricMode === "rtt" ? "RTT" : "丢包"} 趋势</strong><small>监控各运营商线路的延迟变化，快速识别网络波动与异常时段</small></span></div>}
         {native && <select className="luminous-ping-route-filter" value={viewFilter} onChange={event=>setViewFilter(event.target.value as PingViewFilter)} aria-label="监控线路范围"><option value="all">全部线路</option><option value="focus">诊断重点</option><option value="anomalies">仅异常</option><option value="watched">仅关注</option></select>}
         {native && <button className="luminous-chart-fullscreen" aria-label="全屏网络图表" onClick={()=>{if(document.fullscreenElement)void document.exitFullscreen();else void document.getElementById("ping-chart-plot-"+uuid)?.requestFullscreen?.().catch(()=>{});}}><Expand size={15}/></button>}
-        {native && <button className="instance-toggle-button luminous-ping-more" aria-label="图表设置" aria-expanded={glacierAdvanced} onClick={()=>setGlacierAdvanced(value=>!value)}>⋯</button>}
+        {native && <button className="instance-toggle-button luminous-ping-more" aria-label="图表设置" aria-expanded={advancedSettings} onClick={()=>setAdvancedSettings(value=>!value)}>⋯</button>}
         <div className="instance-segmented" role="group" aria-label="Ping 线路筛选">
           {([
             ["focus", "诊断重点"],
@@ -731,7 +726,7 @@ export function PingChart({
             <button key={value} type="button" data-active={metricMode === value ? "true" : "false"} aria-pressed={metricMode === value} onClick={() => setMetricMode(value)}>{label}</button>
           ))}
         </div>
-        {appearance === "glacier" && <button className="instance-toggle-button glacier-advanced-toggle" aria-expanded={glacierAdvanced} onClick={() => setGlacierAdvanced(v => !v)}>{glacierAdvanced ? "收起设置" : "更多设置"}</button>}
+
         <label className="instance-ping-group-select">
           <MapPin size={14} aria-hidden="true" />
           <span>分组</span>
@@ -754,7 +749,7 @@ export function PingChart({
       </div>
 
       <div className="instance-ping-task-groups">
-        {workspace && <div className="glacier-inspector-title"><strong>{orbital ? native ? "线路检查器" : "线路健康" : "线路检查器"}</strong><span>RTT · 丢包率</span></div>}
+        {workspace && <div className="workspace-inspector-title"><strong>线路检查器</strong><span>RTT · 丢包率</span></div>}
         {groupedTaskStats.map(([group, groupTasks]) => (
           <section key={group} className="instance-ping-task-group" aria-label={group}>
             {groupingMode !== "none" && <h3><button type="button" aria-pressed={activeGroupFilter === group} data-active={activeGroupFilter === group ? "true" : "false"} onClick={() => setActiveGroupFilter((current) => current === group ? "" : group)}>{group}<span>{groupTasks.length}</span>{groupingMode === "latency" && <small>独立缩放</small>}</button></h3>}
@@ -832,8 +827,8 @@ export function PingChart({
           <div className="instance-empty">当前已隐藏全部线路，点击上方按钮可恢复显示</div>
         )}
       </div>
-      {native ? <Suspense fallback={null}><LuminousPingEvents intervals={anomalyIntervals} records={data.records} timeZone={displayTimeZone}/></Suspense> : orbital && <section className="orbital-event-timeline orbital-panel"><h3>异常观测时间线</h3><div className="orbital-event-track">{anomalyIntervals.map(([start,end],i)=>{ const first=chartWindow?.[0]??start,last=chartWindow?.[1]??end;return <span key={i} style={{left:`${Math.max(0,(start-first)/Math.max(1,last-first)*100)}%`,width:`${Math.max(.3,Math.min(100,(end-start)/Math.max(1,last-first)*100))}%`}} title={`${formatChartCoverageTime(start,displayTimeZone)} – ${formatChartCoverageTime(end,displayTimeZone)}`}/>; })}</div>{chartWindow && <div className="orbital-event-axis"><span>{formatChartCoverageTime(chartWindow[0],displayTimeZone)}</span><span>{formatChartCoverageTime(chartWindow[1],displayTimeZone)}</span></div>}<p>{anomalyIntervals.length ? `${anomalyIntervals.length} 个异常观测时段 · 与图中标记一致` : "所选范围暂无异常观测时段"}</p></section>}
-      {workspace && <><div className="glacier-ping-legend" aria-label="图表线路">{taskStats.map(task => <button key={task.id} aria-pressed={visibleTaskIds.has(task.id)} onClick={() => toggleTask(task.id)}><i style={{ background: task.color }} />{taskLabels.get(task.id)}{native && <em>{metricMode === "rtt" ? formatLatency(task.avg) : task.loss == null ? "—" : formatPacketLoss(task.loss)}</em>}<span>{visibleTaskIds.has(task.id) ? "✓" : "—"}</span></button>)}</div><div className="glacier-anomaly-summary" data-clear={anomalyCount === 0}><span aria-hidden>{anomalyCount ? "!" : "✓"}</span><div><strong>{native ? "诊断建议" : "异常摘要"}</strong><p>{anomalyCount ? `${anomalyCount} 条线路需要关注${worstTask ? ` · ${taskLabels.get(worstTask.id)}` : ""}，建议检查线路质量。` : "所选时间范围未检测到异常线路。"}</p>{orbital && <><p>{worstTask ? `最差线路均值 ${formatLatency(worstTask.avg)}，丢包 ${worstTask.loss == null ? "无可用观测" : formatPacketLoss(worstTask.loss)}。` : "暂无可用线路统计。"} 可对比不同线路与时间段，并结合路由报告检查目标与路径。</p><Link className="orbital-diagnostic-report" to={`/instance/${uuid}/report`}>查看完整报告 →</Link></>}</div></div></>}
+      {native ? <Suspense fallback={null}><LuminousPingEvents intervals={anomalyIntervals} records={data.records} timeZone={displayTimeZone}/></Suspense> : native && <section className="instance-event-timeline native-panel"><h3>异常观测时间线</h3><div className="native-event-track">{anomalyIntervals.map(([start,end],i)=>{ const first=chartWindow?.[0]??start,last=chartWindow?.[1]??end;return <span key={i} style={{left:`${Math.max(0,(start-first)/Math.max(1,last-first)*100)}%`,width:`${Math.max(.3,Math.min(100,(end-start)/Math.max(1,last-first)*100))}%`}} title={`${formatChartCoverageTime(start,displayTimeZone)} – ${formatChartCoverageTime(end,displayTimeZone)}`}/>; })}</div>{chartWindow && <div className="native-event-axis"><span>{formatChartCoverageTime(chartWindow[0],displayTimeZone)}</span><span>{formatChartCoverageTime(chartWindow[1],displayTimeZone)}</span></div>}<p>{anomalyIntervals.length ? `${anomalyIntervals.length} 个异常观测时段 · 与图中标记一致` : "所选范围暂无异常观测时段"}</p></section>}
+      {workspace && <><div className="workspace-ping-legend" aria-label="图表线路">{taskStats.map(task => <button key={task.id} aria-pressed={visibleTaskIds.has(task.id)} onClick={() => toggleTask(task.id)}><i style={{ background: task.color }} />{taskLabels.get(task.id)}{native && <em>{metricMode === "rtt" ? formatLatency(task.avg) : task.loss == null ? "—" : formatPacketLoss(task.loss)}</em>}<span>{visibleTaskIds.has(task.id) ? "✓" : "—"}</span></button>)}</div><div className="workspace-anomaly-summary" data-clear={anomalyCount === 0}><span aria-hidden>{anomalyCount ? "!" : "✓"}</span><div><strong>{native ? "诊断建议" : "异常摘要"}</strong><p>{anomalyCount ? `${anomalyCount} 条线路需要关注${worstTask ? ` · ${taskLabels.get(worstTask.id)}` : ""}，建议检查线路质量。` : "所选时间范围未检测到异常线路。"}</p>{native && <><p>{worstTask ? `最差线路均值 ${formatLatency(worstTask.avg)}，丢包 ${worstTask.loss == null ? "无可用观测" : formatPacketLoss(worstTask.loss)}。` : "暂无可用线路统计。"} 可对比不同线路与时间段，并结合路由报告检查目标与路径。</p><Link className="instance-diagnostic-report" to={`/instance/${uuid}/report`}>查看完整报告 →</Link></>}</div></div></>}
     </InstancePanel>
   );
 }
@@ -842,7 +837,7 @@ function TaskTrend({ values, color, area = false }: { values: (number | null)[];
   const valid = values.filter((v): v is number => v != null);
   const min = Math.min(...valid), max = Math.max(...valid);
   const path = values.map((value, i) => value == null ? "" : `${i === 0 || values[i - 1] == null ? "M" : "L"}${i / Math.max(1, values.length - 1) * 64},${24 - (value - min) / Math.max(1, max - min) * 21}`).join(" ");
-  return <svg className="glacier-task-trend" viewBox="0 0 64 28" aria-label={valid.length ? "线路历史延迟趋势" : "线路暂无历史数据"} role="img">{area&&valid.length>0&&<path d={path+" L64,28 L0,28Z"} fill={color} opacity=".09"/>}<path d={path} fill="none" stroke={color} strokeWidth="1.5" /></svg>;
+  return <svg className="workspace-task-trend" viewBox="0 0 64 28" aria-label={valid.length ? "线路历史延迟趋势" : "线路暂无历史数据"} role="img">{area&&valid.length>0&&<path d={path+" L64,28 L0,28Z"} fill={color} opacity=".09"/>}<path d={path} fill="none" stroke={color} strokeWidth="1.5" /></svg>;
 }
 
 function FileTextIcon(){return <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3h7l5 5v13H5V5a2 2 0 0 1 2-2Z"/><path d="M14 3v6h5M9 13h6M9 17h6"/></svg>;}

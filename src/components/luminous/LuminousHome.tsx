@@ -2,7 +2,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  type ComponentProps,
   type CSSProperties,
 } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -19,7 +18,7 @@ import {
   Star,
   Wallet,
 } from "lucide-react";
-import type OrbitalHome from "@/components/orbital/OrbitalHome";
+import type { HomeWorkspaceProps } from "@/components/workspace/homeWorkspace";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { Flag } from "@/components/ui/Flag";
@@ -27,7 +26,7 @@ import { FleetThroughput } from "@/components/workspace/FleetThroughput";
 import { getDisplayRegionCode } from "@/utils/geo";
 import { formatByteRateLabel, formatBytes } from "@/utils/format";
 import { formatCnyMoney } from "@/utils/cost";
-import { regionLabel } from "@/components/glacier/regionLabel";
+import { regionLabel } from "@/utils/regionLabel";
 import type { WorkbenchSortKey } from "@/utils/vpsWorkbench";
 import LuminousScene from "./LuminousScene";
 import LuminousSearch from "./LuminousSearch";
@@ -38,7 +37,7 @@ const views = [
   { value: "list", label: "列表" },
 ] as const;
 export default function LuminousHome(
-  props: ComponentProps<typeof OrbitalHome>,
+  props: HomeWorkspaceProps,
 ) {
   const {
     nodes,

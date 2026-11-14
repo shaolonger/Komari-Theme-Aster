@@ -22,7 +22,7 @@ import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
 import { Flag } from "@/components/ui/Flag";
 import { getDisplayRegionCode } from "@/utils/geo";
-import { regionLabel } from "@/components/glacier/regionLabel";
+import { regionLabel } from "@/utils/regionLabel";
 import { formatBytes } from "@/utils/format";
 import { notifyPaletteChanged } from "@/utils/palette";
 import "@/styles/cupertino.css";

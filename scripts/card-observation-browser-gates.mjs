@@ -4,7 +4,7 @@ export async function checkCardObservations({cdp,waitUntil,failGate,captureScree
  const shot=process.env.BROWSER_CARD_SCREENSHOT_BASE;
  const capture=async name=>{if(shot){mkdirSync(dirname(shot),{recursive:true});await captureScreenshot(cdp,`${shot}-${name}.png`);}};
  await cdp.call('Emulation.setDeviceMetricsOverride',{width:390,height:1000,deviceScaleFactor:1,mobile:true});
- await cdp.value(`localStorage.setItem('appearance',JSON.stringify('slate-light'));sessionStorage.setItem('komaritheme:node-view-mode-session:desktop','standard');sessionStorage.setItem('komaritheme:node-view-mode-session:mobile','standard')`);
+ await cdp.value(`localStorage.setItem('appearance',JSON.stringify('light'));sessionStorage.setItem('komaritheme:node-view-mode-session:desktop','standard');sessionStorage.setItem('komaritheme:node-view-mode-session:mobile','standard')`);
  await cdp.call('Page.reload');
  await waitUntil(cdp,`document.querySelector('.server-card .carrier-routes')!==null`,6000);
  const available=await cdp.value(`Promise.all(['/api/me','/api/aster-network-observatory/v3/home-routes'].map(p=>fetch(p).then(r=>r.json()))).then(([me,routes])=>({loggedIn:me.logged_in,quickCheck:routes.quickCheck}))`);
@@ -41,7 +41,7 @@ export async function checkCardObservations({cdp,waitUntil,failGate,captureScree
  await cdp.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
  failGate(await cdp.value(`Array.from(document.querySelectorAll('.server-card .carrier-route-evidence')).every(e=>getComputedStyle(e).animationName==='none')`),'reduced motion still flashes results');
  await cdp.call('Emulation.setEmulatedMedia',{features:[]});
- await cdp.value(`localStorage.setItem('appearance',JSON.stringify('slate'))`);
+ await cdp.value(`localStorage.setItem('appearance',JSON.stringify('dark'))`);
  await cdp.call('Page.reload');
  await waitUntil(cdp,`document.documentElement.dataset.appearance==='dark' && document.querySelector('.server-card .carrier-speeds')!==null`,6000);
  await cdp.value(`document.querySelector('.server-card .carrier-speeds').scrollIntoView({block:'center'})`);

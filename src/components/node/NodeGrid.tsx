@@ -95,14 +95,10 @@ import { buildHomeOverviewNode, buildHomeTrafficOverview, getHomeTrafficDateKey,
 const NodeCard = lazy(() => import("./NodeCard").then(module => ({ default: module.NodeCard })));
 const CostSummary = lazy(() => import("./CostSummary").then(module => ({ default: module.CostSummary })));
 const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
-const renderGlacierCard = (uuid: string) => <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density="expanded" /></Suspense>;
 const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"));
 const CupertinoNodeCard = lazy(() => import("@/components/cupertino/CupertinoNodeCard"));
 const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
-const OrbitalHome = lazy(() => import("@/components/orbital/OrbitalHome"));
-const GlacierHome = lazy(() => import("@/components/glacier/GlacierHome"));
-const GlacierList = lazy(() => import("@/components/glacier/GlacierList"));
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
 // ([0-9a-f-]),永远不含逗号。
 const UUID_KEY_SEPARATOR = ",";
@@ -811,30 +807,22 @@ function NodeSelectionPanel({
   );
 }
 
-const ClearSkyHomeHeading = lazy(() => import("./ClearSkyHomeHeading"));
-
-
 export function NodeGrid() {
   const nodes = useHomeNodeSummaries();
   const allMeta = useAllNodeMeta();
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
-  const diagnosticAppearance = appearance === "diagnostic";
-  const glacier = appearance === "glacier";
   const nativeHome = appearance === "luminous" || isCupertinoAppearance(appearance);
-  const orbital = appearance === "orbital" || nativeHome;
-  const OrbitalWorkspace = isCupertinoAppearance(appearance) ? CupertinoHome : appearance === "luminous" ? LuminousHome : OrbitalHome;
-  const [orbitalParams, setOrbitalParams] = useSearchParams();
-  const orbitalRegion = orbitalParams.get("region") ?? "";
+
+  const HomeWorkspace = isCupertinoAppearance(appearance) ? CupertinoHome : LuminousHome;
+  const [workspaceParams, setWorkspaceParams] = useSearchParams();
+  const workspaceRegion = workspaceParams.get("region") ?? "";
   const favoriteUuids = useLuminousFavorites(nativeHome);
-  const [orbitalGroup, setOrbitalGroup] = useState("");
-  const [glacierTools, setGlacierTools] = useState(false);
-  const [storedGlacierStatus, setGlacierStatus] = useState<"all" | "online" | "attention" | "offline" | "favorites">("all");
-  const luminousStatus = orbitalParams.get("status");
-  const glacierStatus = nativeHome
-    ? luminousStatus === "online" || luminousStatus === "attention" || luminousStatus === "offline" || luminousStatus === "favorites" ? luminousStatus : "all"
-    : storedGlacierStatus;
+  const [workspaceGroup, setWorkspaceGroup] = useState("");
+  const [workspaceTools, setWorkspaceTools] = useState(false);
+  const luminousStatus = workspaceParams.get("status");
+  const workspaceStatus = luminousStatus === "online" || luminousStatus === "attention" || luminousStatus === "offline" || luminousStatus === "favorites" ? luminousStatus : "all";
   const { mode } = useViewMode();
   const [selectedFacetDimension, setSelectedFacetDimension] = useState(HOME_FACET_LEGACY_GROUP);
   const [facetFilters, setFacetFilters] = useState<HomeFacetFilters>({});
@@ -845,7 +833,6 @@ export function NodeGrid() {
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<HomeRiskFilter>("all");
   const [nodeSearch, setNodeSearch] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [workbenchSort, setWorkbenchSort] = useState<WorkbenchSortKey>("weight");
   const [listSorts, setListSorts] = useState<VpsListSortCondition[]>(() =>
     DEFAULT_VPS_LIST_SORTS.map((condition) => ({ ...condition })),
@@ -1264,9 +1251,9 @@ export function NodeGrid() {
   const filteredNodes = useMemo(() => {
     const facetFiltered = visibleNodes.filter((node) =>
       facetFilteredUuidSet.has(node.uuid) &&
-      (!(glacier || orbital) || glacierStatus === "all" ||
-        (glacierStatus === "online" ? node.online === true : glacierStatus === "offline" ? node.online === false : glacierStatus === "favorites" ? favoriteUuids.includes(node.uuid) : risksByUuid.has(node.uuid))) &&
-      (!orbital || (!orbitalRegion || getDisplayRegionCode(node.region) === orbitalRegion) && (!orbitalGroup || node.group === orbitalGroup)),
+      (!nativeHome || workspaceStatus === "all" ||
+        (workspaceStatus === "online" ? node.online === true : workspaceStatus === "offline" ? node.online === false : workspaceStatus === "favorites" ? favoriteUuids.includes(node.uuid) : risksByUuid.has(node.uuid))) &&
+      (!nativeHome || (!workspaceRegion || getDisplayRegionCode(node.region) === workspaceRegion) && (!workspaceGroup || node.group === workspaceGroup)),
     );
     const normalizedSearch = nodeSearch.trim().toLowerCase();
     const searchGroups = nativeHome ? splitNodeSearchGroups(normalizedSearch) : [normalizedSearch];
@@ -1361,11 +1348,9 @@ export function NodeGrid() {
   }, [
     facetFilteredUuidSet,
     nativeHome,
-    glacier,
-    orbital,
-    orbitalRegion,
-    orbitalGroup,
-    glacierStatus,
+    workspaceRegion,
+    workspaceGroup,
+    workspaceStatus,
     favoriteUuids,
     facetSearchTextByUuid,
     visibleNodes,
@@ -1588,7 +1573,7 @@ export function NodeGrid() {
   }
 
   return (
-    <div className="home-workspace" data-glacier-tools={glacierTools}>
+    <div className="home-workspace" data-workspace-tools={workspaceTools}>
       {shouldRenderCostSummary && (
         <Suspense fallback={null}>
           <CostSummary
@@ -1598,7 +1583,7 @@ export function NodeGrid() {
           />
         </Suspense>
       )}
-      {appearance === "clearsky" && <Suspense fallback={null}><ClearSkyHomeHeading count={nodes.length} /></Suspense>}
+
       {overviewPanel != null && <Suspense fallback={<section className="home-overview-panel show" role="status"><header className="home-overview-header"><h3>正在加载总览明细…</h3><button type="button" className="home-overview-close" aria-label="关闭总览明细" onClick={() => setOverviewPanel(null)}><X size={18} /></button></header></section>}>
       <HomeMetricSummary
         open={overviewPanel != null}
@@ -1613,19 +1598,19 @@ export function NodeGrid() {
         }}
       />
       </Suspense>}
-      {orbital ? (
-        <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
-          <OrbitalWorkspace
+      {nativeHome ? (
+        <Suspense fallback={<div className="instance-panel p-6">正在加载基础设施…</div>}>
+          <HomeWorkspace
             resourceMetadata={workbenchMetaByUuid}
             facets={facetRows}
             selectedFacets={facetFilters}
             onFacet={(dimension,value)=>{setActiveSavedViewId("");setFacetFilters(prev=>({...prev,[dimension]:value?[value]:[]}));}}
             sortKey={workbenchSort}
             onSort={setWorkbenchSort}
-            region={orbitalRegion}
-            onRegion={(region) => setOrbitalParams((current) => { const next = new URLSearchParams(current); if (region) next.set("region", region); else next.delete("region"); return next; })}
-            group={orbitalGroup}
-            onGroup={setOrbitalGroup}
+            region={workspaceRegion}
+            onRegion={(region) => setWorkspaceParams((current) => { const next = new URLSearchParams(current); if (region) next.set("region", region); else next.delete("region"); return next; })}
+            group={workspaceGroup}
+            onGroup={setWorkspaceGroup}
             nodes={workbenchNodes}
             summaries={visibleNodes}
             risks={operationRisks}
@@ -1633,39 +1618,17 @@ export function NodeGrid() {
             onSearch={setNodeSearch}
             searchTexts={facetSearchTextByUuid}
             searchResultCount={filteredNodes.length}
-            searchHasFilters={glacierStatus !== "all" || Boolean(orbitalRegion || orbitalGroup) || mobileFilterCount > 0}
-            toolsOpen={glacierTools}
-            onToggleTools={() => setGlacierTools(v => !v)}
-            status={glacierStatus}
+            searchHasFilters={workspaceStatus !== "all" || Boolean(workspaceRegion || workspaceGroup) || mobileFilterCount > 0}
+            toolsOpen={workspaceTools}
+            onToggleTools={() => setWorkspaceTools(v => !v)}
+            status={workspaceStatus}
             onStatus={(value) => {
-              if (nativeHome) setOrbitalParams(previous => {
+              setWorkspaceParams(previous => {
                 const next = new URLSearchParams(previous);
                 if (value === "all") next.delete("status"); else next.set("status", value);
                 return next;
               });
-              else setGlacierStatus(value);
             }}
-            todayTraffic={todayTraffic}
-            costSummary={costSummary}
-            costLoading={costLoading}
-            onOpenMetric={openOverviewMetric}
-            onOpenCost={openCostSummary}
-            showOverview={showHomeOverview}
-            showCost={showCostDetailButton}
-          />
-        </Suspense>
-      ) : glacier ? (
-        <Suspense fallback={<div className="glacier-panel p-6">正在加载基础设施…</div>}>
-          <GlacierHome
-            nodes={workbenchNodes}
-            summaries={visibleNodes}
-            risks={operationRisks}
-            search={nodeSearch}
-            onSearch={setNodeSearch}
-            toolsOpen={glacierTools}
-            onToggleTools={() => setGlacierTools(v => !v)}
-            status={glacierStatus}
-            onStatus={setGlacierStatus}
             todayTraffic={todayTraffic}
             costSummary={costSummary}
             costLoading={costLoading}
@@ -1840,36 +1803,20 @@ export function NodeGrid() {
           <div className="home-facet-stack">
             <div className="home-facet-dimensions" role="tablist" aria-label="节点分类筛选">
               <span>分类</span>
-              {visibleFacetDimensions.map((dimension) => <button type="button" role={diagnosticAppearance ? "tab" : undefined} key={dimension.id}
-                aria-selected={diagnosticAppearance ? selectedFacetDimension === dimension.id : undefined}
-                aria-pressed={!diagnosticAppearance ? enabledDimensions.some((item) => item.id === dimension.id) : undefined}
-                data-active={diagnosticAppearance ? selectedFacetDimension === dimension.id ? "true" : "false" : undefined}
+              {visibleFacetDimensions.map((dimension) => <button type="button" role={undefined} key={dimension.id}
+                aria-selected={undefined}
+                aria-pressed={enabledDimensions.some((item) => item.id === dimension.id)}
+                data-active={undefined}
                 onClick={() => {
-                  if (diagnosticAppearance) {
-                    setSelectedFacetDimension(dimension.id);
-                    setShownDimensions((current) => current === null || current.includes(dimension.id) ? current : [...current, dimension.id]);
-                    setActiveSavedViewId("");
-                    return;
-                  }
+
                   const current = enabledDimensions.map((item) => item.id);
                   const hiding = current.includes(dimension.id);
                   setShownDimensions(hiding ? current.filter((id) => id !== dimension.id) : [...current, dimension.id]);
                   if (hiding) { setFacetFilters((prev) => clearFacetFilter(prev, dimension.id)); setActiveSavedViewId(""); }
                 }}>{dimension.label}</button>)}
-              {diagnosticAppearance ? (
-                <button
-                  type="button"
-                  className="home-facet-more-toggle"
-                  aria-expanded={advancedFiltersOpen}
-                  onClick={() => setAdvancedFiltersOpen((open) => !open)}
-                >
-                  <ChevronDown size={13} aria-hidden="true" />
-                  更多筛选{activeFacetFilterCount > 0 ? ` · ${activeFacetFilterCount}` : ""}
-                </button>
-              ) : <small>跨类别同时筛选</small>}
+              {<small>跨类别同时筛选</small>}
             </div>
-            {facetRows.filter(({ dimension }) => enabledDimensions.some((item) => item.id === dimension.id) &&
-              (!diagnosticAppearance || advancedFiltersOpen || dimension.id === selectedFacetDimension || (facetFilters[dimension.id]?.length ?? 0) > 0)).map(({ dimension, options, counts }) => <FacetRail
+            {facetRows.filter(({ dimension }) => enabledDimensions.some((item) => item.id === dimension.id)).map(({ dimension, options, counts }) => <FacetRail
               key={dimension.id}
               dimensions={visibleFacetDimensions}
               dimensionCoverage={facetDimensionCoverage}
@@ -1886,18 +1833,7 @@ export function NodeGrid() {
       </section>
       {listUuids.length > 0 ? (
         mode === "list" ? (
-          glacier ? (
-            <Suspense fallback={<Spinner />}>
-              <GlacierList
-                renderCard={renderGlacierCard}
-                uuids={listUuids}
-                attentionUuids={new Set(risksByUuid.keys())}
-                sorts={listSorts}
-                onSort={handleListSort}
-                onInteractionChange={handleListInteractionChange}
-              />
-            </Suspense>
-          ) : (<NodeList
+          (<NodeList
             uuids={listUuids}
             sorts={listSorts}
             onSort={handleListSort}
@@ -1907,7 +1843,7 @@ export function NodeGrid() {
           <div
             className={`home-node-results ${gridClassName}`}
             data-view-mode={mode}
-            style={{ gridTemplateColumns: diagnosticAppearance && mode === "standard" ? "repeat(auto-fit, minmax(min(100%, 340px), min(100%, 400px)))" : gridColumns }}
+            style={{ gridTemplateColumns: gridColumns }}
           >
             {cards}
           </div>

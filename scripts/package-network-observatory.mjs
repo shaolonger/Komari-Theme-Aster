@@ -30,7 +30,6 @@ const files = [
   ["runner/aster-network-observatory-agent.service", resolve(root, "network-observatory/runner/aster-network-observatory-agent.service")],
   ["runner/aster-network-observatory-probe@.service", resolve(root, "network-observatory/runner/aster-network-observatory-probe@.service")],
   ["README.md", resolve(root, "network-observatory/README.md")],
-  ["docs/obsidian.md", resolve(root, "docs/obsidian.md")],
   ["docs/network-native-measurements.md", resolve(root, "docs/network-native-measurements.md")],
   ["docs/network-report-v3-guide.md", resolve(root, "docs/network-report-v3-guide.md")],
   ["docs/network-report-implementation-status.md", resolve(root, "docs/network-report-implementation-status.md")],

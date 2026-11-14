@@ -3,28 +3,18 @@ import { Outlet } from "react-router-dom";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { FloatingControls } from "./FloatingControls";
 import { useSiteMetadata } from "@/hooks/useSiteMetadata";
-import { lazy, Suspense, useRef } from "react";
+import { lazy, Suspense } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
-const SlateAppearance = lazy(() => import("./SlateAppearance"));
-const ClearSkyLayer = lazy(() => import("./ClearSkyLayer"));
 const CupertinoShell = lazy(() => import("./CupertinoShell"));
 const LuminousShell = lazy(() => import("./LuminousShell"));
-const OrbitalShell = lazy(() => import("./OrbitalShell"));
-const GlacierShell = lazy(() => import("./GlacierShell"));
 
 export function AppShell() {
   useSiteMetadata();
   const { appearance } = usePreferences();
-  const ref = useRef<HTMLDivElement>(null);
-  const clearSky = appearance === "clearsky";
   return (
-    <div ref={ref} className="app-shell relative flex min-h-screen flex-col">
+    <div className="app-shell relative flex min-h-screen flex-col">
       <BackgroundLayer />
-      {appearance.startsWith("slate") && <Suspense fallback={null}><SlateAppearance /></Suspense>}
-      {clearSky && <Suspense fallback={null}><ClearSkyLayer shellRef={ref} /></Suspense>}
-      {appearance === "glacier" && <Suspense fallback={null}><GlacierShell /></Suspense>}
       {appearance === "luminous" && <Suspense fallback={null}><LuminousShell /></Suspense>}
-      {appearance === "orbital" && <Suspense fallback={null}><OrbitalShell /></Suspense>}
       {isCupertinoAppearance(appearance) && <Suspense fallback={null}><CupertinoShell /></Suspense>}
       <FloatingControls />
       {/* max-[720px]:pt-16 给右上角固定的浮动控件留出空间，避免窄屏下展开的控件行盖住首张卡片的头部 */}

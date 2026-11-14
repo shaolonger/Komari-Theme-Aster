@@ -15,7 +15,7 @@ export function FleetThroughput({
   const { displayTimeZone } = useThemeSettings();
   const uuids = useMemo(() => summaries.map((n) => n.uuid), [summaries]);
   const query = useQuery({
-    queryKey: ["glacier-fleet-throughput", uuids],
+    queryKey: ["workspace-fleet-throughput", uuids],
     queryFn: () =>
       getComparisonLoadRecords({
         uuids,
@@ -79,7 +79,7 @@ export function FleetThroughput({
       minute: "2-digit",
     });
   return (
-    <div className="glacier-fleet-chart" aria-label="最近 24 小时全网吞吐趋势">
+    <div className="workspace-fleet-chart" aria-label="最近 24 小时全网吞吐趋势">
       <svg
         viewBox="0 0 800 125"
         preserveAspectRatio="none"
@@ -107,7 +107,7 @@ export function FleetThroughput({
       >
         <defs>
           <linearGradient
-            id="glacier-throughput-fill"
+            id="workspace-throughput-fill"
             x1="0"
             y1="0"
             x2="0"
@@ -143,7 +143,7 @@ export function FleetThroughput({
                   return `M${segment} L${end},113 L${start},113 Z`;
                 })
                 .join(" ")}
-              fill="url(#glacier-throughput-fill)"
+              fill="url(#workspace-throughput-fill)"
             />
             <path
               d={path}
@@ -166,7 +166,7 @@ export function FleetThroughput({
         )}
       </svg>
       {points.length < 2 && (
-        <span className="glacier-chart-empty">
+        <span className="workspace-chart-empty">
           {query.isLoading
             ? "正在加载吞吐历史…"
             : query.isError
@@ -175,12 +175,12 @@ export function FleetThroughput({
         </span>
       )}
       {hover != null && points[hover] && (
-        <div className="glacier-fleet-tooltip">
+        <div className="workspace-fleet-tooltip">
           {time(points[hover][0])} · {formatByteRateLabel(points[hover][1].sum)}{" "}
           · {points[hover][1].nodes.size}/{uuids.length} 台
         </div>
       )}
-      <div className="glacier-chart-axis">
+      <div className="workspace-chart-axis">
         <span>{first ? time(first) : "—"}</span>
         <span>最近 24 小时 · 按可用节点汇总</span>
         <span>{last ? time(last) : "—"}</span>

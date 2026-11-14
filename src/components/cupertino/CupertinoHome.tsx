@@ -1,7 +1,6 @@
 import {
   useMemo,
   useRef,
-  type ComponentProps,
   type CSSProperties,
 } from "react";
 import {
@@ -19,20 +18,20 @@ import {
   Star,
   Wallet,
 } from "lucide-react";
-import type OrbitalHome from "@/components/orbital/OrbitalHome";
+import type { HomeWorkspaceProps } from "@/components/workspace/homeWorkspace";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import LuminousSearch from "@/components/luminous/LuminousSearch";
 import { FleetThroughput } from "@/components/workspace/FleetThroughput";
 import { getDisplayRegionCode } from "@/utils/geo";
-import { regionLabel } from "@/components/glacier/regionLabel";
+import { regionLabel } from "@/utils/regionLabel";
 import { formatBytes, formatByteRateLabel } from "@/utils/format";
 import { formatCompactTrafficDetail, resolveTrafficUsage } from "@/utils/traffic";
 import { summarizeHomeResources } from "@/utils/homeResources";
 import { formatCnyMoney } from "@/utils/cost";
 import type { WorkbenchSortKey } from "@/utils/vpsWorkbench";
 
-export default function CupertinoHome(p: ComponentProps<typeof OrbitalHome>) {
+export default function CupertinoHome(p: HomeWorkspaceProps) {
   const { mode, setMode } = useViewMode(),
     favorites = useLuminousFavorites();
   const input = useRef<HTMLInputElement>(null);
