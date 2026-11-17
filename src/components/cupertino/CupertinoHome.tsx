@@ -111,7 +111,7 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
           inputRef={input}
         />
       </div>
-      <header className="cupertino-home-heading">
+      {p.showHeading !== false && <header className="cupertino-home-heading">
         <h1>节点总览</h1>
         <p>
           所有节点，一目了然。
@@ -120,7 +120,7 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
             实时更新
           </span>
         </p>
-      </header>
+      </header>}
       {p.showOverview && (
         <section
           className="cupertino-overview"

@@ -492,7 +492,7 @@ const server = createServer(async (request, response) => {
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
-    if (fixture.aurora) return sendJson(response, {...auroraSpeeds(), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
+    if (fixture.aurora) return sendJson(response, {...auroraSpeeds(), nodes:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraSpeeds().nodes['node-0']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
     return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => {
       const families = n.uuid==='node-2' ? {...projectedSpeeds,'6':null} : n.uuid==='node-1' ? {...projectedSpeeds,'4':null} : projectedSpeeds;
@@ -502,7 +502,7 @@ const server = createServer(async (request, response) => {
   }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
-    if (fixture.aurora) return sendJson(response, {...auroraRoutes(), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
+    if (fixture.aurora) return sendJson(response, {...auroraRoutes(), nodes:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraRoutes().nodes['node-0']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
     response.writeHead(404, { 'Content-Type':'application/json' });
     response.end(JSON.stringify({error:'plugin unavailable'}));

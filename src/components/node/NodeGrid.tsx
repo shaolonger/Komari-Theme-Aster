@@ -1463,7 +1463,7 @@ export function NodeGrid() {
     visibleFacetDimensions.length > 0;
   const gridClassName = mode === "compact" || mode === "list" ? "grid gap-3" : "grid gap-4 xl:gap-5";
   const gridColumns =
-    appearance === "aurora" || mode === "list"
+    mode === "list"
       ? "1fr"
       : mode === "compact"
       ? "repeat(auto-fill, minmax(min(100%, 260px), 1fr))"
@@ -1602,6 +1602,7 @@ export function NodeGrid() {
       {nativeHome ? (
         <Suspense fallback={<div className="instance-panel p-6">正在加载基础设施…</div>}>
           <HomeWorkspace
+            showHeading={appearance !== "aurora"}
             resourceMetadata={workbenchMetaByUuid}
             facets={facetRows}
             selectedFacets={facetFilters}

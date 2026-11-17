@@ -20,6 +20,7 @@ export interface HomeWorkspaceProps {
   costLoading: boolean;
   onOpenMetric: (metric: "status" | "bandwidth" | "traffic" | "expiry") => void;
   onOpenCost: () => void;
+  showHeading?: boolean;
   showOverview: boolean;
   showCost: boolean;
   resourceMetadata?: ReadonlyMap<string, NodeInfo>;

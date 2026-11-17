@@ -27,7 +27,7 @@ export async function checkAurora({
   const frameExpression = `(()=>({
     background:getComputedStyle(document.body).backgroundColor,
     accent:getComputedStyle(document.documentElement).getPropertyValue('--accent-500').trim(),
-    sections:['.cupertino-sidebar','.cupertino-masthead','.cupertino-home-search','.cupertino-home-heading','.cupertino-overview','.cupertino-toolbar'].map(selector=>{
+    sections:['.cupertino-sidebar','.cupertino-masthead','.cupertino-home-search','.cupertino-overview','.cupertino-toolbar'].map(selector=>{
       const e=document.querySelector(selector),r=e.getBoundingClientRect(),s=getComputedStyle(e);
       return {selector,x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height),background:s.backgroundColor,color:s.color,font:s.fontFamily};
     })
@@ -45,6 +45,14 @@ export async function checkAurora({
   );
   await cdp.value("document.fonts.ready.then(()=>true)");
   const cupertinoFrame = await cdp.value(frameExpression);
+  const headingSpace = await cdp.value(
+    "(()=>{const e=document.querySelector('.cupertino-home-heading'),s=getComputedStyle(e);return e.getBoundingClientRect().height+parseFloat(s.marginTop)+parseFloat(s.marginBottom)})()",
+  );
+  for (const section of cupertinoFrame.sections)
+    if (
+      [".cupertino-overview", ".cupertino-toolbar"].includes(section.selector)
+    )
+      section.y = Math.round(section.y - headingSpace);
   await cdp.value(
     "localStorage.setItem('appearance',JSON.stringify('aurora'))",
   );
@@ -56,6 +64,10 @@ export async function checkAurora({
   );
   await cdp.value("document.fonts.ready.then(()=>true)");
   const auroraFrame = await cdp.value(frameExpression);
+  failGate(
+    await cdp.value("document.querySelector('.cupertino-home-heading')===null"),
+    "Aurora must omit the redundant page heading and tagline",
+  );
   await captureScreenshot(cdp, `${base}-workspace.png`);
   failGate(
     JSON.stringify(auroraFrame) === JSON.stringify(cupertinoFrame),
@@ -222,11 +234,79 @@ export async function checkAurora({
         geometry.document <= narrow + 1,
         `Aurora ${mode} ${narrow}px overflow: ${JSON.stringify(geometry)}`,
       );
+      const escaped = await cdp.value(
+        "(()=>{const card=document.querySelector('.aurora-node-card'),bounds=card.getBoundingClientRect();return [...card.querySelectorAll('*')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0 && (r.right>bounds.right+1 || r.left<bounds.left-1)}).slice(0,6).map(e=>e.getAttribute('class'))})()",
+      );
+      failGate(
+        escaped.length === 0,
+        `Aurora ${mode} ${narrow}px contents escaped the card: ${JSON.stringify(escaped)}`,
+      );
       if (narrow === 390)
         await captureScreenshot(cdp, `${base}-${mode}-mobile.png`);
     }
     results.push({ mode, width: w, card: box });
   }
+  const fleetLayouts = [];
+  setFixture({ nodes: 8 });
+  for (const [mode, minColumns, maxWidth] of [
+    ["compact", 4, 380],
+    ["standard", 3, 480],
+    ["large", 2, 840],
+  ]) {
+    await width(1672, 1100);
+    await cdp.value(
+      `sessionStorage.setItem('${modeKey}desktop','${mode}');sessionStorage.setItem('${modeKey}mobile','${mode}')`,
+    );
+    await cdp.call("Page.reload");
+    await waitUntil(
+      cdp,
+      `document.querySelectorAll('.aurora-node-card[data-mode="${mode}"]').length===8 && document.querySelectorAll('.aurora-pill:not(:disabled)').length===96`,
+      15000,
+    );
+    const geometry = await cdp.value(
+      `(()=>{const grid=document.querySelector('.home-node-results'),cards=[...document.querySelectorAll('.aurora-node-card')],rects=cards.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}});return {gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,cards:rects}})()`,
+    );
+    failGate(
+      geometry.columns >= minColumns,
+      `Aurora ${mode}: expected at least ${minColumns} desktop columns: ${JSON.stringify(geometry)}`,
+    );
+    failGate(
+      geometry.cards.every(
+        (r) => r.width <= maxWidth + 1 && r.width < geometry.gridWidth * 0.65,
+      ),
+      `Aurora ${mode}: card expanded to the row width`,
+    );
+    failGate(
+      geometry.cards.every((r) => r.height < 900),
+      `Aurora ${mode}: card spacing is excessive: ${JSON.stringify(geometry)}`,
+    );
+    await cdp.value("window.scrollTo(0,0)");
+    await captureScreenshot(cdp, `${base}-${mode}-fleet.png`);
+    fleetLayouts.push({ mode, ...geometry });
+    if (mode === "standard") {
+      await cdp.value(
+        "(()=>{const input=document.querySelector('.cupertino-home-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'PPFlight LAX Global S2');input.dispatchEvent(new Event('input',{bubbles:true}))})()",
+      );
+      await waitUntil(
+        cdp,
+        "document.querySelectorAll('.aurora-node-card').length===1",
+        6000,
+      );
+      failGate(
+        await cdp.value(
+          "document.querySelector('.aurora-node-card').getBoundingClientRect().width<=480",
+        ),
+        "A single search result expanded to full width",
+      );
+    }
+  }
+  setFixture({ nodes: 1 });
+  await cdp.call("Page.reload");
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.aurora-node-card').length===1",
+    6000,
+  );
   await width(390);
   await cdp.value(
     'window.scrollTo(0,0);document.querySelector(".cupertino-mobile-menu").click()',
@@ -370,7 +450,7 @@ export async function checkAurora({
   }
   writeFileSync(
     `${base}-verification.json`,
-    JSON.stringify({ cupertinoFrame, layouts: results }, null, 2),
+    JSON.stringify({ cupertinoFrame, layouts: results, fleetLayouts }, null, 2),
   );
   return { aurora: results };
 }
