@@ -45,6 +45,10 @@ export type Appearance = "system" | "light" | "dark" | "aurora" | "luminous" | "
 export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" {
   return value === "cupertino" || value === "cupertino-dark";
 }
+// Aurora retains its own cards while sharing the complete Cupertino workspace.
+export function usesCupertinoLayout(value: unknown): boolean {
+  return isCupertinoAppearance(value) || value === "aurora";
+}
 export type NodeViewMode = "large" | "standard" | "compact" | "list";
 
 export interface ResolvedThemeSettings {

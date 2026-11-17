@@ -2088,7 +2088,7 @@ try {
   if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = {backend: BACKEND_PROFILES.official.id,nodes:1,aurora:true,luminousReference:true,workspaceMetrics:true,reports:true,ui:true,docs:true,run:'aurora'};
-    savedUiSettings = {defaultAppearance:'aurora',showHomeOverview:false,showCostSummary:false};
+    savedUiSettings = {defaultAppearance:'aurora',showHomeOverview:true,showCostSummary:true};
     results.push(await checkAurora({cdp,origin:`http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,count: key => requestCounts.get(activeFixture.run)?.[key] || 0,setFixture: patch => {activeFixture={...activeFixture,...patch};}}));
   }
   console.log(JSON.stringify(results, null, 2));

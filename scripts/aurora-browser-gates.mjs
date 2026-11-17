@@ -15,19 +15,79 @@ export async function checkAurora({
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.querySelector('.app-shell')!==null", 10000);
   const modeKey = "komaritheme:node-view-mode-session:";
-  const width = async (w) => {
+  const width = async (w, height = 1402) => {
     await cdp.call("Emulation.setDeviceMetricsOverride", {
       width: w,
-      height: 1402,
+      height,
       deviceScaleFactor: 1,
       mobile: w < 721,
     });
   };
   const results = [];
+  const frameExpression = `(()=>({
+    background:getComputedStyle(document.body).backgroundColor,
+    accent:getComputedStyle(document.documentElement).getPropertyValue('--accent-500').trim(),
+    sections:['.cupertino-sidebar','.cupertino-masthead','.cupertino-home-search','.cupertino-home-heading','.cupertino-overview','.cupertino-toolbar'].map(selector=>{
+      const e=document.querySelector(selector),r=e.getBoundingClientRect(),s=getComputedStyle(e);
+      return {selector,x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height),background:s.backgroundColor,color:s.color,font:s.fontFamily};
+    })
+  }))()`;
+  // Both pages must scroll so the native scrollbar consumes the same width.
+  await width(1672, 500);
+  await cdp.value(
+    `localStorage.setItem('appearance',JSON.stringify('cupertino'));sessionStorage.setItem('${modeKey}desktop','standard');sessionStorage.setItem('${modeKey}mobile','standard')`,
+  );
+  await cdp.call("Page.reload");
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.cupertino-overview-card').length===4 && document.querySelector('.cupertino-node-card')!==null",
+    15000,
+  );
+  await cdp.value("document.fonts.ready.then(()=>true)");
+  const cupertinoFrame = await cdp.value(frameExpression);
+  await cdp.value(
+    "localStorage.setItem('appearance',JSON.stringify('aurora'))",
+  );
+  await cdp.call("Page.reload");
+  await waitUntil(
+    cdp,
+    "document.querySelectorAll('.cupertino-overview-card').length===4 && document.querySelector('.aurora-node-card')!==null && document.documentElement.dataset.layoutStyle==='cupertino'",
+    15000,
+  );
+  await cdp.value("document.fonts.ready.then(()=>true)");
+  const auroraFrame = await cdp.value(frameExpression);
+  await captureScreenshot(cdp, `${base}-workspace.png`);
+  failGate(
+    JSON.stringify(auroraFrame) === JSON.stringify(cupertinoFrame),
+    "Aurora workspace must match the Cupertino navigation, overview and toolbar: " +
+      JSON.stringify({ cupertinoFrame, auroraFrame }),
+  );
+  failGate(
+    await cdp.value(
+      "getComputedStyle(document.querySelector('.home-command-area')).display==='none' && document.querySelector('.home-workbench')===null",
+    ),
+    "Legacy workspace remains visible in Aurora",
+  );
+  await cdp.value(
+    "document.querySelectorAll('.cupertino-status-filters button')[2].click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.home-filter-empty')!==null && document.querySelector('.aurora-node-card')===null",
+    6000,
+  );
+  await cdp.value(
+    "document.querySelectorAll('.cupertino-status-filters button')[0].click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.aurora-node-card')!==null",
+    6000,
+  );
   for (const [mode, w] of [
-    ["compact", 1199],
-    ["standard", 1122],
-    ["large", 1536],
+    ["compact", 1408],
+    ["standard", 1326],
+    ["large", 1768],
   ]) {
     await width(w);
     await cdp.value(
@@ -40,7 +100,11 @@ export async function checkAurora({
       15000,
     );
     await cdp.value("document.fonts.ready.then(()=>true)");
-    await waitUntil(cdp, "[...document.querySelectorAll('.aurora-history i')].some(e=>getComputedStyle(e).backgroundColor==='rgb(245, 31, 77)')", 6000);
+    await waitUntil(
+      cdp,
+      "[...document.querySelectorAll('.aurora-history i')].some(e=>getComputedStyle(e).backgroundColor==='rgb(245, 31, 77)')",
+      6000,
+    );
     if (mode !== "compact")
       await waitUntil(
         cdp,
@@ -61,6 +125,18 @@ export async function checkAurora({
       clip: box,
     });
     writeFileSync(`${base}-${mode}.png`, Buffer.from(shot.data, "base64"));
+    await cdp.value("window.scrollTo(0,0)");
+    const fullPage = await cdp.call("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: await cdp.value(
+        "({x:0,y:0,width:innerWidth,height:document.documentElement.scrollHeight,scale:1})",
+      ),
+    });
+    writeFileSync(
+      `${base}-${mode}-page.png`,
+      Buffer.from(fullPage.data, "base64"),
+    );
     failGate(
       (await cdp.value(
         "document.querySelector('.aurora-summary').textContent.includes('PPFlight LAX Global S2') && document.querySelector('.aurora-summary').textContent.includes('1049')",
@@ -151,6 +227,23 @@ export async function checkAurora({
     }
     results.push({ mode, width: w, card: box });
   }
+  await width(390);
+  await cdp.value(
+    'window.scrollTo(0,0);document.querySelector(".cupertino-mobile-menu").click()',
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.cupertino-sidebar').dataset.open==='true'",
+    3000,
+  );
+  await cdp.value(
+    "document.querySelector('.cupertino-drawer-backdrop').click()",
+  );
+  await waitUntil(
+    cdp,
+    "document.querySelector('.cupertino-sidebar').dataset.open==='false'",
+    3000,
+  );
   // Themes loaded in the same page must relinquish all Aurora geometry.
   await width(1536);
   await cdp.value(
@@ -235,6 +328,49 @@ export async function checkAurora({
       "Edge-state overflow: " + JSON.stringify(state),
     );
   }
-  writeFileSync(`${base}-verification.json`, JSON.stringify(results, null, 2));
+  setFixture({ comprehensive: true });
+  for (const [name, path, ready] of [
+    [
+      "instance",
+      "/instance/node-0",
+      "document.querySelector('.cupertino-instance-metrics')!==null && document.querySelectorAll('.instance-chart-card .uplot').length>=4",
+    ],
+    [
+      "ping",
+      "/instance/node-0?focus=ping",
+      "document.querySelectorAll('.instance-ping-task').length===6 && document.querySelector('.luminous-event-cards')!==null",
+    ],
+    [
+      "settings",
+      "/?view=theme-manage",
+      "document.querySelector('.aster-studio')!==null",
+    ],
+  ]) {
+    await width(1672);
+    await cdp.call("Page.navigate", { url: origin + path });
+    await waitUntil(cdp, ready, 15000);
+    failGate(
+      await cdp.value(
+        "document.querySelector('.cupertino-sidebar')!==null && document.documentElement.dataset.layoutStyle==='cupertino'",
+      ),
+      "Cupertino workspace missing on " + name,
+    );
+    await cdp.value("window.scrollTo(0,0)");
+    await captureScreenshot(cdp, `${base}-${name}.png`);
+    for (const w of [1672, 390]) {
+      await width(w);
+      await cdp.value(
+        "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
+      );
+      failGate(
+        await cdp.value("document.documentElement.scrollWidth<=innerWidth+1"),
+        `Aurora ${name} ${w}px overflow`,
+      );
+    }
+  }
+  writeFileSync(
+    `${base}-verification.json`,
+    JSON.stringify({ cupertinoFrame, layouts: results }, null, 2),
+  );
   return { aurora: results };
 }

@@ -1,4 +1,4 @@
-import { isCupertinoAppearance } from "@/utils/themeSettings";
+import { usesCupertinoLayout } from "@/utils/themeSettings";
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { matchesNodeSearch, splitNodeSearchGroups } from "@/utils/nodeSearch";
 import {
@@ -814,9 +814,9 @@ export function NodeGrid() {
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
-  const nativeHome = appearance === "luminous" || isCupertinoAppearance(appearance);
+  const nativeHome = appearance === "luminous" || usesCupertinoLayout(appearance);
 
-  const HomeWorkspace = isCupertinoAppearance(appearance) ? CupertinoHome : LuminousHome;
+  const HomeWorkspace = usesCupertinoLayout(appearance) ? CupertinoHome : LuminousHome;
   const [workspaceParams, setWorkspaceParams] = useSearchParams();
   const workspaceRegion = workspaceParams.get("region") ?? "";
   const favoriteUuids = useLuminousFavorites(nativeHome);
@@ -1439,7 +1439,7 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : isCupertinoAppearance(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
+        {appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : usesCupertinoLayout(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
   }, [uuidsKey, mode, appearance]);

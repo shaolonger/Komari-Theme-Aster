@@ -1,4 +1,4 @@
-import { isCupertinoAppearance } from "@/utils/themeSettings";
+import { usesCupertinoLayout } from "@/utils/themeSettings";
 import { Link } from "react-router-dom";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import UplotReact from "uplot-react";
@@ -101,7 +101,7 @@ export function PingChart({
     range,
   );
   const { resolvedAppearance, appearance } = usePreferences();
-  const native = appearance === "luminous" || isCupertinoAppearance(appearance);
+  const native = appearance === "luminous" || usesCupertinoLayout(appearance);
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
 
@@ -144,7 +144,7 @@ export function PingChart({
     );
   }, [tasks]);
   const taskColors = useMemo(
-    () => new Map(tasks.map((task, index) => [task.id, native ? (appearance === "cupertino-dark" ? ["#ff453a", "#ff9f0a", "#32d74b", "#64d2ff", "#0a84ff", "#bf5af2"] : [isCupertinoAppearance(appearance) ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"])[index % 6] : colorForSeries(index, tasks.length)] as const)),
+    () => new Map(tasks.map((task, index) => [task.id, native ? (appearance === "cupertino-dark" ? ["#ff453a", "#ff9f0a", "#32d74b", "#64d2ff", "#0a84ff", "#bf5af2"] : [usesCupertinoLayout(appearance) ? "#ff3b30" : "#ef4184", "#ff9500", "#00b777", "#00bdd4", "#007bff", "#9859ff"])[index % 6] : colorForSeries(index, tasks.length)] as const)),
     [tasks, appearance, native],
   );
   const taskKeySet = useMemo(() => new Set(tasks.map((task) => String(task.id))), [tasks]);

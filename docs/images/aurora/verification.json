@@ -1,35 +1,103 @@
-[
-  {
-    "mode": "compact",
-    "width": 1199,
-    "card": {
-      "x": 32,
-      "y": 359.1875,
-      "width": 1125,
-      "height": 1264.34375,
-      "scale": 1
-    }
+{
+  "cupertinoFrame": {
+    "background": "rgb(245, 245, 247)",
+    "accent": "#007aff",
+    "sections": [
+      {
+        "selector": ".cupertino-sidebar",
+        "x": 0,
+        "y": 0,
+        "width": 220,
+        "height": 500,
+        "background": "rgba(237, 237, 239, 0.78)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      },
+      {
+        "selector": ".cupertino-masthead",
+        "x": 220,
+        "y": 0,
+        "width": 1442,
+        "height": 48,
+        "background": "rgba(245, 245, 247, 0.87)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      },
+      {
+        "selector": ".cupertino-home-search",
+        "x": 1122,
+        "y": 7,
+        "width": 390,
+        "height": 33,
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      },
+      {
+        "selector": ".cupertino-home-heading",
+        "x": 248,
+        "y": 60,
+        "width": 1386,
+        "height": 63,
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      },
+      {
+        "selector": ".cupertino-overview",
+        "x": 244,
+        "y": 137,
+        "width": 1394,
+        "height": 120,
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      },
+      {
+        "selector": ".cupertino-toolbar",
+        "x": 244,
+        "y": 328,
+        "width": 1394,
+        "height": 32,
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgb(29, 29, 31)",
+        "font": "-apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Helvetica Neue\", sans-serif"
+      }
+    ]
   },
-  {
-    "mode": "standard",
-    "width": 1122,
-    "card": {
-      "x": 32,
-      "y": 395.1875,
-      "width": 1048,
-      "height": 1323.21875,
-      "scale": 1
+  "layouts": [
+    {
+      "mode": "compact",
+      "width": 1408,
+      "card": {
+        "x": 225,
+        "y": 381.890625,
+        "width": 1148,
+        "height": 1271.453125,
+        "scale": 1
+      }
+    },
+    {
+      "mode": "standard",
+      "width": 1326,
+      "card": {
+        "x": 225,
+        "y": 381.890625,
+        "width": 1066,
+        "height": 1330.78125,
+        "scale": 1
+      }
+    },
+    {
+      "mode": "large",
+      "width": 1768,
+      "card": {
+        "x": 244,
+        "y": 381.890625,
+        "width": 1490,
+        "height": 1008.734375,
+        "scale": 1
+      }
     }
-  },
-  {
-    "mode": "large",
-    "width": 1536,
-    "card": {
-      "x": 32,
-      "y": 359.1875,
-      "width": 1462,
-      "height": 1008.734375,
-      "scale": 1
-    }
-  }
-]
+  ]
+}

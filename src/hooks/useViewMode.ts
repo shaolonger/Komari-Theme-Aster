@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
-import { isCupertinoAppearance, isNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
+import { usesCupertinoLayout, isNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
 
 // Legacy keys retained so session view-mode overrides survive the rename.
 const DESKTOP_OVERRIDE_KEY = "komaritheme:node-view-mode-session:desktop";
@@ -159,7 +159,7 @@ export function useViewMode() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { appearance } = usePreferences();
   const defaultMode: NodeViewMode =
-    (appearance === "luminous" || isCupertinoAppearance(appearance)) && themeSettings.defaultAppearance !== appearance
+    (appearance === "luminous" || usesCupertinoLayout(appearance)) && themeSettings.defaultAppearance !== appearance
       ? state.device === "mobile" ? "compact" : "standard"
       : state.device === "mobile"
         ? themeSettings.mobileNodeViewMode

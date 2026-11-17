@@ -1,4 +1,4 @@
-import { isCupertinoAppearance } from "@/utils/themeSettings";
+import { usesCupertinoLayout } from "@/utils/themeSettings";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
@@ -526,7 +526,7 @@ export function LoadChart({
   const { resolvedAppearance, appearance } = usePreferences();
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
-  const native = appearance === "luminous" || isCupertinoAppearance(appearance);
+  const native = appearance === "luminous" || usesCupertinoLayout(appearance);
   const cupertinoColors = appearance === "cupertino-dark" ? CUPERTINO_DARK_COLORS : CUPERTINO_COLORS;
   const { w, h } = useResponsiveChartSize(native ? "workspace" : "grid");
   const [selectedMetric, setSelectedMetric] = useState(0);
@@ -653,7 +653,7 @@ export function LoadChart({
   return (
     <InstancePanel
       title="负载图表"
-      aside={isCupertinoAppearance(appearance) ? <details className="cupertino-load-settings"><summary aria-label="图表设置与采样范围">采样设置</summary>{chartMetadata}</details> : chartMetadata}
+      aside={usesCupertinoLayout(appearance) ? <details className="cupertino-load-settings"><summary aria-label="图表设置与采样范围">采样设置</summary>{chartMetadata}</details> : chartMetadata}
       className="instance-chart-panel"
     >
       <div className="instance-chart-grid">
@@ -673,9 +673,9 @@ export function LoadChart({
           note="使用率"
           points={points}
           keys={CPU_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.cpu : native ? LUMINOUS_COLORS.cpu : CPU_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.cpu : native ? LUMINOUS_COLORS.cpu : CPU_COLORS}
           width={w}
-          height={native ? selectedMetric === 0 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 0 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -710,9 +710,9 @@ export function LoadChart({
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.memory : native ? LUMINOUS_COLORS.memory : MEMORY_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.memory : native ? LUMINOUS_COLORS.memory : MEMORY_COLORS}
           width={w}
-          height={native ? selectedMetric === 1 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 1 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -739,9 +739,9 @@ export function LoadChart({
           note="已用空间"
           points={points}
           keys={DISK_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.disk : native ? LUMINOUS_COLORS.disk : DISK_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.disk : native ? LUMINOUS_COLORS.disk : DISK_COLORS}
           width={w}
-          height={native ? selectedMetric === 2 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 2 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -773,9 +773,9 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.network : native ? LUMINOUS_COLORS.network : NETWORK_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.network : native ? LUMINOUS_COLORS.network : NETWORK_COLORS}
           width={w}
-          height={native ? selectedMetric === 3 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 3 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -802,9 +802,9 @@ export function LoadChart({
           note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.connections : native ? LUMINOUS_COLORS.connections : CONNECTION_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.connections : native ? LUMINOUS_COLORS.connections : CONNECTION_COLORS}
           width={w}
-          height={native ? selectedMetric === 4 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 4 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}
@@ -836,9 +836,9 @@ export function LoadChart({
           }
           points={points}
           keys={PROCESS_KEYS}
-          colors={isCupertinoAppearance(appearance) ? cupertinoColors.process : native ? LUMINOUS_COLORS.process : PROCESS_COLORS}
+          colors={usesCupertinoLayout(appearance) ? cupertinoColors.process : native ? LUMINOUS_COLORS.process : PROCESS_COLORS}
           width={w}
-          height={native ? selectedMetric === 5 ? (isCupertinoAppearance(appearance) ? 185 : 180) : (isCupertinoAppearance(appearance) ? 105 : 155) : h}
+          height={native ? selectedMetric === 5 ? (usesCupertinoLayout(appearance) ? 185 : 180) : (usesCupertinoLayout(appearance) ? 105 : 155) : h}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           xRange={chartWindow}

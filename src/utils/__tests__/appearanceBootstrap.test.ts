@@ -24,14 +24,20 @@ describe("appearance before first paint", () => {
   for (const encode of [(value: string) => value, JSON.stringify]) {
     it.each(removed)("ignores removed %s preferences and uses a valid cached default", (appearance) => {
       const { root, meta } = firstPaint(encode(appearance), JSON.stringify("cupertino-dark"));
-      expect(root.dataset).toEqual({ appearance: "dark", themeStyle: "cupertino" });
+      expect(root.dataset).toEqual({ appearance: "dark", themeStyle: "cupertino", layoutStyle: "cupertino" });
       expect(root.style.colorScheme).toBe("dark");
       expect(meta.content).toBe("#141416");
     });
     it.each(removed)("resolves the system appearance when cached %s defaults were removed", (appearance) => {
-      expect(firstPaint(encode(appearance), encode(appearance), true).root.dataset).toEqual({ appearance: "dark", themeStyle: "default" });
+      expect(firstPaint(encode(appearance), encode(appearance), true).root.dataset).toEqual({ appearance: "dark", themeStyle: "default", layoutStyle: "default" });
     });
   }
+  it.each(["aurora", JSON.stringify("aurora")])("restores Aurora cards with the Cupertino workspace before first paint (%s)", (stored) => {
+    const { root, meta } = firstPaint(stored, null, true);
+    expect(root.dataset).toEqual({ appearance: "light", themeStyle: "aurora", layoutStyle: "cupertino" });
+    expect(root.style.colorScheme).toBe("light");
+    expect(meta.content).toBe("#F5F5F7");
+  });
   it.each(["light", "dark", "system", "luminous", "cupertino", "cupertino-dark"])("accepts the retained %s appearance", (appearance) => {
     const { root } = firstPaint(JSON.stringify(appearance), null);
     expect(root.dataset.themeStyle).toBe(appearance.startsWith("cupertino") ? "cupertino" : appearance === "luminous" ? "luminous" : "default");

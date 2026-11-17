@@ -79,9 +79,10 @@
             : appearance === "dark" || appearance === "cupertino-dark" ? "dark" : "light";
         document.documentElement.dataset.appearance = resolved;
         document.documentElement.dataset.themeStyle = appearance === "cupertino" || appearance === "cupertino-dark" ? "cupertino" : appearance === "aurora" ? "aurora" : appearance === "luminous" ? "luminous" : "default";
+        document.documentElement.dataset.layoutStyle = appearance === "aurora" || appearance === "cupertino" || appearance === "cupertino-dark" ? "cupertino" : document.documentElement.dataset.themeStyle;
         document.documentElement.style.colorScheme = resolved;
         const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.content = appearance === "aurora" ? "#e9edff" : appearance === "cupertino-dark" ? "#141416" : appearance === "luminous" ? "#eaf3ff" : resolved === "dark" ? "#000000" : "#F5F5F7";
+        if (meta) meta.content = appearance === "aurora" ? "#F5F5F7" : appearance === "cupertino-dark" ? "#141416" : appearance === "luminous" ? "#eaf3ff" : resolved === "dark" ? "#000000" : "#F5F5F7";
 
         // Apply the cached custom background + card transparency before first
         // paint so a refresh doesn't flash the solid theme before React mounts.

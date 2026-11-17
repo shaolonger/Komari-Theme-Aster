@@ -1,4 +1,4 @@
-import { isCupertinoAppearance } from "@/utils/themeSettings";
+import { usesCupertinoLayout } from "@/utils/themeSettings";
 import {
   lazy,
   Suspense,
@@ -65,7 +65,7 @@ export function Instance() {
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
   const luminous = appearance === "luminous";
-  const cupertino = isCupertinoAppearance(appearance);
+  const cupertino = usesCupertinoLayout(appearance);
   const workspaceLayout = luminous || cupertino;
   const allNodes = useAllNodeMeta();
   const visibleNodeUuids = useVisibleNodeUuids();
@@ -199,7 +199,7 @@ export function Instance() {
   // 又不重新调度,导致这次性的 scroll-into-view 丢失。
   const alignCharts = useCallback(() => {
     if (
-      appearance === "luminous" || isCupertinoAppearance(appearance)
+      appearance === "luminous" || usesCupertinoLayout(appearance)
     )
       return;
     const frame = window.requestAnimationFrame(() => {

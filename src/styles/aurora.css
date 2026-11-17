@@ -1,51 +1,30 @@
-/* Aurora owns its palette. Every selector is scoped so SPA theme switches do
-   not carry the glass surfaces or matrix geometry into another appearance. */
-:root[data-theme-style="aurora"] {
-  --bg-0: #e9edff;
-  --surface: #f8f9ff;
-  --surface-elev: #fff;
-  --surface-sunken: #edf0ff;
-  --text-primary: #0b1027;
-  --text-secondary: #505c7b;
-  --text-tertiary: #727b96;
-  --border-subtle: #dce2f8;
-  --hairline: #dce2f8;
-  --accent-500: #8d3cff;
-  --accent-600: #7823ee;
-  --aurora-line: #dde4f8;
-  background:
-    radial-gradient(ellipse at 76% 4%, #dcd6ff 0, transparent 48%),
-    radial-gradient(ellipse at 10% 85%, #d9ecff 0, transparent 55%),
-    linear-gradient(130deg, #f0f0ff, #e5eaff 60%, #e2e9ff);
-  background-attachment: fixed;
-}
-[data-theme-style="aurora"] .home-node-results:not([data-view-mode="list"]) {
+/* Aurora customizes the card area; the surrounding workspace is Cupertino. */
+:root[data-theme-style="aurora"]
+  .home-node-results:not([data-view-mode="list"]) {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) !important;
   gap: 28px;
   max-width: 1148px;
   margin-inline: auto;
 }
-[data-theme-style="aurora"] .home-node-results[data-view-mode="standard"] {
+:root[data-theme-style="aurora"] .home-node-results[data-view-mode="standard"] {
   max-width: 1066px;
 }
-[data-theme-style="aurora"] .home-node-results[data-view-mode="large"] {
+:root[data-theme-style="aurora"] .home-node-results[data-view-mode="large"] {
   max-width: 1490px;
 }
-[data-theme-style="aurora"] .home-node-card-slot {
+:root[data-theme-style="aurora"] .home-node-card-slot {
   content-visibility: auto;
   contain-intrinsic-size: auto 1100px;
-}
-[data-theme-style="aurora"]
-  :is(.home-workbench, .home-command-area, .home-facet-rail) {
-  background: #ffffff79;
-  backdrop-filter: blur(18px);
-  border-color: #fff9;
-  border-radius: 20px;
 }
 .aurora-node-card {
   container-type: inline-size;
   --aurora-line: #dce2f7;
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse at 76% 4%, #dcd6ff 0, transparent 48%),
+    radial-gradient(ellipse at 10% 85%, #d9ecff 0, transparent 55%),
+    linear-gradient(130deg, #f0f0ff, #e5eaff 60%, #e2e9ff);
   color: #0b1027;
   line-height: 1.4;
   font-weight: 450;
