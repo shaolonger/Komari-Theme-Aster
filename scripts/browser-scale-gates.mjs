@@ -365,14 +365,14 @@ function officialPingMetricSeries(params, fixture) {
   return {
     start: new Date(windowStart).toISOString(),
     end: new Date(end).toISOString(),
-    series: fixture.aurora ? fixture.auroraEmpty ? [] : auroraSeries(series) : fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
+    series: fixture.aurora ? fixture.auroraEmpty || fixture.auroraNoMeasurements ? [] : auroraSeries(series) : fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
     count: series.length,
   };
 }
 
 function officialPingStats(params, fixture) {
   const entityIds = requestedEntityIds(params, fixture);
-  if (fixture.aurora) return fixture.auroraEmpty ? {stats:[],count:0} : auroraStats(entityIds);
+  if (fixture.aurora) return fixture.auroraEmpty || fixture.auroraNoMeasurements ? {stats:[],count:0} : auroraStats(entityIds);
   const start = toIsoOrNow(params?.start);
   const end = toIsoOrNow(params?.end);
   return {
@@ -467,7 +467,7 @@ const server = createServer(async (request, response) => {
         // Use an absolute URL: production correctly rejects relative rate
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
-        homepagePingBindings: Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : [1]).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
+        homepagePingBindings: Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : [1]).filter(id=>!fixture.aurora || !fixture.auroraFamilies || fixture.auroraFamilies.includes(id<=3?"4":"6")).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
         ...(fixture.cupertinoResources ? { showConnections: true } : {}),
@@ -492,7 +492,7 @@ const server = createServer(async (request, response) => {
   if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
-    if (fixture.aurora) return sendJson(response, {...auroraSpeeds(), nodes:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraSpeeds().nodes['node-0']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
+    if (fixture.aurora) return sendJson(response, {...auroraSpeeds(), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraSpeeds().nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraSpeedFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
     return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => {
       const families = n.uuid==='node-2' ? {...projectedSpeeds,'6':null} : n.uuid==='node-1' ? {...projectedSpeeds,'4':null} : projectedSpeeds;
@@ -502,7 +502,7 @@ const server = createServer(async (request, response) => {
   }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
-    if (fixture.aurora) return sendJson(response, {...auroraRoutes(), nodes:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraRoutes().nodes['node-0']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
+    if (fixture.aurora) return sendJson(response, {...auroraRoutes(), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,auroraRoutes().nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraRouteFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
     response.writeHead(404, { 'Content-Type':'application/json' });
     response.end(JSON.stringify({error:'plugin unavailable'}));

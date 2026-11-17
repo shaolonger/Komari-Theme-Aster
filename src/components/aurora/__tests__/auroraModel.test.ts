@@ -3,6 +3,8 @@ import {
   identifyPingSource,
   selectCarrierPing,
   sampleColor,
+  observationFamilies,
+  speedMeterPercent,
 } from "../auroraModel";
 import { buildHomepagePingSourceRows } from "@/utils/homepagePingSources";
 
@@ -21,6 +23,20 @@ describe("Aurora dual-stack matrix", () => {
     expect(
       identifyPingSource({ name: "移动", group: "", target: "192.0.2.1:443" }),
     ).toEqual({ carrier: "移动", family: "4" });
+    expect(
+      identifyPingSource({
+        name: "电信",
+        group: "",
+        target: "https://example.com:443",
+      }),
+    ).toEqual({ carrier: "电信", family: "4" });
+    expect(
+      identifyPingSource({
+        name: "电信",
+        group: "",
+        target: "https://[2001:db8::1]:443",
+      }),
+    ).toEqual({ carrier: "电信", family: "6" });
     expect(
       identifyPingSource({
         name: "Global probe",
@@ -74,6 +90,19 @@ describe("Aurora dual-stack matrix", () => {
     expect(selectCarrierPing(rows, "电信", "6")).toBeUndefined();
     expect(selectCarrierPing(rows, "联通", "4")).toBeUndefined();
     expect(rows.map((row) => row.taskId)).toEqual([1, 2, 3, 4]);
+  });
+  it("uses configured families even without measurements and excludes retained results for removed tasks", () => {
+    expect(observationFamilies(["4"], ["4", "6"])).toEqual(["4"]);
+    expect(observationFamilies(["6"], [])).toEqual(["6"]);
+    expect(observationFamilies([], ["4", "6"])).toEqual([]);
+    expect(observationFamilies(undefined, ["6", "4", "6"])).toEqual(["4", "6"]);
+  });
+  it("scales speed bars against 500 Mbps and clamps missing or excessive values", () => {
+    expect(speedMeterPercent(250e6)).toBe(50);
+    expect(speedMeterPercent(168.2e6)).toBeCloseTo(33.64);
+    expect(speedMeterPercent(921.6e6)).toBe(100);
+    for (const value of [null, undefined, NaN, Infinity, -1])
+      expect(speedMeterPercent(value)).toBe(0);
   });
   it("shows failed probes and high loss in red", () => {
     expect(sampleColor(-1)).toBe("#f51f4d");

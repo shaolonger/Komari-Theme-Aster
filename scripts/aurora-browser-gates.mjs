@@ -173,6 +173,40 @@ export async function checkAurora({
       ),
       "IPv4 / IPv6 speed values lost",
     );
+    failGate(
+      await cdp.value(
+        `document.querySelectorAll('.aurora-carrier-logo').length===0`,
+      ),
+      "Carrier logos must be absent in " + mode,
+    );
+    failGate(
+      await cdp.value(
+        `(()=>{const q=document.querySelector('.aurora-quota-meter');return +q.getAttribute('aria-valuenow')>0 && +q.getAttribute('aria-valuenow')<1})()`,
+      ),
+      "Quota bar must show used traffic rather than remaining traffic",
+    );
+    failGate(
+      await cdp.value(
+        `(()=>{const card=document.querySelector('.aurora-node-card');return getComputedStyle(card).boxShadow!=='none' && ['.aurora-summary','.aurora-network'].every(s=>getComputedStyle(card.querySelector(s)).boxShadow==='none')})()`,
+      ),
+      "Summary and network must share one card shadow",
+    );
+    if (mode !== "standard") {
+      failGate(
+        await cdp.value(
+          `(()=>{const bars=[...document.querySelectorAll('.aurora-speed .aurora-meter')];return bars.length===12 && +bars[0].getAttribute('aria-valuenow')===100 && Math.abs(+bars[1].getAttribute('aria-valuenow')-33.64)<.01 && bars.every(e=>e.title.includes('500'))})()`,
+        ),
+        "Speed bars must use 500 Mbps",
+      );
+    }
+    if (mode === "compact") {
+      failGate(
+        await cdp.value(
+          `(()=>{const line=document.querySelector('.aurora-cell-quality > div'),parts=[...line.children].map(e=>({text:e.textContent,display:getComputedStyle(e).display,box:e.getBoundingClientRect()}));return parts[2].text==='丢包' && parts.every(e=>e.display!=='none') && parts.slice(1).every((e,i)=>e.box.left>=parts[i].box.right-1)})()`,
+        ),
+        "Compact latency and labeled packet loss must be separate",
+      );
+    }
     // A real evidence dialog must open, not a decorative route badge.
     await cdp.value(
       "document.querySelector('.aurora-pill:not(:disabled)').click()",
@@ -249,7 +283,7 @@ export async function checkAurora({
   const fleetLayouts = [];
   setFixture({ nodes: 8 });
   for (const [mode, minColumns, maxWidth] of [
-    ["compact", 4, 380],
+    ["compact", 2, 800],
     ["standard", 3, 480],
     ["large", 2, 840],
   ]) {
@@ -300,7 +334,87 @@ export async function checkAurora({
       );
     }
   }
+  const familyLayouts = [];
   setFixture({ nodes: 1 });
+  const familyExpression = `(()=>{const mode=document.querySelector('.aurora-node-card').dataset.mode;
+    const unique=rows=>[...new Set(rows.map(e=>e.dataset.family))].sort();
+    if(mode==='standard') return {
+      quality:unique([...(document.querySelector('.aurora-quality-row')?.querySelectorAll('[data-family]') || [])]),
+      routes:unique([...document.querySelectorAll('.aurora-route-section .aurora-dual > [data-family]')]),
+      speeds:unique([...document.querySelectorAll('.aurora-speed-section .aurora-dual > [data-family]')])};
+    const rows=[...document.querySelectorAll(mode==='compact'?'.aurora-matrix-family':'.aurora-large-row')];
+    return Object.fromEntries([['quality',mode==='compact'?'.aurora-cell-quality':'a'],['routes','.aurora-route-pair'],['speeds','.aurora-speed-pair']].map(([key,selector])=>[key,unique(rows.filter(e=>e.querySelector(selector)))]));
+  })()`;
+  for (const mode of ["standard", "compact", "large"]) {
+    await width(1672);
+    await cdp.value(
+      `sessionStorage.setItem('${modeKey}desktop','${mode}');sessionStorage.setItem('${modeKey}mobile','${mode}')`,
+    );
+    for (const [name, quality, routes, speeds, pending, guest] of [
+      ["v4", ["4"], ["4"], ["4"], false, false],
+      ["v6", ["6"], ["6"], ["6"], false, false],
+      ["none", [], [], [], false, false],
+      ["pending", ["4"], ["4"], ["4"], true, false],
+      ["mixed", ["4"], ["6"], [], false, false],
+      ["public-v4", ["4"], ["4"], ["4"], false, true],
+    ]) {
+      setFixture({
+        auroraFamilies: quality,
+        auroraRouteFamilies: routes,
+        auroraSpeedFamilies: speeds,
+        auroraNoMeasurements: pending,
+        auroraGuest: guest,
+      });
+      await cdp.call("Page.reload");
+      await waitUntil(
+        cdp,
+        "document.querySelector('.aurora-network')!==null",
+        10000,
+      );
+      const expected = JSON.stringify({ quality, routes, speeds });
+      await waitUntil(
+        cdp,
+        `JSON.stringify(${familyExpression})===${JSON.stringify(expected)}`,
+        10000,
+      );
+      failGate(
+        await cdp.value("document.documentElement.scrollWidth<=innerWidth+1"),
+        `${mode}/${name} overflow`,
+      );
+      if (name === "none")
+        failGate(
+          await cdp.value(
+            "document.querySelector('.aurora-empty')?.textContent.includes('尚未配置')===true",
+          ),
+          "Unconfigured tasks must have no matrix",
+        );
+      if (name === "v4" && mode === "standard")
+        failGate(
+          await cdp.value(
+            `(()=>{const dual=document.querySelector('.aurora-route-section .aurora-dual');return dual.firstElementChild.getBoundingClientRect().width>=dual.getBoundingClientRect().width-1})()`,
+          ),
+          "Single-stack content must fill the available width",
+        );
+      if (name === "v4" || name === "v6")
+        await captureScreenshot(cdp, `${base}-${mode}-${name}.png`);
+      familyLayouts.push({
+        mode,
+        name,
+        quality,
+        routes,
+        speeds,
+        pending,
+        guest,
+      });
+    }
+  }
+  setFixture({
+    auroraFamilies: undefined,
+    auroraRouteFamilies: undefined,
+    auroraSpeedFamilies: undefined,
+    auroraNoMeasurements: false,
+    auroraGuest: false,
+  });
   await cdp.call("Page.reload");
   await waitUntil(
     cdp,
@@ -450,7 +564,11 @@ export async function checkAurora({
   }
   writeFileSync(
     `${base}-verification.json`,
-    JSON.stringify({ cupertinoFrame, layouts: results, fleetLayouts }, null, 2),
+    JSON.stringify(
+      { cupertinoFrame, layouts: results, fleetLayouts, familyLayouts },
+      null,
+      2,
+    ),
   );
   return { aurora: results };
 }

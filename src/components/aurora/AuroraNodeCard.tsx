@@ -57,10 +57,13 @@ import {
   identifyPingSource,
   sampleColor,
   selectCarrierPing,
+  observationFamilies,
+  speedMeterPercent,
+  SPEED_BAR_MAX_MBPS,
   type Carrier,
   type Family,
 } from "./auroraModel";
-import { CarrierLogo, ServerAvatar } from "./AuroraIcons";
+import { ServerAvatar } from "./AuroraIcons";
 
 const RouteDetails = lazy(
   () => import("@/components/node/RouteEvidenceDetails"),
@@ -76,12 +79,22 @@ const pct = (v: number) => Math.max(0, Math.min(100, v));
 function Meter({
   value,
   className = "",
+  label,
 }: {
   value: number;
   className?: string;
+  label?: string;
 }) {
   return (
-    <div className={`aurora-meter ${className}`}>
+    <div
+      className={`aurora-meter ${className}`}
+      role={label ? "meter" : undefined}
+      aria-label={label}
+      aria-valuemin={label ? 0 : undefined}
+      aria-valuemax={label ? 100 : undefined}
+      aria-valuenow={label ? pct(value) : undefined}
+      title={label}
+    >
       <i style={{ width: `${pct(value)}%` }} />
     </div>
   );
@@ -246,7 +259,12 @@ function Speed({
         </b>
         <small>Mbps</small>
       </span>
-      {bar && <Meter value={bits == null ? 0 : bits / 1e7} />}
+      {bar && (
+        <Meter
+          value={speedMeterPercent(bits)}
+          label={`速率条范围：0–${SPEED_BAR_MAX_MBPS} Mbps`}
+        />
+      )}
     </button>
   );
 }
@@ -316,7 +334,7 @@ function NodeSummary({
   } = model;
   const known = node.updatedAt > 0;
   const used = traffic.usagePercent;
-  const remaining = used == null ? 100 : pct(100 - used);
+  const usagePercent = known && used != null ? pct(used) : 0;
   const status =
     node.online === true
       ? `在线 ${uptime.value} ${uptime.unit}`
@@ -364,7 +382,17 @@ function NodeSummary({
         剩余流量 <strong>{known ? traffic.remainingLabel : "—"}</strong> /{" "}
         {node.traffic_limit > 0 ? formatBytes(node.traffic_limit) : "∞"}
       </span>
-      <Meter value={known ? remaining : 0} className="aurora-quota-meter" />
+      <Meter
+        value={usagePercent}
+        className="aurora-quota-meter"
+        label={
+          used == null
+            ? "不限量，已用比例不适用"
+            : known
+              ? `已用流量 ${usagePercent.toFixed(1)}%`
+              : "暂无流量上报"
+        }
+      />
       <span className="aurora-reset">
         {traffic.typeLabel}
         {node.traffic_limit > 0 ? " · 按计费周期重置" : " · 不限量"}
@@ -395,10 +423,7 @@ function NodeSummary({
     </div>
   );
   return (
-    <section
-      className="aurora-summary aurora-glass"
-      aria-label={`${node.name} 实时指标`}
-    >
+    <section className="aurora-summary" aria-label={`${node.name} 实时指标`}>
       <header className="aurora-node-header">
         {mode === "large" && <ServerAvatar />}
         <div className="aurora-identity">
@@ -500,7 +525,13 @@ function NodeSummary({
           {mode === "compact" ? (
             <div className="aurora-compact-quota">
               {quota}
-              <b>{known ? remaining.toFixed(1) : "—"}%</b>
+              <b>
+                {used == null
+                  ? "不限量"
+                  : known
+                    ? `已用 ${usagePercent.toFixed(1)}%`
+                    : "未上报"}
+              </b>
             </div>
           ) : (
             <div className="aurora-totals">
@@ -552,44 +583,88 @@ function NetworkSummary({
     settings.homepagePingTaskGroups,
     settings.homepagePingTaskOrder[uuid],
   );
-  const qualityVisible = settings.showPingChart;
-  const routesVisible = routes.data?.display !== false,
-    speedsVisible = speeds.data?.display !== false;
+  const extraRows = rows.filter((row) => !identifyPingSource(row));
+  const routeNode =
+    routes.data?.display === false ? undefined : routes.data?.nodes[uuid];
+  const speedNode =
+    speeds.data?.display === false ? undefined : speeds.data?.nodes[uuid];
+  const qualityFamilies = settings.showPingChart
+    ? observationFamilies(
+        undefined,
+        rows.flatMap((row) => {
+          const identity = identifyPingSource(row);
+          return identity ? [identity.family] : [];
+        }),
+      )
+    : [];
+  const routeFamilies =
+    routes.data?.display === false
+      ? []
+      : observationFamilies(
+          routes.data?.configuredFamilies?.[uuid] ??
+            (routes.data?.quickCheck
+              ? routes.data.quickFamilies[uuid] || []
+              : undefined),
+          FAMILIES.filter((f) =>
+            routeNode?.[f].some((row) => row.forward || row.return),
+          ),
+        );
+  const speedFamilies =
+    speeds.data?.display === false
+      ? []
+      : observationFamilies(
+          speeds.data?.configuredFamilies?.[uuid] ??
+            (speeds.data?.quickCheck
+              ? speeds.data.quickFamilies[uuid] || []
+              : undefined),
+          FAMILIES.filter((f) => speedNode?.[f] != null),
+        );
+  const qualityVisible = qualityFamilies.length > 0;
+  const routesVisible = routeFamilies.length > 0;
+  const speedsVisible = speedFamilies.length > 0;
   const panel =
     (selectedPanel === "quality" && !qualityVisible) ||
     (selectedPanel === "routes" && !routesVisible) ||
     (selectedPanel === "speeds" && !speedsVisible)
       ? "all"
       : selectedPanel;
+  const qualityShown =
+    qualityVisible && (panel === "all" || panel === "quality");
+  const routesShown = routesVisible && (panel === "all" || panel === "routes");
+  const speedsShown = speedsVisible && (panel === "all" || panel === "speeds");
+  const families = observationFamilies(undefined, [
+    ...(qualityShown ? qualityFamilies : []),
+    ...(routesShown ? routeFamilies : []),
+    ...(speedsShown ? speedFamilies : []),
+  ]);
   const gridMetrics = [
-    (panel === "all" || panel === "quality") && qualityVisible ? "1fr 1fr" : "",
-    (panel === "all" || panel === "routes") && routesVisible ? "1.25fr" : "",
-    (panel === "all" || panel === "speeds") && speedsVisible ? "1.5fr" : "",
+    qualityShown ? "1fr 1fr" : "",
+    routesShown ? "1.25fr" : "",
+    speedsShown ? "1.5fr" : "",
   ]
     .filter(Boolean)
     .join(" ");
-  const extraRows = rows.filter((row) => !identifyPingSource(row));
-  const routeNode =
-    routes.data?.display === false ? undefined : routes.data?.nodes[uuid];
-  const speedNode =
-    speeds.data?.display === false ? undefined : speeds.data?.nodes[uuid];
   const cities = [
     ...new Set(
-      FAMILIES.flatMap((f) => speedNode?.[f]?.cities.map((c) => c.city) || []),
+      speedFamilies.flatMap(
+        (f) => speedNode?.[f]?.cities.map((c) => c.city) || [],
+      ),
     ),
   ];
   const selectedCity = cities.includes(city as "北京")
     ? city
     : cities[0] || "北京";
-  const routeTimes = FAMILIES.flatMap(
-    (f) =>
-      routeNode?.[f]
-        .flatMap((r) => [r.forward?.at, r.return?.at])
-        .filter((t): t is string => Boolean(t)) || [],
-  ).sort();
-  const speedTimes = FAMILIES.flatMap((f) =>
-    speedNode?.[f]?.at ? [speedNode[f]!.at] : [],
-  ).sort();
+  const routeTimes = routeFamilies
+    .flatMap(
+      (f) =>
+        routeNode?.[f]
+          .flatMap((r) => [r.forward?.at, r.return?.at])
+          .filter((t): t is string => Boolean(t)) || [],
+    )
+    .sort();
+  const speedTimes = speedFamilies
+    .flatMap((f) => (speedNode?.[f]?.at ? [speedNode[f]!.at] : []))
+    .sort();
   const time = (at?: string) =>
     at
       ? formatDisplayDateTime(Date.parse(at), settings.displayTimeZone, {
@@ -725,7 +800,7 @@ function NetworkSummary({
   );
   return (
     <section
-      className={`aurora-network aurora-glass aurora-network-${mode}`}
+      className={`aurora-network aurora-network-${mode}`}
       aria-label="三网网络表现"
       data-panel={panel}
       style={{ "--aurora-metrics": gridMetrics || "1fr" } as CSSProperties}
@@ -768,23 +843,31 @@ function NetworkSummary({
                 "三网质量",
                 <span>延迟 / 丢包 · {historyCount} 次历史</span>,
               )}
-              <div className="aurora-quality-labels">
+              <div
+                className="aurora-quality-labels"
+                data-family-count={qualityFamilies.length}
+              >
                 <span>运营商</span>
-                <span className="aurora-family">IPv4</span>
-                <span className="aurora-family">IPv6</span>
+                {qualityFamilies.map((f) => (
+                  <span className="aurora-family" key={f}>
+                    IPv{f}
+                  </span>
+                ))}
               </div>
               {CARRIERS.map((carrier) => (
-                <div className="aurora-quality-row" key={carrier}>
-                  <strong data-carrier={carrier}>
-                    <CarrierLogo carrier={carrier} />
-                    {carrier}
-                  </strong>
-                  {FAMILIES.map((f) => {
+                <div
+                  className="aurora-quality-row"
+                  key={carrier}
+                  data-family-count={qualityFamilies.length}
+                >
+                  <strong data-carrier={carrier}>{carrier}</strong>
+                  {qualityFamilies.map((f) => {
                     const source = selectCarrierPing(rows, carrier, f);
                     return (
                       <Link
                         to={compareUrl}
                         key={f}
+                        data-family={f}
                         aria-label={`${carrier} IPv${f} 质量历史`}
                       >
                         <div>
@@ -799,16 +882,19 @@ function NetworkSummary({
               ))}
             </section>
           )}
-          {routes.data?.display !== false && (
+          {routesVisible && (
             <section className="aurora-section aurora-route-section aurora-inset">
               {heading(
                 Route,
                 "三网线路",
                 <CheckAction uuid={uuid} module="routes" label="检测" />,
               )}
-              <div className="aurora-dual">
-                {FAMILIES.map((f) => (
-                  <div key={f}>
+              <div
+                className="aurora-dual"
+                data-family-count={routeFamilies.length}
+              >
+                {routeFamilies.map((f) => (
+                  <div key={f} data-family={f}>
                     <div className="aurora-table-labels">
                       <span className="aurora-family">IPv{f}</span>
                       <span>去程 →</span>
@@ -820,10 +906,7 @@ function NetworkSummary({
                         key={carrier}
                         data-carrier={carrier}
                       >
-                        <strong>
-                          <CarrierLogo carrier={carrier} />
-                          {carrier}
-                        </strong>
+                        <strong>{carrier}</strong>
                         {routePair(carrier, f)}
                       </div>
                     ))}
@@ -836,7 +919,7 @@ function NetworkSummary({
               </footer>
             </section>
           )}
-          {speeds.data?.display !== false && (
+          {speedsVisible && (
             <section className="aurora-section aurora-speed-section aurora-inset">
               {heading(
                 Gauge,
@@ -853,9 +936,12 @@ function NetworkSummary({
                   </div>
                 </>,
               )}
-              <div className="aurora-dual">
-                {FAMILIES.map((f) => (
-                  <div key={f}>
+              <div
+                className="aurora-dual"
+                data-family-count={speedFamilies.length}
+              >
+                {speedFamilies.map((f) => (
+                  <div key={f} data-family={f}>
                     <div className="aurora-table-labels">
                       <span className="aurora-family">IPv{f}</span>
                       <span>↓ 下行</span>
@@ -867,10 +953,7 @@ function NetworkSummary({
                         key={carrier}
                         data-carrier={carrier}
                       >
-                        <strong>
-                          <CarrierLogo carrier={carrier} />
-                          {carrier}
-                        </strong>
+                        <strong>{carrier}</strong>
                         {speedPair(carrier, f)}
                       </div>
                     ))}
@@ -885,16 +968,19 @@ function NetworkSummary({
           )}
         </>
       ) : mode === "compact" ? (
-        <div className="aurora-matrix">
+        <div
+          className="aurora-matrix"
+          data-family-count={families.length}
+          hidden={!families.length}
+        >
           <div />
           {CARRIERS.map((c) => (
             <div className="aurora-carrier-head" key={c} data-carrier={c}>
-              <CarrierLogo carrier={c} />
               <strong>{c}</strong>
             </div>
           ))}
-          {FAMILIES.map((f) => (
-            <div className="aurora-matrix-family" key={f}>
+          {families.map((f) => (
+            <div className="aurora-matrix-family" key={f} data-family={f}>
               <div className="aurora-family-rail">
                 <Server />
                 <span className="aurora-family">IPv{f}</span>
@@ -907,42 +993,42 @@ function NetworkSummary({
                     className="aurora-matrix-cell aurora-inset"
                     data-carrier={carrier}
                   >
-                    {(panel === "all" || panel === "quality") &&
-                      qualityVisible && (
-                        <Link to={compareUrl} className="aurora-cell-quality">
-                          <div>
-                            <Activity />
-                            <QualityValue source={source} />
-                            <span>丢包</span>
-                            <QualityValue source={source} loss />
-                          </div>
-                          <HistoryStrip source={source} />
-                        </Link>
-                      )}
-                    {(panel === "all" || panel === "routes") &&
-                      routes.data?.display !== false && (
-                        <div className="aurora-cell-route">
-                          <span>
-                            <Route />
-                            线路
-                          </span>
-                          <div className="aurora-route-labels">
-                            <small>去程</small>
-                            <small>回程</small>
-                          </div>
-                          {routePair(carrier, f)}
+                    <strong className="aurora-cell-carrier-name">
+                      {carrier}
+                    </strong>
+                    {qualityShown && qualityFamilies.includes(f) && (
+                      <Link to={compareUrl} className="aurora-cell-quality">
+                        <div>
+                          <Activity />
+                          <QualityValue source={source} />
+                          <span>丢包</span>
+                          <QualityValue source={source} loss />
                         </div>
-                      )}
-                    {(panel === "all" || panel === "speeds") &&
-                      speeds.data?.display !== false && (
-                        <div className="aurora-cell-speed">
-                          <span>
-                            <Gauge />
-                            测速
-                          </span>
-                          {speedPair(carrier, f, true)}
+                        <HistoryStrip source={source} />
+                      </Link>
+                    )}
+                    {routesShown && routeFamilies.includes(f) && (
+                      <div className="aurora-cell-route">
+                        <span>
+                          <Route />
+                          线路
+                        </span>
+                        <div className="aurora-route-labels">
+                          <small>去程</small>
+                          <small>回程</small>
                         </div>
-                      )}
+                        {routePair(carrier, f)}
+                      </div>
+                    )}
+                    {speedsShown && speedFamilies.includes(f) && (
+                      <div className="aurora-cell-speed">
+                        <span>
+                          <Gauge />
+                          测速
+                        </span>
+                        {speedPair(carrier, f, true)}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -950,7 +1036,10 @@ function NetworkSummary({
           ))}
         </div>
       ) : (
-        <div className="aurora-network-table aurora-inset">
+        <div
+          className="aurora-network-table aurora-inset"
+          hidden={!families.length}
+        >
           <div className="aurora-large-columns">
             <span>运营商</span>
             {(panel === "all" || panel === "quality") && qualityVisible && (
@@ -965,20 +1054,18 @@ function NetworkSummary({
                 </span>
               </>
             )}
-            {(panel === "all" || panel === "routes") &&
-              routes.data?.display !== false && (
-                <span>
-                  <Network />
-                  线路 <small>（去程 → 回程）</small>
-                </span>
-              )}
-            {(panel === "all" || panel === "speeds") &&
-              speeds.data?.display !== false && (
-                <span>
-                  <Gauge />
-                  测速 <small>（下载 / 上传 Mbps）</small>
-                </span>
-              )}
+            {routesShown && (
+              <span>
+                <Network />
+                线路 <small>（去程 → 回程）</small>
+              </span>
+            )}
+            {speedsShown && (
+              <span>
+                <Gauge />
+                测速 <small>（下载 / 上传 Mbps）</small>
+              </span>
+            )}
           </div>
           {CARRIERS.map((carrier) => (
             <div
@@ -987,17 +1074,17 @@ function NetworkSummary({
               data-carrier={carrier}
             >
               <div className="aurora-large-carrier-name">
-                <CarrierLogo carrier={carrier} />
                 <strong>中国{carrier}</strong>
               </div>
               <div>
-                {FAMILIES.map((f) => {
+                {families.map((f) => {
                   const source = selectCarrierPing(rows, carrier, f);
                   return (
-                    <div className="aurora-large-row" key={f}>
+                    <div className="aurora-large-row" key={f} data-family={f}>
                       <span className="aurora-family">IPv{f}</span>
                       {(panel === "all" || panel === "quality") &&
-                        qualityVisible && (
+                        qualityVisible &&
+                        (qualityFamilies.includes(f) ? (
                           <>
                             <Link to={compareUrl} title={source?.title}>
                               <QualityValue source={source} />
@@ -1008,13 +1095,36 @@ function NetworkSummary({
                               <HistoryStrip source={source} lossOnly />
                             </Link>
                           </>
-                        )}
-                      {(panel === "all" || panel === "routes") &&
-                        routes.data?.display !== false &&
-                        routePair(carrier, f)}
-                      {(panel === "all" || panel === "speeds") &&
-                        speeds.data?.display !== false &&
-                        speedPair(carrier, f, true)}
+                        ) : (
+                          <>
+                            <span
+                              className="aurora-unconfigured-cell"
+                              aria-hidden="true"
+                            />
+                            <span
+                              className="aurora-unconfigured-cell"
+                              aria-hidden="true"
+                            />
+                          </>
+                        ))}
+                      {routesShown &&
+                        (routeFamilies.includes(f) ? (
+                          routePair(carrier, f)
+                        ) : (
+                          <span
+                            className="aurora-unconfigured-cell"
+                            aria-hidden="true"
+                          />
+                        ))}
+                      {speedsShown &&
+                        (speedFamilies.includes(f) ? (
+                          speedPair(carrier, f, true)
+                        ) : (
+                          <span
+                            className="aurora-unconfigured-cell"
+                            aria-hidden="true"
+                          />
+                        ))}
                     </div>
                   );
                 })}
@@ -1027,7 +1137,7 @@ function NetworkSummary({
               线路说明：去程：大陆 → VPS　 |　 回程：VPS → 大陆
             </span>
             <Link to={compareUrl}>
-              {historyCount} 次历史检测　 |　 单线程　 |　 速率条范围：0 – 1000
+              {historyCount} 次历史检测　 |　 单线程　 |　 速率条范围：0 – 500
               Mbps
             </Link>
           </footer>
@@ -1054,7 +1164,10 @@ function NetworkSummary({
             : "暂无线路观测；可在工作室配置网络观测。"}
         </p>
       )}
-      {qualityVisible && !!extraRows.length && (
+      {!families.length && !routes.isPending && !extraRows.length && (
+        <p className="aurora-empty">尚未配置三网检测任务</p>
+      )}
+      {settings.showPingChart && !!extraRows.length && (
         <details className="aurora-extra">
           <summary>其他质量观测（{extraRows.length}）</summary>
           {extraRows.map((row) => (

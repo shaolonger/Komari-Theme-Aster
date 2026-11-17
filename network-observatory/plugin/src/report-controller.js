@@ -580,7 +580,8 @@ function registerReportController(ctx, native) {
     if (!admin) for (const uuid of Object.keys(nodes)) nodes[uuid] = Object.fromEntries(Object.entries(nodes[uuid]).map(([family, rows]) => [family,
       rows.map(row => ({ ...row, forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
         return: row.return ? { ...row.return, diagnostic: "" } : null }))]));
-    return { available: true, nodes, access: admin ? "admin" : "public",
+    const configured = cardFamilies(s, "routes");
+    return { available: true, configuredFamilies: Object.fromEntries(uuids.map(id => [id, configured[id] || []])), nodes, access: admin ? "admin" : "public",
       backfillPending: admin && uuids.some(uuid => routeHistoryQueue.has(uuid)),
       labelMode: s.homeRouteLabelMode || "preferred", showDetails: s.homeRouteShowDetails === true,
       published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false };
@@ -680,7 +681,8 @@ function registerReportController(ctx, native) {
     }, 500);
   }
   function speedPayload(s, ids, admin, splitFamilies = false) {
-    return { available: true, nodes: homeSpeeds.summary(ids, splitFamilies),
+    const configured = cardFamilies(s, "china-speed");
+    return { available: true, configuredFamilies: Object.fromEntries(ids.map(id => [id, configured[id] || []])), nodes: homeSpeeds.summary(ids, splitFamilies),
       showDetails: s.homeSpeedShowDetails === true,
       backfillPending: admin && ids.some(id => speedHistoryQueue.has(id)),
       access: admin ? "admin" : "public", display: s.homeSpeedDisplay !== false,

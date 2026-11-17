@@ -1,7 +1,7 @@
 {
   "name": "aster-network-observatory-plugin",
   "private": true,
-  "version": "1.22.11",
+  "version": "1.23.0",
   "scripts": {
     "test": "node --test tests/*.node.cjs"
   }

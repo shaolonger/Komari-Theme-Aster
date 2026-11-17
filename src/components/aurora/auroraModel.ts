@@ -20,9 +20,17 @@ export function identifyPingSource(
       : /移动|mobile|cmnet|cminet/i.test(label)
         ? "移动"
         : undefined;
+  // Scheme and port colons are not IPv6 address delimiters.
+  let host = row.target;
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(host)) {
+    try {
+      host = new URL(host).hostname;
+    } catch {
+      /* Preserve malformed targets for the existing fallback. */
+    }
+  }
   const family: Family =
-    /(?:ipv?\s*6|v6|IPv6)/i.test(label) ||
-    (row.target.match(/:/g)?.length || 0) >= 2
+    /(?:ipv?\s*6|v6|IPv6)/i.test(label) || (host.match(/:/g)?.length || 0) >= 2
       ? "6"
       : "4";
   return carrier ? { carrier, family } : null;
@@ -50,4 +58,21 @@ export function sampleColor(value: number, loss = 0, lossOnly = false) {
   if (lossOnly)
     return loss >= 3 ? "#f79c00" : loss >= 1 ? "#a4b900" : "#0baf38";
   return value >= 220 ? "#ff9c00" : value >= 150 ? "#c8ae00" : "#13ad36";
+}
+
+export const SPEED_BAR_MAX_MBPS = 500;
+export function speedMeterPercent(bits: number | null | undefined) {
+  return bits == null || !Number.isFinite(bits)
+    ? 0
+    : Math.max(0, Math.min(100, (bits / (SPEED_BAR_MAX_MBPS * 1e6)) * 100));
+}
+
+/** Explicit task configuration, including an empty list, takes precedence
+ * over retained historical results. Older plugins can fall back to evidence. */
+export function observationFamilies(
+  configured: readonly Family[] | undefined,
+  observed: readonly Family[],
+): Family[] {
+  const available = configured ?? observed;
+  return FAMILIES.filter((family) => available.includes(family));
 }

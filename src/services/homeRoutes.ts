@@ -23,6 +23,7 @@ const row = z.object({
 });
 export const homeRoutesSchema = z.object({
   available: z.boolean(),
+  configuredFamilies: z.record(z.array(z.enum(["4", "6"]))).optional(),
   quickCheck: z.boolean().default(false),
   quickFamilies: z.record(z.array(z.enum(["4", "6"]))).default({}),
   access: z.enum(["admin", "public"]).default("public"),
