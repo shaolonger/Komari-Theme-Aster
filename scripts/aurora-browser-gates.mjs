@@ -207,6 +207,51 @@ export async function checkAurora({
         "Compact latency and labeled packet loss must be separate",
       );
     }
+    failGate(
+      await cdp.value(
+        `(()=>{const s=getComputedStyle(document.querySelector('.aurora-node-card'));return s.backgroundColor==='rgb(255, 255, 255)' && s.backgroundImage==='none'})()`,
+      ),
+      "All Aurora card backgrounds must be white: " + mode,
+    );
+    if (mode !== "large") {
+      failGate(
+        await cdp.value(
+          `(()=>{const pairs=[...document.querySelectorAll('.aurora-quality-histories')];return pairs.length===6 && pairs.every(e=>{const [latency,loss]=e.children,a=latency.getBoundingClientRect(),b=loss.getBoundingClientRect();return latency.dataset.metric==='latency' && loss.dataset.metric==='loss' && latency.children.length===16 && loss.children.length===16 && (!a.width || b.left-a.right>=7)})})()`,
+        ),
+        "Latency and loss must have two independent bars with a visible gap",
+      );
+      failGate(
+        await cdp.value(
+          `(()=>{const [a,b]=document.querySelector('.aurora-quality-histories').children;return [...a.children].some((e,i)=>getComputedStyle(e).backgroundColor!==getComputedStyle(b.children[i]).backgroundColor)})()`,
+        ),
+        "Latency history must not reuse packet-loss colors",
+      );
+    }
+    if (mode === "compact") {
+      failGate(
+        await cdp.value(
+          `(()=>{const e=document.querySelector('.aurora-matrix-cell'),h=e.querySelector('.aurora-cell-carrier-name'),a=e.getBoundingClientRect(),b=h.getBoundingClientRect();return getComputedStyle(e).overflow==='hidden' && Math.abs(b.left-a.left-1)<1 && Math.abs(b.width-a.width+2)<1})()`,
+        ),
+        "Carrier heading must join its content without an exposed rounded corner",
+      );
+      await cdp.value(
+        `document.querySelectorAll('.aurora-family-switch button')[1].click()`,
+      );
+      await waitUntil(
+        cdp,
+        `document.querySelector('.aurora-matrix-family[data-family="6"]').hidden===false && document.querySelector('.aurora-matrix-family[data-family="4"]').hidden===true`,
+        3000,
+      );
+      failGate(
+        await cdp.value(
+          `document.querySelector('.aurora-matrix-family:not([hidden])').textContent.includes('908.4') && document.querySelector('.aurora-matrix-family:not([hidden])').textContent.includes('CTGNet')`,
+        ),
+        "Compact IPv6 switch must expose the real IPv6 evidence",
+      );
+      await cdp.value(
+        `document.querySelectorAll('.aurora-family-switch button')[0].click()`,
+      );
+    }
     // A real evidence dialog must open, not a decorative route badge.
     await cdp.value(
       "document.querySelector('.aurora-pill:not(:disabled)').click()",
@@ -283,7 +328,7 @@ export async function checkAurora({
   const fleetLayouts = [];
   setFixture({ nodes: 8 });
   for (const [mode, minColumns, maxWidth] of [
-    ["compact", 2, 800],
+    ["compact", 5, 280],
     ["standard", 3, 480],
     ["large", 2, 840],
   ]) {
@@ -317,6 +362,19 @@ export async function checkAurora({
     await cdp.value("window.scrollTo(0,0)");
     await captureScreenshot(cdp, `${base}-${mode}-fleet.png`);
     fleetLayouts.push({ mode, ...geometry });
+    if (mode === "compact") {
+      await width(1920, 1100);
+      await cdp.value(
+        "new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))",
+      );
+      failGate(
+        await cdp.value(
+          "getComputedStyle(document.querySelector('.home-node-results')).gridTemplateColumns.split(' ').length>=6",
+        ),
+        "Compact must fit six columns at 1920px with the native sidebar",
+      );
+      await captureScreenshot(cdp, `${base}-compact-fleet-wide.png`);
+    }
     if (mode === "standard") {
       await cdp.value(
         "(()=>{const input=document.querySelector('.cupertino-home-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'PPFlight LAX Global S2');input.dispatchEvent(new Event('input',{bubbles:true}))})()",

@@ -30,7 +30,6 @@ import {
   Network,
   RefreshCw,
   Route,
-  Server,
   TrendingUp,
 } from "lucide-react";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
@@ -103,23 +102,26 @@ function Meter({
 function HistoryStrip({
   source,
   lossOnly = false,
+  segments = 32,
 }: {
   source?: HomepagePingSourceRow;
   lossOnly?: boolean;
+  segments?: number;
 }) {
   const samples = source?.samples.slice(-32) || [];
   return (
     <div
       className="aurora-history"
+      data-metric={lossOnly ? "loss" : "latency"}
       aria-label={
         source
-          ? `${source.name}，最近 ${samples.length} 个采样；${source.title}`
+          ? `${source.name}，${lossOnly ? "丢包率" : "延迟"}，最近 ${samples.length} 个采样；${source.title}`
           : "暂无质量历史"
       }
       title={source?.title || "未配置该运营商的 Ping 任务"}
     >
-      {Array.from({ length: 32 }, (_, index) => {
-        const sample = samples[Math.floor((index * samples.length) / 32)];
+      {Array.from({ length: segments }, (_, index) => {
+        const sample = samples[Math.floor((index * samples.length) / segments)];
         const loss = sample?.sampleCount
           ? ((sample.lossCount || 0) / sample.sampleCount) * 100
           : sample?.value === -1
@@ -130,12 +132,21 @@ function HistoryStrip({
             key={index}
             style={{
               background: sample
-                ? sampleColor(sample.value, loss, lossOnly)
+                ? sampleColor(sample.value, lossOnly ? loss : 0, lossOnly)
                 : "var(--aurora-line)",
             }}
           />
         );
       })}
+    </div>
+  );
+}
+
+function QualityHistories({ source }: { source?: HomepagePingSourceRow }) {
+  return (
+    <div className="aurora-quality-histories">
+      <HistoryStrip source={source} segments={16} />
+      <HistoryStrip source={source} lossOnly segments={16} />
     </div>
   );
 }
@@ -577,6 +588,7 @@ function NetworkSummary({
     speeds = useHomeSpeeds();
   const [selectedPanel, setPanel] = useState<Panel>("all"),
     [city, setCity] = useState("北京");
+  const [selectedFamily, setFamily] = useState<Family>("4");
   const [speedDetail, setSpeedDetail] = useState<HomeSpeedNode | null>(null);
   const rows = buildHomepagePingSourceRows(
     model.ping,
@@ -637,6 +649,9 @@ function NetworkSummary({
     ...(routesShown ? routeFamilies : []),
     ...(speedsShown ? speedFamilies : []),
   ]);
+  const compactFamily = families.includes(selectedFamily)
+    ? selectedFamily
+    : families[0];
   const gridMetrics = [
     qualityShown ? "1fr 1fr" : "",
     routesShown ? "1.25fr" : "",
@@ -874,7 +889,7 @@ function NetworkSummary({
                           <QualityValue source={source} />
                           <QualityValue source={source} loss />
                         </div>
-                        <HistoryStrip source={source} />
+                        <QualityHistories source={source} />
                       </Link>
                     );
                   })}
@@ -973,18 +988,35 @@ function NetworkSummary({
           data-family-count={families.length}
           hidden={!families.length}
         >
-          <div />
-          {CARRIERS.map((c) => (
-            <div className="aurora-carrier-head" key={c} data-carrier={c}>
-              <strong>{c}</strong>
-            </div>
-          ))}
+          <div
+            className="aurora-family-switch"
+            role="group"
+            aria-label="检测地址族"
+          >
+            {families.map((f) =>
+              families.length === 1 ? (
+                <span key={f} className="aurora-family">
+                  IPv{f}
+                </span>
+              ) : (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={compactFamily === f}
+                  onClick={() => setFamily(f)}
+                >
+                  IPv{f}
+                </button>
+              ),
+            )}
+          </div>
           {families.map((f) => (
-            <div className="aurora-matrix-family" key={f} data-family={f}>
-              <div className="aurora-family-rail">
-                <Server />
-                <span className="aurora-family">IPv{f}</span>
-              </div>
+            <div
+              className="aurora-matrix-family"
+              key={f}
+              data-family={f}
+              hidden={f !== compactFamily}
+            >
               {CARRIERS.map((carrier) => {
                 const source = selectCarrierPing(rows, carrier, f);
                 return (
@@ -1004,7 +1036,7 @@ function NetworkSummary({
                           <span>丢包</span>
                           <QualityValue source={source} loss />
                         </div>
-                        <HistoryStrip source={source} />
+                        <QualityHistories source={source} />
                       </Link>
                     )}
                     {routesShown && routeFamilies.includes(f) && (
