@@ -3,6 +3,7 @@ import { Check, Monitor, Smartphone } from 'lucide-react';
 import type { Appearance, NodeViewMode } from '@/utils/themeSettings';
 
 const appearances: { value: Appearance; label: string; detail: string }[] = [
+  { value: 'aurora', label: '极光玻璃', detail: '淡紫玻璃、三网双栈矩阵与完整网络监测，三种卡片各具布局' },
   { value: 'light', label: '浅色', detail: '明亮、清晰，适合日间工作' },
   { value: 'system', label: '跟随系统', detail: '随设备的深浅色模式自动切换' },
   { value: 'dark', label: '深色', detail: '柔和暗面，适合夜间持续观测' },

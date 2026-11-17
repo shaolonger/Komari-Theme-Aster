@@ -1,0 +1,35 @@
+[
+  {
+    "mode": "compact",
+    "width": 1199,
+    "card": {
+      "x": 32,
+      "y": 359.1875,
+      "width": 1125,
+      "height": 1264.34375,
+      "scale": 1
+    }
+  },
+  {
+    "mode": "standard",
+    "width": 1122,
+    "card": {
+      "x": 32,
+      "y": 395.1875,
+      "width": 1048,
+      "height": 1323.21875,
+      "scale": 1
+    }
+  },
+  {
+    "mode": "large",
+    "width": 1536,
+    "card": {
+      "x": 32,
+      "y": 359.1875,
+      "width": 1462,
+      "height": 1008.734375,
+      "scale": 1
+    }
+  }
+]

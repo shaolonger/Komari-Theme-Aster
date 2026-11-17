@@ -5,6 +5,7 @@ import { FloatingControls } from "./FloatingControls";
 import { useSiteMetadata } from "@/hooks/useSiteMetadata";
 import { lazy, Suspense } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
+const AuroraStyle = lazy(() => import("@/components/aurora/AuroraStyle"));
 const CupertinoShell = lazy(() => import("./CupertinoShell"));
 const LuminousShell = lazy(() => import("./LuminousShell"));
 
@@ -14,6 +15,7 @@ export function AppShell() {
   return (
     <div className="app-shell relative flex min-h-screen flex-col">
       <BackgroundLayer />
+      {appearance === "aurora" && <Suspense fallback={null}><AuroraStyle /></Suspense>}
       {appearance === "luminous" && <Suspense fallback={null}><LuminousShell /></Suspense>}
       {isCupertinoAppearance(appearance) && <Suspense fallback={null}><CupertinoShell /></Suspense>}
       <FloatingControls />

@@ -115,12 +115,12 @@ function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedApp
   const root = document.documentElement;
   const previous = `${root.dataset.appearance}:${root.dataset.themeStyle}`;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = isCupertinoAppearance(appearance) ? "cupertino" : appearance === "luminous" ? appearance : "default";
+  root.dataset.themeStyle = isCupertinoAppearance(appearance) ? "cupertino" : (appearance === "luminous" || appearance === "aurora") ? appearance : "default";
   root.style.colorScheme = resolvedAppearance;
   if (previous !== `${root.dataset.appearance}:${root.dataset.themeStyle}`) notifyPaletteChanged();
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
-    meta.content = appearance === "cupertino-dark" ? "#141416" : appearance === "luminous" ? "#eaf3ff" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
+    meta.content = appearance === "cupertino-dark" ? "#141416" : appearance === "aurora" ? "#e9edff" : appearance === "luminous" ? "#eaf3ff" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
   }
 }
 

@@ -1,3 +1,5 @@
+import { checkAurora } from "./aurora-browser-gates.mjs";
+import { auroraNames, auroraNodes, auroraStatus, auroraStats, auroraSeries, auroraRoutes, auroraSpeeds } from "./aurora-fixture.mjs";
 import { checkCupertino } from "./cupertino-browser-gates.mjs";
 import { checkLuminous } from "./luminous-browser-gates.mjs";
 import { checkCardObservations } from "./card-observation-browser-gates.mjs";
@@ -180,6 +182,7 @@ function isOfficialFixture(fixture) {
 }
 
 function nodeList(size) {
+  if (activeFixture.aurora) return auroraNodes(size);
   const docsNames = [
     ["洛杉矶 Edge", "北美", "US", "Vultr"],
     ["东京 Core", "亚太", "JP", "Linode"],
@@ -270,6 +273,7 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
+  if (activeFixture.aurora) return {...auroraStatus(), online: !activeFixture.auroraOffline};
   const docsOffline = (activeFixture.reportOffline || activeFixture.docs) && index === 0;
   return {
     online: activeFixture.cupertino ? index !== 7 : activeFixture.luminousReference ? index < 42 : !docsOffline,
@@ -361,13 +365,14 @@ function officialPingMetricSeries(params, fixture) {
   return {
     start: new Date(windowStart).toISOString(),
     end: new Date(end).toISOString(),
-    series: fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
+    series: fixture.aurora ? fixture.auroraEmpty ? [] : auroraSeries(series) : fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
     count: series.length,
   };
 }
 
 function officialPingStats(params, fixture) {
   const entityIds = requestedEntityIds(params, fixture);
+  if (fixture.aurora) return fixture.auroraEmpty ? {stats:[],count:0} : auroraStats(entityIds);
   const start = toIsoOrNow(params?.start);
   const end = toIsoOrNow(params?.end);
   return {
@@ -481,12 +486,13 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === "/api/me") {
     count("me", fixture.run);
-    return sendJson(response, { logged_in: Boolean(fixture.ui), username: "test", uuid: "test" });
+    return sendJson(response, { logged_in: Boolean(fixture.ui) && !fixture.auroraGuest, username: "test", uuid: "test" });
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
-  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
+    if (fixture.aurora) return sendJson(response, {...auroraSpeeds(), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (!fixture.reports) return sendJson(response, { available: false, nodes: {}, access: fixture.ui ? 'admin' : 'public', display: true, published: [] });
     return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeSpeedNodes.includes(n.uuid)).map(n => {
       const families = n.uuid==='node-2' ? {...projectedSpeeds,'6':null} : n.uuid==='node-1' ? {...projectedSpeeds,'4':null} : projectedSpeeds;
@@ -496,6 +502,7 @@ const server = createServer(async (request, response) => {
   }
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
+    if (fixture.aurora) return sendJson(response, {...auroraRoutes(), ...(fixture.auroraEmpty ? {available:false,nodes:{},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
     response.writeHead(404, { 'Content-Type':'application/json' });
     response.end(JSON.stringify({error:'plugin unavailable'}));
@@ -583,7 +590,7 @@ const server = createServer(async (request, response) => {
         return sendRpcResult(response, payload.id, reports);
       }
       if (payload.method === "public:getPublicPingTasks") {
-        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
+        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
         return sendRpcResult(response, payload.id, [{
           id: 1,
           weight: 1,
@@ -994,7 +1001,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY) {
+  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -2035,7 +2042,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
-  if (!process.env.BROWSER_CUPERTINO_ONLY) {
+  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: process.env.BROWSER_LUMINOUS_REFERENCE ? 49 : 15, luminousReference: Boolean(process.env.BROWSER_LUMINOUS_REFERENCE), soak: false, run: "luminous", ui: true, docs: true, quotaUsage: true, comprehensive: true, workspaceMetrics: true };
     savedUiSettings = null;
@@ -2047,7 +2054,7 @@ try {
       results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, reference: true }));
     }
   }
-  if (!process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: "cupertino", ui: true, docs: true, quotaUsage: true, comprehensive: true, workspaceMetrics: true };
     savedUiSettings = null;
@@ -2058,7 +2065,7 @@ try {
       results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,appearance,enableNetworkCards:()=>{activeFixture.cupertinoResources=true;activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
     }
   }
-  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, ui: true, docs: true, run: "removed-appearances" };
     savedUiSettings = null;
@@ -2077,6 +2084,12 @@ try {
       }
     }
     results.push({ removedAppearances: "six retired themes absent from menus; raw/JSON preferences and server defaults fall back to system" });
+  }
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = {backend: BACKEND_PROFILES.official.id,nodes:1,aurora:true,luminousReference:true,workspaceMetrics:true,reports:true,ui:true,docs:true,run:'aurora'};
+    savedUiSettings = {defaultAppearance:'aurora',showHomeOverview:false,showCostSummary:false};
+    results.push(await checkAurora({cdp,origin:`http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,count: key => requestCounts.get(activeFixture.run)?.[key] || 0,setFixture: patch => {activeFixture={...activeFixture,...patch};}}));
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {

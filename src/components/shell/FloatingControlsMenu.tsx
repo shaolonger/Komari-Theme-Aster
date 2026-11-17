@@ -17,6 +17,7 @@ import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { clsx } from "clsx";
 
 const APPEARANCE_OPTIONS = [
+  { value: "aurora", icon: Sparkles, label: "极光玻璃" },
   { value: "light", icon: Sun, label: "浅色" },
   { value: "system", icon: Monitor, label: "跟随系统" },
   { value: "dark", icon: Moon, label: "深色" },

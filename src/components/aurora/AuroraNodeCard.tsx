@@ -1,0 +1,1110 @@
+import {
+  lazy,
+  memo,
+  Suspense,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { Link } from "react-router-dom";
+import {
+  Activity,
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  CalendarClock,
+  ChartNoAxesColumnIncreasing,
+  Clock3,
+  Cpu,
+  Database,
+  DollarSign,
+  Ellipsis,
+  Gauge,
+  Globe,
+  HardDrive,
+  Info,
+  Layers,
+  LayoutGrid,
+  MapPin,
+  MemoryStick,
+  Network,
+  RefreshCw,
+  Route,
+  Server,
+  TrendingUp,
+} from "lucide-react";
+import { useNodeCardModel } from "@/hooks/useNodeCardModel";
+import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { useHomeRoutes, useHomeSpeeds } from "@/hooks/useHomeRoutes";
+import { useCardCheck } from "@/hooks/useCardChecks";
+import { CardCheckFeedback } from "@/components/node/CardCheckControls";
+import { Flag } from "@/components/ui/Flag";
+import { OsLogo } from "@/components/ui/OsLogo";
+import {
+  buildHomepagePingCompareUrl,
+  buildHomepagePingSourceRows,
+  type HomepagePingSourceRow,
+} from "@/utils/homepagePingSources";
+import { formatBytes } from "@/utils/format";
+import { formatDisplayDateTime } from "@/utils/timeDisplay";
+import { regionLabel } from "@/utils/regionLabel";
+import { routeHeadline } from "@/utils/carrierRoutePresentation";
+import type { RouteEvidence } from "@/services/homeRoutes";
+import type { HomeSpeedNode, SpeedValue } from "@/services/homeSpeeds";
+import {
+  CARRIERS,
+  FAMILIES,
+  identifyPingSource,
+  sampleColor,
+  selectCarrierPing,
+  type Carrier,
+  type Family,
+} from "./auroraModel";
+import { CarrierLogo, ServerAvatar } from "./AuroraIcons";
+
+const RouteDetails = lazy(
+  () => import("@/components/node/RouteEvidenceDetails"),
+);
+const SpeedDetails = lazy(
+  () => import("@/components/node/CarrierSpeedDetails"),
+);
+type Model = ReturnType<typeof useNodeCardModel>;
+type Mode = "compact" | "standard" | "large";
+type Panel = "all" | "quality" | "routes" | "speeds";
+const pct = (v: number) => Math.max(0, Math.min(100, v));
+
+function Meter({
+  value,
+  className = "",
+}: {
+  value: number;
+  className?: string;
+}) {
+  return (
+    <div className={`aurora-meter ${className}`}>
+      <i style={{ width: `${pct(value)}%` }} />
+    </div>
+  );
+}
+
+function HistoryStrip({
+  source,
+  lossOnly = false,
+}: {
+  source?: HomepagePingSourceRow;
+  lossOnly?: boolean;
+}) {
+  const samples = source?.samples.slice(-32) || [];
+  return (
+    <div
+      className="aurora-history"
+      aria-label={
+        source
+          ? `${source.name}，最近 ${samples.length} 个采样；${source.title}`
+          : "暂无质量历史"
+      }
+      title={source?.title || "未配置该运营商的 Ping 任务"}
+    >
+      {Array.from({ length: 32 }, (_, index) => {
+        const sample = samples[Math.floor((index * samples.length) / 32)];
+        const loss = sample?.sampleCount
+          ? ((sample.lossCount || 0) / sample.sampleCount) * 100
+          : sample?.value === -1
+            ? 100
+            : 0;
+        return (
+          <i
+            key={index}
+            style={{
+              background: sample
+                ? sampleColor(sample.value, loss, lossOnly)
+                : "var(--aurora-line)",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function QualityValue({
+  source,
+  loss = false,
+}: {
+  source?: HomepagePingSourceRow;
+  loss?: boolean;
+}) {
+  const value = loss ? source?.lossPercent : source?.latencyMs;
+  const color =
+    value == null
+      ? undefined
+      : loss
+        ? value >= 5
+          ? "#e6183a"
+          : value >= 1
+            ? "#879600"
+            : "#128c16"
+        : value >= 190
+          ? "#b96700"
+          : "#9e6800";
+  return (
+    <span className="aurora-quality-value" style={{ color }}>
+      <b>
+        {value == null
+          ? "—"
+          : loss
+            ? value.toLocaleString("zh-CN", {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              })
+            : Math.round(value)}
+      </b>
+      <small>{loss ? "%" : "ms"}</small>
+    </span>
+  );
+}
+
+function RouteValue({
+  value,
+  direction,
+  carrier,
+  timeZone,
+  labelMode,
+}: {
+  value?: RouteEvidence | null;
+  direction: string;
+  carrier: Carrier;
+  timeZone: string;
+  labelMode: "preferred" | "full";
+}) {
+  const [open, setOpen] = useState(false);
+  const headline = routeHeadline(value || null, labelMode);
+  return (
+    <>
+      <button
+        type="button"
+        className="aurora-pill"
+        data-carrier={carrier}
+        data-state={value?.state || "missing"}
+        disabled={!value}
+        onClick={() => setOpen(true)}
+        title={`${direction} · ${headline} · ${value?.state === "stale" ? "超过 24 小时" : "查看线路证据"}`}
+      >
+        {headline}
+      </button>
+      {open && (
+        <Suspense fallback={<span role="status">正在读取证据…</span>}>
+          <RouteDetails
+            value={value || null}
+            headline={headline}
+            direction={direction}
+            status={
+              value?.state === "stale"
+                ? "超过 24 小时"
+                : value?.state === "partial"
+                  ? "终点未确认"
+                  : "观测证据"
+            }
+            timeZone={timeZone}
+            onClose={() => setOpen(false)}
+          />
+        </Suspense>
+      )}
+    </>
+  );
+}
+
+function Speed({
+  value,
+  direction,
+  onClick,
+  bar = false,
+}: {
+  value?: SpeedValue;
+  direction: "download" | "upload";
+  onClick: () => void;
+  bar?: boolean;
+}) {
+  const bits = value?.bitsPerSecond;
+  const Icon = direction === "download" ? ArrowDown : ArrowUp;
+  return (
+    <button
+      type="button"
+      className="aurora-speed"
+      disabled={bits == null}
+      onClick={onClick}
+      title={`${direction === "download" ? "下行 · 流入 VPS" : "上行 · 流出 VPS"} · ${value?.state === "partial" ? "部分结果 · " : ""}查看测量详情`}
+    >
+      <span>
+        <Icon />
+        <b>
+          {bits == null
+            ? "—"
+            : (bits / 1e6).toLocaleString("zh-CN", {
+                maximumFractionDigits: 1,
+              })}
+        </b>
+        <small>Mbps</small>
+      </span>
+      {bar && <Meter value={bits == null ? 0 : bits / 1e7} />}
+    </button>
+  );
+}
+
+function CheckAction({
+  uuid,
+  module,
+  label,
+}: {
+  uuid: string;
+  module: "routes" | "china-speed";
+  label: string;
+}) {
+  const routes = useHomeRoutes(),
+    speeds = useHomeSpeeds();
+  const data = module === "routes" ? routes.data : speeds.data;
+  const check4 = useCardCheck(uuid, module, "4"),
+    check6 = useCardCheck(uuid, module, "6");
+  const configured = data?.quickFamilies[uuid] || [];
+  if (!data?.quickCheck || !check4.allowed || !configured.length) return null;
+  const checks = [check4, check6].filter((_, i) =>
+    configured.includes(FAMILIES[i]),
+  );
+  const busy = checks.some((check) => check.busy);
+  return (
+    <span className="aurora-check">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => checks.forEach((check) => check.start())}
+        title={`按已有方案检测 ${configured.map((f) => `IPv${f}`).join(" / ")}${module === "china-speed" ? "，会消耗测速流量" : ""}`}
+      >
+        <RefreshCw className={busy ? "animate-spin" : ""} />
+        {busy ? "检测中" : label}
+      </button>
+      {checks
+        .filter((check) => check.entry)
+        .map((check, i) => (
+          <CardCheckFeedback key={i} check={check} uuid={uuid}>
+            {null}
+          </CardCheckFeedback>
+        ))}
+    </span>
+  );
+}
+
+function NodeSummary({
+  model,
+  mode,
+  uuid,
+}: {
+  model: Model;
+  mode: Mode;
+  uuid: string;
+}) {
+  const [more, setMore] = useState(false);
+  if (!model.node) return null;
+  const {
+    node,
+    traffic,
+    uptime,
+    tags,
+    expire,
+    renewalPrice,
+    upRate,
+    downRate,
+  } = model;
+  const known = node.updatedAt > 0;
+  const used = traffic.usagePercent;
+  const remaining = used == null ? 100 : pct(100 - used);
+  const status =
+    node.online === true
+      ? `在线 ${uptime.value} ${uptime.unit}`
+      : node.online === false
+        ? "离线"
+        : "待上报";
+  const resources = [
+    {
+      label: "CPU",
+      Icon: Cpu,
+      value: known ? `${node.cpuPct.toFixed(1)}%` : "—",
+      percent: node.cpuPct,
+      detail: `${node.cpu_cores} 核`,
+      tone: "blue",
+    },
+    {
+      label: "内存",
+      Icon: MemoryStick,
+      value: known ? `${Math.round(node.ramPct)}%` : "—",
+      percent: node.ramPct,
+      detail: `${known ? formatBytes(node.ramUsed) : "—"} / ${formatBytes(node.ramTotal)}`,
+      tone: "purple",
+    },
+    {
+      label: "磁盘",
+      Icon: HardDrive,
+      value: known ? `${Math.round(node.diskPct)}%` : "—",
+      percent: node.diskPct,
+      detail: `${known ? formatBytes(node.diskUsed) : "—"} / ${formatBytes(node.diskTotal)}`,
+      tone: "orange",
+    },
+    {
+      label: "负载",
+      Icon: Gauge,
+      value: known ? node.load1.toFixed(2) : "—",
+      percent: model.loadFraction * 100,
+      detail: `5 分钟 ${known ? node.load5.toFixed(2) : "—"}`,
+      tone: "pink",
+    },
+  ];
+  const quota = (
+    <div className="aurora-quota">
+      <span>
+        <Database />
+        剩余流量 <strong>{known ? traffic.remainingLabel : "—"}</strong> /{" "}
+        {node.traffic_limit > 0 ? formatBytes(node.traffic_limit) : "∞"}
+      </span>
+      <Meter value={known ? remaining : 0} className="aurora-quota-meter" />
+      <span className="aurora-reset">
+        {traffic.typeLabel}
+        {node.traffic_limit > 0 ? " · 按计费周期重置" : " · 不限量"}
+      </span>
+    </div>
+  );
+  const billing = (
+    <div className="aurora-billing">
+      <span>
+        <CalendarClock />
+        <span>
+          {expire.unit ? (
+            <>
+              剩余{" "}
+              <b>
+                {expire.value} {expire.unit}
+              </b>
+            </>
+          ) : (
+            expire.value
+          )}
+        </span>
+      </span>
+      <span>
+        <DollarSign />
+        <strong>{renewalPrice || "未填写续费"}</strong>
+      </span>
+    </div>
+  );
+  return (
+    <section
+      className="aurora-summary aurora-glass"
+      aria-label={`${node.name} 实时指标`}
+    >
+      <header className="aurora-node-header">
+        {mode === "large" && <ServerAvatar />}
+        <div className="aurora-identity">
+          <div className="aurora-title">
+            <Flag region={node.region} size={mode === "large" ? 34 : 48} />
+            <Link to={`/instance/${uuid}`} title={node.name}>
+              {node.name}
+            </Link>
+            {mode === "large" && (
+              <span className="aurora-status" data-online={node.online}>
+                {status}
+              </span>
+            )}
+          </div>
+          <p className="aurora-subtitle">
+            {[
+              regionLabel(node.region),
+              node.public_remark,
+              node.provider || node.group,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <div className="aurora-tags">
+            {tags.map((tag, i) => (
+              <span key={i} data-muted={tag.color === "gray"} title={tag.label}>
+                {tag.label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="aurora-node-tools">
+          <Link
+            to={`/instance/${uuid}`}
+            aria-label={`查看 ${node.name} 详情`}
+            title="节点详情"
+          >
+            <Globe />
+          </Link>
+          <Link
+            to={`/instance/${uuid}?focus=load`}
+            aria-label={`${node.name} 性能趋势`}
+            title="性能趋势"
+          >
+            <ChartNoAxesColumnIncreasing />
+          </Link>
+          <OsLogo value={node.os} size={32} />
+          {mode === "large" && (
+            <button
+              type="button"
+              onClick={() => setMore((v) => !v)}
+              aria-expanded={more}
+              aria-label="更多节点操作"
+            >
+              <Ellipsis />
+            </button>
+          )}
+          {mode !== "large" && (
+            <span className="aurora-status" data-online={node.online}>
+              {status}
+            </span>
+          )}
+        </div>
+      </header>
+      {more && (
+        <div className="aurora-more">
+          <Link to={`/instance/${uuid}`}>完整节点资料</Link>
+          <Link to={`/instance/${uuid}?focus=ping`}>质量历史</Link>
+          <Link to={`/instance/${uuid}/report`}>生成报告</Link>
+        </div>
+      )}
+      <div className="aurora-vitals">
+        <div className="aurora-resources aurora-inset">
+          {resources.map(({ label, Icon, value, percent, detail, tone }) => (
+            <div className="aurora-resource" data-tone={tone} key={label}>
+              <div>
+                <Icon />
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+              <Meter value={known ? percent : 0} />
+              <small>{detail}</small>
+            </div>
+          ))}
+        </div>
+        <div className="aurora-transfer aurora-inset">
+          <div className="aurora-rates">
+            <span>
+              <ArrowUp />
+              <strong>{node.online ? upRate.value : "—"}</strong>
+              <small>{upRate.unit}</small>
+            </span>
+            <span>
+              <ArrowDown />
+              <strong>{node.online ? downRate.value : "—"}</strong>
+              <small>{downRate.unit}</small>
+            </span>
+          </div>
+          {mode === "compact" ? (
+            <div className="aurora-compact-quota">
+              {quota}
+              <b>{known ? remaining.toFixed(1) : "—"}%</b>
+            </div>
+          ) : (
+            <div className="aurora-totals">
+              <span>
+                <Database />
+                <b>{known ? formatBytes(node.trafficUp) : "—"}</b>
+              </span>
+              <span>
+                <ArrowDown />
+                <b>{known ? formatBytes(node.trafficDown) : "—"}</b>
+              </span>
+            </div>
+          )}
+          {billing}
+          {mode !== "large" && (
+            <div className="aurora-connections">
+              <span>
+                TCP <b>{known ? node.connectionsTcp : "—"}</b>
+              </span>
+              <span>
+                UDP <b>{known ? node.connectionsUdp : "—"}</b>
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      {mode !== "compact" && quota}
+    </section>
+  );
+}
+
+function NetworkSummary({
+  model,
+  uuid,
+  mode,
+}: {
+  model: Model;
+  uuid: string;
+  mode: Mode;
+}) {
+  const settings = useThemeSettings(),
+    routes = useHomeRoutes(),
+    speeds = useHomeSpeeds();
+  const [selectedPanel, setPanel] = useState<Panel>("all"),
+    [city, setCity] = useState("北京");
+  const [speedDetail, setSpeedDetail] = useState<HomeSpeedNode | null>(null);
+  const rows = buildHomepagePingSourceRows(
+    model.ping,
+    settings.homepagePingTaskGroups,
+    settings.homepagePingTaskOrder[uuid],
+  );
+  const qualityVisible = settings.showPingChart;
+  const routesVisible = routes.data?.display !== false,
+    speedsVisible = speeds.data?.display !== false;
+  const panel =
+    (selectedPanel === "quality" && !qualityVisible) ||
+    (selectedPanel === "routes" && !routesVisible) ||
+    (selectedPanel === "speeds" && !speedsVisible)
+      ? "all"
+      : selectedPanel;
+  const gridMetrics = [
+    (panel === "all" || panel === "quality") && qualityVisible ? "1fr 1fr" : "",
+    (panel === "all" || panel === "routes") && routesVisible ? "1.25fr" : "",
+    (panel === "all" || panel === "speeds") && speedsVisible ? "1.5fr" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const extraRows = rows.filter((row) => !identifyPingSource(row));
+  const routeNode =
+    routes.data?.display === false ? undefined : routes.data?.nodes[uuid];
+  const speedNode =
+    speeds.data?.display === false ? undefined : speeds.data?.nodes[uuid];
+  const cities = [
+    ...new Set(
+      FAMILIES.flatMap((f) => speedNode?.[f]?.cities.map((c) => c.city) || []),
+    ),
+  ];
+  const selectedCity = cities.includes(city as "北京")
+    ? city
+    : cities[0] || "北京";
+  const routeTimes = FAMILIES.flatMap(
+    (f) =>
+      routeNode?.[f]
+        .flatMap((r) => [r.forward?.at, r.return?.at])
+        .filter((t): t is string => Boolean(t)) || [],
+  ).sort();
+  const speedTimes = FAMILIES.flatMap((f) =>
+    speedNode?.[f]?.at ? [speedNode[f]!.at] : [],
+  ).sort();
+  const time = (at?: string) =>
+    at
+      ? formatDisplayDateTime(Date.parse(at), settings.displayTimeZone, {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        })
+      : "暂无检测";
+  const historyCount = Math.max(0, ...rows.map((row) => row.samples.length));
+  const compareUrl = buildHomepagePingCompareUrl(
+    uuid,
+    rows.map((row) => row.taskId),
+  );
+  const cityPicker = (
+    <label className="aurora-city">
+      <MapPin />
+      <select
+        aria-label="测速地区"
+        value={selectedCity}
+        disabled={!cities.length}
+        onChange={(e) => setCity(e.target.value)}
+      >
+        {(cities.length ? cities : ["北京"]).map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
+    </label>
+  );
+  const routePair = (carrier: Carrier, family: Family) => {
+    const row = routeNode?.[family].find((row) => row.carrier === carrier);
+    return (
+      <div className="aurora-route-pair">
+        <RouteValue
+          value={row?.forward}
+          direction={`${carrier} IPv${family} 去程（大陆 → VPS）`}
+          carrier={carrier}
+          timeZone={settings.displayTimeZone}
+          labelMode={routes.data?.labelMode || "preferred"}
+        />
+        <ArrowRight />
+        <RouteValue
+          value={row?.return}
+          direction={`${carrier} IPv${family} 回程（VPS → 大陆）`}
+          carrier={carrier}
+          timeZone={settings.displayTimeZone}
+          labelMode={routes.data?.labelMode || "preferred"}
+        />
+      </div>
+    );
+  };
+  const speedPair = (carrier: Carrier, family: Family, bar = false) => {
+    const snapshot = speedNode?.[family],
+      row = snapshot?.cities
+        .find((c) => c.city === selectedCity)
+        ?.rows.find((r) => r.carrier === carrier);
+    return (
+      <div
+        className="aurora-speed-pair"
+        data-stale={snapshot?.stale}
+        title={snapshot?.stale ? "测速结果超过有效期" : undefined}
+      >
+        <Speed
+          value={row?.download}
+          direction="download"
+          bar={bar}
+          onClick={() => setSpeedDetail(snapshot || null)}
+        />
+        <Speed
+          value={row?.upload}
+          direction="upload"
+          bar={bar}
+          onClick={() => setSpeedDetail(snapshot || null)}
+        />
+      </div>
+    );
+  };
+  const heading = (Icon: typeof Activity, title: string, tail?: ReactNode) => (
+    <header className="aurora-section-head">
+      <h3>
+        <Icon />
+        {title}
+      </h3>
+      {tail}
+    </header>
+  );
+  const tabs = (
+    <div className="aurora-tabs" role="group" aria-label="三网视图">
+      {(
+        [
+          {
+            value: "all",
+            label: mode === "large" ? "三网监测" : "综合视图",
+            Icon: mode === "large" ? Activity : LayoutGrid,
+          },
+          {
+            value: "quality",
+            label: mode === "large" ? "质量趋势" : "质量",
+            Icon: TrendingUp,
+          },
+          {
+            value: "routes",
+            label: mode === "large" ? "路由详情" : "线路",
+            Icon: Network,
+          },
+          {
+            value: "speeds",
+            label: mode === "large" ? "测速记录" : "测速",
+            Icon: Gauge,
+          },
+        ] as const
+      )
+        .filter(
+          ({ value }) =>
+            value === "all" ||
+            (value === "quality" && qualityVisible) ||
+            (value === "routes" && routesVisible) ||
+            (value === "speeds" && speedsVisible),
+        )
+        .map(({ value, label, Icon }) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={panel === value}
+            onClick={() => setPanel(value)}
+          >
+            <Icon />
+            {label}
+          </button>
+        ))}
+    </div>
+  );
+  return (
+    <section
+      className={`aurora-network aurora-glass aurora-network-${mode}`}
+      aria-label="三网网络表现"
+      data-panel={panel}
+      style={{ "--aurora-metrics": gridMetrics || "1fr" } as CSSProperties}
+    >
+      {mode === "compact" && (
+        <header className="aurora-network-heading">
+          <div>
+            <h2>
+              <span>
+                <Activity />
+              </span>
+              三网网络表现
+            </h2>
+            <p>延迟 · 丢包 · 线路 · 速度 一体化观测</p>
+          </div>
+          <div>
+            {tabs}
+            {cityPicker}
+          </div>
+        </header>
+      )}
+      {mode === "large" && (
+        <header className="aurora-network-toolbar">
+          {tabs}
+          <span>最近检测: {time(routeTimes.at(-1))}</span>
+          <CheckAction
+            uuid={uuid}
+            module={panel === "speeds" ? "china-speed" : "routes"}
+            label="重新检测"
+          />
+          {panel === "speeds" && cityPicker}
+        </header>
+      )}
+      {mode === "standard" ? (
+        <>
+          {qualityVisible && (
+            <section className="aurora-section aurora-quality-section aurora-inset">
+              {heading(
+                Activity,
+                "三网质量",
+                <span>延迟 / 丢包 · {historyCount} 次历史</span>,
+              )}
+              <div className="aurora-quality-labels">
+                <span>运营商</span>
+                <span className="aurora-family">IPv4</span>
+                <span className="aurora-family">IPv6</span>
+              </div>
+              {CARRIERS.map((carrier) => (
+                <div className="aurora-quality-row" key={carrier}>
+                  <strong data-carrier={carrier}>
+                    <CarrierLogo carrier={carrier} />
+                    {carrier}
+                  </strong>
+                  {FAMILIES.map((f) => {
+                    const source = selectCarrierPing(rows, carrier, f);
+                    return (
+                      <Link
+                        to={compareUrl}
+                        key={f}
+                        aria-label={`${carrier} IPv${f} 质量历史`}
+                      >
+                        <div>
+                          <QualityValue source={source} />
+                          <QualityValue source={source} loss />
+                        </div>
+                        <HistoryStrip source={source} />
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
+            </section>
+          )}
+          {routes.data?.display !== false && (
+            <section className="aurora-section aurora-route-section aurora-inset">
+              {heading(
+                Route,
+                "三网线路",
+                <CheckAction uuid={uuid} module="routes" label="检测" />,
+              )}
+              <div className="aurora-dual">
+                {FAMILIES.map((f) => (
+                  <div key={f}>
+                    <div className="aurora-table-labels">
+                      <span className="aurora-family">IPv{f}</span>
+                      <span>去程 →</span>
+                      <span>← 回程</span>
+                    </div>
+                    {CARRIERS.map((carrier) => (
+                      <div
+                        className="aurora-table-row"
+                        key={carrier}
+                        data-carrier={carrier}
+                      >
+                        <strong>
+                          <CarrierLogo carrier={carrier} />
+                          {carrier}
+                        </strong>
+                        {routePair(carrier, f)}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <footer>
+                <span>最近检测 {time(routeTimes.at(-1))}</span>
+                <span>去程：大陆 → VPS · 回程：VPS → 大陆</span>
+              </footer>
+            </section>
+          )}
+          {speeds.data?.display !== false && (
+            <section className="aurora-section aurora-speed-section aurora-inset">
+              {heading(
+                Gauge,
+                "三网测速",
+                <>
+                  <small>Mbps</small>
+                  <div>
+                    {cityPicker}
+                    <CheckAction
+                      uuid={uuid}
+                      module="china-speed"
+                      label="测速"
+                    />
+                  </div>
+                </>,
+              )}
+              <div className="aurora-dual">
+                {FAMILIES.map((f) => (
+                  <div key={f}>
+                    <div className="aurora-table-labels">
+                      <span className="aurora-family">IPv{f}</span>
+                      <span>↓ 下行</span>
+                      <span>↑ 上行</span>
+                    </div>
+                    {CARRIERS.map((carrier) => (
+                      <div
+                        className="aurora-table-row"
+                        key={carrier}
+                        data-carrier={carrier}
+                      >
+                        <strong>
+                          <CarrierLogo carrier={carrier} />
+                          {carrier}
+                        </strong>
+                        {speedPair(carrier, f)}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <footer>
+                <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>
+                <span>下行：流入 VPS · 上行：流出 VPS</span>
+              </footer>
+            </section>
+          )}
+        </>
+      ) : mode === "compact" ? (
+        <div className="aurora-matrix">
+          <div />
+          {CARRIERS.map((c) => (
+            <div className="aurora-carrier-head" key={c} data-carrier={c}>
+              <CarrierLogo carrier={c} />
+              <strong>{c}</strong>
+            </div>
+          ))}
+          {FAMILIES.map((f) => (
+            <div className="aurora-matrix-family" key={f}>
+              <div className="aurora-family-rail">
+                <Server />
+                <span className="aurora-family">IPv{f}</span>
+              </div>
+              {CARRIERS.map((carrier) => {
+                const source = selectCarrierPing(rows, carrier, f);
+                return (
+                  <div
+                    key={carrier}
+                    className="aurora-matrix-cell aurora-inset"
+                    data-carrier={carrier}
+                  >
+                    {(panel === "all" || panel === "quality") &&
+                      qualityVisible && (
+                        <Link to={compareUrl} className="aurora-cell-quality">
+                          <div>
+                            <Activity />
+                            <QualityValue source={source} />
+                            <span>丢包</span>
+                            <QualityValue source={source} loss />
+                          </div>
+                          <HistoryStrip source={source} />
+                        </Link>
+                      )}
+                    {(panel === "all" || panel === "routes") &&
+                      routes.data?.display !== false && (
+                        <div className="aurora-cell-route">
+                          <span>
+                            <Route />
+                            线路
+                          </span>
+                          <div className="aurora-route-labels">
+                            <small>去程</small>
+                            <small>回程</small>
+                          </div>
+                          {routePair(carrier, f)}
+                        </div>
+                      )}
+                    {(panel === "all" || panel === "speeds") &&
+                      speeds.data?.display !== false && (
+                        <div className="aurora-cell-speed">
+                          <span>
+                            <Gauge />
+                            测速
+                          </span>
+                          {speedPair(carrier, f, true)}
+                        </div>
+                      )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="aurora-network-table aurora-inset">
+          <div className="aurora-large-columns">
+            <span>运营商</span>
+            {(panel === "all" || panel === "quality") && qualityVisible && (
+              <>
+                <span>
+                  <Clock3 />
+                  延迟
+                </span>
+                <span>
+                  <Layers />
+                  丢包率
+                </span>
+              </>
+            )}
+            {(panel === "all" || panel === "routes") &&
+              routes.data?.display !== false && (
+                <span>
+                  <Network />
+                  线路 <small>（去程 → 回程）</small>
+                </span>
+              )}
+            {(panel === "all" || panel === "speeds") &&
+              speeds.data?.display !== false && (
+                <span>
+                  <Gauge />
+                  测速 <small>（下载 / 上传 Mbps）</small>
+                </span>
+              )}
+          </div>
+          {CARRIERS.map((carrier) => (
+            <div
+              className="aurora-large-carrier"
+              key={carrier}
+              data-carrier={carrier}
+            >
+              <div className="aurora-large-carrier-name">
+                <CarrierLogo carrier={carrier} />
+                <strong>中国{carrier}</strong>
+              </div>
+              <div>
+                {FAMILIES.map((f) => {
+                  const source = selectCarrierPing(rows, carrier, f);
+                  return (
+                    <div className="aurora-large-row" key={f}>
+                      <span className="aurora-family">IPv{f}</span>
+                      {(panel === "all" || panel === "quality") &&
+                        qualityVisible && (
+                          <>
+                            <Link to={compareUrl} title={source?.title}>
+                              <QualityValue source={source} />
+                              <HistoryStrip source={source} />
+                            </Link>
+                            <Link to={compareUrl} title={source?.title}>
+                              <QualityValue source={source} loss />
+                              <HistoryStrip source={source} lossOnly />
+                            </Link>
+                          </>
+                        )}
+                      {(panel === "all" || panel === "routes") &&
+                        routes.data?.display !== false &&
+                        routePair(carrier, f)}
+                      {(panel === "all" || panel === "speeds") &&
+                        speeds.data?.display !== false &&
+                        speedPair(carrier, f, true)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <footer>
+            <span>
+              <Info />
+              线路说明：去程：大陆 → VPS　 |　 回程：VPS → 大陆
+            </span>
+            <Link to={compareUrl}>
+              {historyCount} 次历史检测　 |　 单线程　 |　 速率条范围：0 – 1000
+              Mbps
+            </Link>
+          </footer>
+        </div>
+      )}
+      {mode === "compact" && (
+        <footer className="aurora-network-footer">
+          <span>
+            <Clock3 />
+            最近检测：{time(routeTimes.at(-1))}　 |　 最近测速：
+            {time(speedTimes.at(-1))}
+          </span>
+          <Link to={compareUrl}>
+            <Info />
+            去程：大陆 → VPS　 |　 回程：VPS → 大陆　 |　 {historyCount}{" "}
+            次质量历史
+          </Link>
+        </footer>
+      )}
+      {(routes.isError || (!routes.data?.available && !routes.isPending)) && (
+        <p className="aurora-empty">
+          {routes.isError
+            ? "线路摘要读取失败，可稍后重试。"
+            : "暂无线路观测；可在工作室配置网络观测。"}
+        </p>
+      )}
+      {qualityVisible && !!extraRows.length && (
+        <details className="aurora-extra">
+          <summary>其他质量观测（{extraRows.length}）</summary>
+          {extraRows.map((row) => (
+            <Link to={compareUrl} key={row.taskId}>
+              {row.name}
+              <QualityValue source={row} />
+              <QualityValue source={row} loss />
+            </Link>
+          ))}
+        </details>
+      )}
+      {speedDetail && (
+        <Suspense fallback={<p role="status">正在读取测速详情…</p>}>
+          <SpeedDetails
+            uuid={uuid}
+            node={speedDetail}
+            city={selectedCity}
+            timeZone={settings.displayTimeZone}
+            admin={speeds.data?.access === "admin"}
+            onClose={() => setSpeedDetail(null)}
+          />
+        </Suspense>
+      )}
+    </section>
+  );
+}
+
+export default memo(function AuroraNodeCard({
+  uuid,
+  mode,
+}: {
+  uuid: string;
+  mode: Mode;
+}) {
+  const model = useNodeCardModel(uuid);
+  if (!model.node)
+    return (
+      <article className="aurora-node-card aurora-glass" aria-busy="true">
+        正在读取节点…
+      </article>
+    );
+  return (
+    <article
+      className="aurora-node-card"
+      data-mode={mode}
+      data-online={model.node.online}
+      data-node={uuid}
+    >
+      <NodeSummary model={model} mode={mode} uuid={uuid} />
+      <NetworkSummary model={model} uuid={uuid} mode={mode} />
+    </article>
+  );
+});

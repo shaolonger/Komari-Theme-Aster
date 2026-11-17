@@ -96,6 +96,7 @@ const NodeCard = lazy(() => import("./NodeCard").then(module => ({ default: modu
 const CostSummary = lazy(() => import("./CostSummary").then(module => ({ default: module.CostSummary })));
 const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
 const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"));
+const AuroraNodeCard = lazy(() => import("@/components/aurora/AuroraNodeCard"));
 const CupertinoNodeCard = lazy(() => import("@/components/cupertino/CupertinoNodeCard"));
 const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
@@ -1438,7 +1439,7 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {isCupertinoAppearance(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
+        {appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : isCupertinoAppearance(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
   }, [uuidsKey, mode, appearance]);
@@ -1462,7 +1463,7 @@ export function NodeGrid() {
     visibleFacetDimensions.length > 0;
   const gridClassName = mode === "compact" || mode === "list" ? "grid gap-3" : "grid gap-4 xl:gap-5";
   const gridColumns =
-    mode === "list"
+    appearance === "aurora" || mode === "list"
       ? "1fr"
       : mode === "compact"
       ? "repeat(auto-fill, minmax(min(100%, 260px), 1fr))"
