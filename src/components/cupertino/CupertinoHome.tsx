@@ -240,7 +240,7 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
           查看详情 <ChevronRight size={15} />
         </span>
       </button>
-      <section className="cupertino-toolbar" aria-label="节点筛选与视图">
+      <section className="cupertino-toolbar" aria-label={p.fixedCardLayout ? "节点筛选" : "节点筛选与视图"}>
         <div className="cupertino-status-filters">
           {statuses.map(([value, label, count]) => (
             <button
@@ -301,29 +301,31 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
             <Settings2 size={15} />
           </button>
         </div>
-        <div
-          className="cupertino-view-switch"
-          role="group"
-          aria-label="节点视图"
-        >
-          {(
-            [
-              { value: "list", label: "列表", icon: List },
-              { value: "standard", label: "标准", icon: LayoutGrid },
-              { value: "compact", label: "紧凑", icon: Rows3 },
-              { value: "large", label: "大卡片", icon: LayoutGrid },
-            ] as const
-          ).map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              aria-pressed={mode === value}
-              onClick={() => setMode(value)}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
-        </div>
+        {!p.fixedCardLayout && (
+          <div
+            className="cupertino-view-switch"
+            role="group"
+            aria-label="节点视图"
+          >
+            {(
+              [
+                { value: "list", label: "列表", icon: List },
+                { value: "standard", label: "标准", icon: LayoutGrid },
+                { value: "compact", label: "紧凑", icon: Rows3 },
+                { value: "large", label: "大卡片", icon: LayoutGrid },
+              ] as const
+            ).map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                aria-pressed={mode === value}
+                onClick={() => setMode(value)}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
       {p.toolsOpen && (
         <div className="cupertino-extra-filters">

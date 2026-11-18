@@ -23,6 +23,7 @@ const APPEARANCE_OPTIONS = [
   { value: "dark", icon: Moon, label: "深色" },
   { value: "cupertino", icon: Sparkles, label: "原生 · Cupertino" },
   { value: "cupertino-dark", icon: Moon, label: "原生 · 暗色" },
+  { value: "cupertino-dense", icon: Rows3, label: "原生 · 密集" },
   { value: "luminous", icon: Sparkles, label: "光域未来" },
 ] as const;
 
@@ -91,25 +92,27 @@ export default function FloatingControlsMenu({ hidden }: { hidden: boolean }) {
               </button>
             ))}
           </div>
-          <div className="control-group" role="group" aria-label="节点视图">
-            {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setMode(value)}
-                aria-label={label}
-                aria-pressed={mode === value}
-                title={`临时切换到${label}`}
-                tabIndex={hiddenTabIndex}
-                className={clsx(
-                  "control-button control-toggle grid h-9 w-9 place-items-center",
-                  mode === value && "is-active",
-                )}
-              >
-                <Icon size={16} />
-              </button>
-            ))}
-          </div>
+          {appearance !== "cupertino-dense" && (
+            <div className="control-group" role="group" aria-label="节点视图">
+              {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  aria-label={label}
+                  aria-pressed={mode === value}
+                  title={`临时切换到${label}`}
+                  tabIndex={hiddenTabIndex}
+                  className={clsx(
+                    "control-button control-toggle grid h-9 w-9 place-items-center",
+                    mode === value && "is-active",
+                  )}
+                >
+                  <Icon size={16} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>

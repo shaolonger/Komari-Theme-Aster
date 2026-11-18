@@ -115,7 +115,7 @@ function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedApp
   const root = document.documentElement;
   const previous = `${root.dataset.appearance}:${root.dataset.themeStyle}`;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = isCupertinoAppearance(appearance) ? "cupertino" : (appearance === "luminous" || appearance === "aurora") ? appearance : "default";
+  root.dataset.themeStyle = appearance === "cupertino-dense" ? appearance : isCupertinoAppearance(appearance) ? "cupertino" : (appearance === "luminous" || appearance === "aurora") ? appearance : "default";
   root.dataset.layoutStyle = usesCupertinoLayout(appearance) ? "cupertino" : root.dataset.themeStyle;
   root.style.colorScheme = resolvedAppearance;
   if (previous !== `${root.dataset.appearance}:${root.dataset.themeStyle}`) notifyPaletteChanged();

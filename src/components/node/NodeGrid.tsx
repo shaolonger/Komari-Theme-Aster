@@ -98,6 +98,7 @@ const HomeMetricSummary = lazy(() => import("./HomeMetricSummary"));
 const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"));
 const AuroraNodeCard = lazy(() => import("@/components/aurora/AuroraNodeCard"));
 const CupertinoNodeCard = lazy(() => import("@/components/cupertino/CupertinoNodeCard"));
+const CupertinoDenseCard = lazy(() => import("@/components/cupertino/CupertinoDenseCard"));
 const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
@@ -814,6 +815,7 @@ export function NodeGrid() {
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
+  const dense = appearance === "cupertino-dense";
   const nativeHome = appearance === "luminous" || usesCupertinoLayout(appearance);
 
   const HomeWorkspace = usesCupertinoLayout(appearance) ? CupertinoHome : LuminousHome;
@@ -1439,10 +1441,12 @@ export function NodeGrid() {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
-        {appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : usesCupertinoLayout(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
+        {dense ? (
+          <Suspense fallback={<Spinner />}><CupertinoDenseCard uuid={uuid} /></Suspense>
+        ) : appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : usesCupertinoLayout(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
-  }, [uuidsKey, mode, appearance]);
+  }, [uuidsKey, mode, appearance, dense]);
   const listUuids = useMemo(() => {
     const liveUuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
     if (!listInteractionActive || !frozenListOrderRef.current) return liveUuids;
@@ -1462,8 +1466,9 @@ export function NodeGrid() {
     themeSettings.showGroupTabs &&
     visibleFacetDimensions.length > 0;
   const gridClassName = mode === "compact" || mode === "list" ? "grid gap-3" : "grid gap-4 xl:gap-5";
-  const gridColumns =
-    mode === "list"
+  const gridColumns = dense
+    ? undefined
+    : mode === "list"
       ? "1fr"
       : mode === "compact"
       ? "repeat(auto-fill, minmax(min(100%, 260px), 1fr))"
@@ -1602,7 +1607,8 @@ export function NodeGrid() {
       {nativeHome ? (
         <Suspense fallback={<div className="instance-panel p-6">正在加载基础设施…</div>}>
           <HomeWorkspace
-            showHeading={appearance !== "aurora"}
+            showHeading={appearance !== "aurora" && !dense}
+            fixedCardLayout={dense}
             resourceMetadata={workbenchMetaByUuid}
             facets={facetRows}
             selectedFacets={facetFilters}
@@ -1844,7 +1850,7 @@ export function NodeGrid() {
         ) : (
           <div
             className={`home-node-results ${gridClassName}`}
-            data-view-mode={mode}
+            data-view-mode={dense ? undefined : mode}
             style={{ gridTemplateColumns: gridColumns }}
           >
             {cards}

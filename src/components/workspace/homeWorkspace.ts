@@ -21,6 +21,7 @@ export interface HomeWorkspaceProps {
   onOpenMetric: (metric: "status" | "bandwidth" | "traffic" | "expiry") => void;
   onOpenCost: () => void;
   showHeading?: boolean;
+  fixedCardLayout?: boolean;
   showOverview: boolean;
   showCost: boolean;
   resourceMetadata?: ReadonlyMap<string, NodeInfo>;

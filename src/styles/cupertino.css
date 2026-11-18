@@ -3938,3 +3938,63 @@
     font-size: 11px;
   }
 }
+
+[data-theme-style="cupertino-dense"][data-layout-style="cupertino"] .app-main {
+  margin-left: 0;
+  padding-inline: 12px;
+}
+[data-theme-style="cupertino-dense"] .app-main > div {
+  max-width: none;
+}
+[data-theme-style="cupertino-dense"] .cupertino-masthead {
+  left: 0;
+  padding-inline: 12px;
+}
+[data-theme-style="cupertino-dense"] .cupertino-mobile-menu {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+[data-theme-style="cupertino-dense"] .cupertino-drawer-backdrop {
+  display: block;
+  position: fixed;
+  z-index: 35;
+  inset: 0;
+  background: transparent;
+}
+.cupertino-top-navigation {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 12px;
+  min-width: 164px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 6px 24px #24243422;
+}
+.cupertino-top-navigation a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.cupertino-top-navigation a:hover,
+.cupertino-top-navigation a[aria-current="page"] {
+  color: var(--accent-600);
+  background: var(--fill-secondary);
+}
+[data-theme-style="cupertino-dense"] .cupertino-toolbar {
+  margin-block: 10px;
+  gap: 8px;
+}
+[data-theme-style="cupertino-dense"][data-layout-style="cupertino"] .home-node-results {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 228px), 1fr));
+  align-items: start;
+  gap: 8px;
+}

@@ -1,5 +1,6 @@
 import { checkAurora } from "./aurora-browser-gates.mjs";
 import { auroraNames, auroraNodes, auroraStatus, auroraStats, auroraSeries, auroraRoutes, auroraSpeeds } from "./aurora-fixture.mjs";
+import { checkCupertinoDense } from "./cupertino-dense-browser-gates.mjs";
 import { checkCupertino } from "./cupertino-browser-gates.mjs";
 import { checkLuminous } from "./luminous-browser-gates.mjs";
 import { checkCardObservations } from "./card-observation-browser-gates.mjs";
@@ -984,6 +985,7 @@ function assertOfficialRequestProfile(run, nodes) {
 }
 
 const results = [];
+const denseOnly = process.env.BROWSER_DENSE_ONLY === "1";
 let cdp;
 const largeScaleBudgetMs = process.env.CI === "true" ? 16_000 : 12_000;
 try {
@@ -1001,7 +1003,7 @@ try {
     };
   ` });
 
-  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY) {
+  if (!denseOnly && !process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY) {
   if (!process.env.BROWSER_REPORT_GATES_ONLY) {
   for (const backend of Object.values(BACKEND_PROFILES)) {
     for (const [nodes, budgetMs] of [[30, 4_000], [300, 6_000], [1_000, largeScaleBudgetMs]]) {
@@ -2042,7 +2044,7 @@ try {
   }
   if (!process.env.BROWSER_REPORT_GATES_ONLY) results.push({ uiRegressions: "persistent operations summary, evidence deep links, recoverable comparison presets, starter studio presets, time-zone-aware load/Ping ranges, online summary, draggable ordering, VPS task save/reload, cross-category filtering, keyboard VPS search" });
   }
-  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY) {
+  if (!denseOnly && !process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: process.env.BROWSER_LUMINOUS_REFERENCE ? 49 : 15, luminousReference: Boolean(process.env.BROWSER_LUMINOUS_REFERENCE), soak: false, run: "luminous", ui: true, docs: true, quotaUsage: true, comprehensive: true, workspaceMetrics: true };
     savedUiSettings = null;
@@ -2054,7 +2056,7 @@ try {
       results.push(await checkLuminous({ cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, reference: true }));
     }
   }
-  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+  if (!denseOnly && !process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, luminousReference: true, cupertino: true, run: "cupertino", ui: true, docs: true, quotaUsage: true, comprehensive: true, workspaceMetrics: true };
     savedUiSettings = null;
@@ -2065,7 +2067,7 @@ try {
       results.push(await checkCupertino({cdp, origin: `http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,appearance,enableNetworkCards:()=>{activeFixture.cupertinoResources=true;activeFixture.reports=true;activeFixture.network=true;homeRouteDisplay=true;homeSpeedDisplay=true;}}));
     }
   }
-  if (!process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+  if (!denseOnly && !process.env.BROWSER_AURORA_ONLY && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = { backend: BACKEND_PROFILES.official.id, nodes: 8, ui: true, docs: true, run: "removed-appearances" };
     savedUiSettings = null;
@@ -2085,11 +2087,17 @@ try {
     }
     results.push({ removedAppearances: "six retired themes absent from menus; raw/JSON preferences and server defaults fall back to system" });
   }
-  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+  if (!denseOnly && !process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
     activeFixture = {backend: BACKEND_PROFILES.official.id,nodes:1,aurora:true,luminousReference:true,workspaceMetrics:true,reports:true,ui:true,docs:true,run:'aurora'};
     savedUiSettings = {defaultAppearance:'aurora',showHomeOverview:true,showCostSummary:true};
     results.push(await checkAurora({cdp,origin:`http://127.0.0.1:${address.port}`,waitUntil,failGate,captureScreenshot,count: key => requestCounts.get(activeFixture.run)?.[key] || 0,setFixture: patch => {activeFixture={...activeFixture,...patch};}}));
+  }
+  if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
+    await clearFixturePage(cdp);
+    activeFixture = {backend: BACKEND_PROFILES.official.id, nodes: 8, aurora: true, luminousReference: true, workspaceMetrics: true, reports: true, ui: true, docs: true, run: "cupertino-dense"};
+    savedUiSettings = {defaultAppearance: "cupertino-dense", showHomeOverview: true, showCostSummary: true};
+    results.push(await checkCupertinoDense({cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, setFixture: patch => {activeFixture = {...activeFixture, ...patch};}}));
   }
   console.log(JSON.stringify(results, null, 2));
 } finally {

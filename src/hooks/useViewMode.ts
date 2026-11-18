@@ -158,16 +158,18 @@ export function useViewMode() {
   const themeSettings = useThemeSettings();
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { appearance } = usePreferences();
-  const defaultMode: NodeViewMode =
+  const fixed = appearance === "cupertino-dense";
+  const defaultMode: NodeViewMode = fixed ? "compact" :
     (appearance === "luminous" || usesCupertinoLayout(appearance)) && themeSettings.defaultAppearance !== appearance
       ? state.device === "mobile" ? "compact" : "standard"
       : state.device === "mobile"
         ? themeSettings.mobileNodeViewMode
         : themeSettings.desktopNodeViewMode;
-  const mode = state.override ?? defaultMode;
+  const mode = fixed ? defaultMode : state.override ?? defaultMode;
 
   const setMode = useCallback(
     (next: NodeViewMode) => {
+      if (fixed) return;
       const key = getOverrideKey(state.device);
       // 选中当前主题默认值时，清掉 session override 重新跟随默认值，而不是钉一个
       // 永远去不掉的 override（那样还会让未来的默认值变化无法生效）。
@@ -179,14 +181,14 @@ export function useViewMode() {
       refreshSnapshot();
       emit();
     },
-    [state.device, defaultMode],
+    [state.device, defaultMode, fixed],
   );
 
   return {
     device: state.device,
     mode,
     defaultMode,
-    isOverridden: state.override != null,
+    isOverridden: !fixed && state.override != null,
     setMode,
   };
 }

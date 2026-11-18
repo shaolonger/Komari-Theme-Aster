@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { usePreferences } from "@/hooks/usePreferences";
 import { useAllNodeMeta, useHomeNodeSummaries } from "@/hooks/useNode";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { NodeSwitcher } from "@/components/instance/NodeSwitcher";
@@ -31,6 +32,8 @@ export default function CupertinoShell() {
   const location = useLocation(),
     navigate = useNavigate();
   const { data: me } = useAuth();
+  const { appearance } = usePreferences();
+  const dense = appearance === "cupertino-dense";
   const allNodes = useAllNodeMeta(),
     summaries = useHomeNodeSummaries();
   const nodes = useMemo(
@@ -69,7 +72,7 @@ export default function CupertinoShell() {
   }, [home, instance]);
   useEffect(() => {
     setOpen(false);
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, dense]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -132,6 +135,21 @@ export default function CupertinoShell() {
       active: params.get("view") === "theme-manage" && !params.get("panel"),
     },
   ];
+  const navigation = (
+    <nav aria-label="原生主题导航">
+      {links.map(({ label, icon: Icon, to, active }) => (
+        <Link
+          key={label}
+          to={to}
+          onClick={() => setOpen(false)}
+          aria-current={active ? "page" : undefined}
+        >
+          <Icon size={20} />
+          <span>{label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
   const account = (
     <>
       <span className="cupertino-avatar">
@@ -153,57 +171,48 @@ export default function CupertinoShell() {
           onClick={() => setOpen(false)}
         />
       )}
-      <aside className="cupertino-sidebar" data-open={open}>
-        <Link to="/" className="cupertino-brand">
-          <span aria-hidden="true">K</span>
-          <span>
-            <strong>KOMARI</strong>
-            <small>Server Monitor</small>
-          </span>
-        </Link>
-        <nav aria-label="原生主题导航">
-          {links.map(({ label, icon: Icon, to, active }) => (
-            <Link
-              key={label}
-              to={to}
-              aria-current={active ? "page" : undefined}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </nav>
-        {home && (
-          <section className="cupertino-region-list" aria-label="地区导航">
-            <Link
-              to="/"
-              aria-current={!params.get("region") ? "true" : undefined}
-            >
-              <Server size={18} />
-              <span>全部节点</span>
-              <b>{nodes.length}</b>
-            </Link>
-            {regions.slice(0, 7).map(([code, count]) => (
+      {!dense && (
+        <aside className="cupertino-sidebar" data-open={open}>
+          <Link to="/" className="cupertino-brand">
+            <span aria-hidden="true">K</span>
+            <span>
+              <strong>KOMARI</strong>
+              <small>Server Monitor</small>
+            </span>
+          </Link>
+          {navigation}
+          {home && (
+            <section className="cupertino-region-list" aria-label="地区导航">
               <Link
-                key={code}
-                to={"/?region=" + encodeURIComponent(code)}
-                aria-current={
-                  params.get("region") === code ? "true" : undefined
-                }
+                to="/"
+                aria-current={!params.get("region") ? "true" : undefined}
               >
-                <Flag region={code} size={20} />
-                <span>{regionLabel(code)}</span>
-                <b>{count}</b>
+                <Server size={18} />
+                <span>全部节点</span>
+                <b>{nodes.length}</b>
               </Link>
-            ))}
-          </section>
-        )}
-        {instance && current && <CurrentNode uuid={current} />}
-        <details className="cupertino-account cupertino-sidebar-account">
-          <summary>{account}</summary>
-          <AccountMenu loggedIn={me?.logged_in === true} />
-        </details>
-      </aside>
+              {regions.slice(0, 7).map(([code, count]) => (
+                <Link
+                  key={code}
+                  to={"/?region=" + encodeURIComponent(code)}
+                  aria-current={
+                    params.get("region") === code ? "true" : undefined
+                  }
+                >
+                  <Flag region={code} size={20} />
+                  <span>{regionLabel(code)}</span>
+                  <b>{count}</b>
+                </Link>
+              ))}
+            </section>
+          )}
+          {instance && current && <CurrentNode uuid={current} />}
+          <details className="cupertino-account cupertino-sidebar-account">
+            <summary>{account}</summary>
+            <AccountMenu loggedIn={me?.logged_in === true} />
+          </details>
+        </aside>
+      )}
       <header className="cupertino-masthead">
         <button
           className="cupertino-mobile-menu"
@@ -213,7 +222,8 @@ export default function CupertinoShell() {
         >
           {open ? <X size={20} /> : <Menu size={20} />}
         </button>
-        {home ? (
+        {dense && open && <div className="cupertino-top-navigation">{navigation}</div>}
+        {home ? !dense && (
           <div className="cupertino-home-breadcrumb">
             工作空间 <span>/</span>
             <strong>节点总览</strong>

@@ -103,12 +103,14 @@ function HistoryStrip({
   source,
   lossOnly = false,
   segments = 32,
+  onePerSegment = false,
 }: {
   source?: HomepagePingSourceRow;
   lossOnly?: boolean;
   segments?: number;
+  onePerSegment?: boolean;
 }) {
-  const samples = source?.samples.slice(-32) || [];
+  const samples = source?.samples.slice(onePerSegment ? -segments : -32) || [];
   return (
     <div
       className="aurora-history"
@@ -121,7 +123,9 @@ function HistoryStrip({
       title={source?.title || "未配置该运营商的 Ping 任务"}
     >
       {Array.from({ length: segments }, (_, index) => {
-        const sample = samples[Math.floor((index * samples.length) / segments)];
+        const sample = samples[onePerSegment
+          ? index - (segments - samples.length)
+          : Math.floor((index * samples.length) / segments)];
         const loss = sample?.sampleCount
           ? ((sample.lossCount || 0) / sample.sampleCount) * 100
           : sample?.value === -1
@@ -142,11 +146,11 @@ function HistoryStrip({
   );
 }
 
-function QualityHistories({ source }: { source?: HomepagePingSourceRow }) {
+function QualityHistories({ source, onePerSegment }: { source?: HomepagePingSourceRow; onePerSegment?: boolean }) {
   return (
     <div className="aurora-quality-histories">
-      <HistoryStrip source={source} segments={16} />
-      <HistoryStrip source={source} lossOnly segments={16} />
+      <HistoryStrip source={source} segments={16} onePerSegment={onePerSegment} />
+      <HistoryStrip source={source} lossOnly segments={16} onePerSegment={onePerSegment} />
     </div>
   );
 }
@@ -574,14 +578,16 @@ function NodeSummary({
   );
 }
 
-function NetworkSummary({
-  model,
+export const NetworkSummary = memo(function NetworkSummary({
+  ping,
   uuid,
   mode,
+  dense = false,
 }: {
-  model: Model;
+  ping: Model["ping"];
   uuid: string;
   mode: Mode;
+  dense?: boolean;
 }) {
   const settings = useThemeSettings(),
     routes = useHomeRoutes(),
@@ -591,7 +597,7 @@ function NetworkSummary({
   const [selectedFamily, setFamily] = useState<Family>("4");
   const [speedDetail, setSpeedDetail] = useState<HomeSpeedNode | null>(null);
   const rows = buildHomepagePingSourceRows(
-    model.ping,
+    ping,
     settings.homepagePingTaskGroups,
     settings.homepagePingTaskOrder[uuid],
   );
@@ -691,6 +697,7 @@ function NetworkSummary({
         })
       : "暂无检测";
   const historyCount = Math.max(0, ...rows.map((row) => row.samples.length));
+  const displayedHistoryCount = dense ? Math.min(16, historyCount) : historyCount;
   const compareUrl = buildHomepagePingCompareUrl(
     uuid,
     rows.map((row) => row.taskId),
@@ -856,7 +863,7 @@ function NetworkSummary({
               {heading(
                 Activity,
                 "三网质量",
-                <span>延迟 / 丢包 · {historyCount} 次历史</span>,
+                <span>延迟 / 丢包 · {displayedHistoryCount} 次历史</span>,
               )}
               <div
                 className="aurora-quality-labels"
@@ -889,7 +896,7 @@ function NetworkSummary({
                           <QualityValue source={source} />
                           <QualityValue source={source} loss />
                         </div>
-                        <QualityHistories source={source} />
+                        <QualityHistories source={source} onePerSegment={dense} />
                       </Link>
                     );
                   })}
@@ -1225,7 +1232,7 @@ function NetworkSummary({
       )}
     </section>
   );
-}
+});
 
 export default memo(function AuroraNodeCard({
   uuid,
@@ -1249,7 +1256,7 @@ export default memo(function AuroraNodeCard({
       data-node={uuid}
     >
       <NodeSummary model={model} mode={mode} uuid={uuid} />
-      <NetworkSummary model={model} uuid={uuid} mode={mode} />
+      <NetworkSummary ping={model.ping} uuid={uuid} mode={mode} />
     </article>
   );
 });

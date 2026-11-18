@@ -38,6 +38,11 @@ describe("appearance before first paint", () => {
     expect(root.style.colorScheme).toBe("light");
     expect(meta.content).toBe("#F5F5F7");
   });
+  it.each(["cupertino-dense", JSON.stringify("cupertino-dense")])("restores the dense Cupertino layout from the cached default (%s)", (stored) => {
+    const { root } = firstPaint(null, stored, true);
+    expect(root.dataset).toEqual({ appearance: "light", themeStyle: "cupertino-dense", layoutStyle: "cupertino" });
+    expect(root.style.colorScheme).toBe("light");
+  });
   it.each(["light", "dark", "system", "luminous", "cupertino", "cupertino-dark"])("accepts the retained %s appearance", (appearance) => {
     const { root } = firstPaint(JSON.stringify(appearance), null);
     expect(root.dataset.themeStyle).toBe(appearance.startsWith("cupertino") ? "cupertino" : appearance === "luminous" ? "luminous" : "default");

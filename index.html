@@ -37,19 +37,15 @@
     </script>
     <script>
       (() => {
+        const appearances = ["aurora", "system", "light", "dark", "luminous", "cupertino", "cupertino-dark", "cupertino-dense"];
         const parseAppearance = (value) => {
           if (value == null) return null;
           try {
             const parsed = JSON.parse(value);
-            if (parsed === "aurora" || parsed === "system" || parsed === "light" || parsed === "dark" || parsed === "luminous" || parsed === "cupertino" || parsed === "cupertino-dark") {
-              return parsed;
-            }
+            return appearances.includes(parsed) ? parsed : null;
           } catch {
-            if (value === "aurora" || value === "system" || value === "light" || value === "dark" || value === "luminous" || value === "cupertino" || value === "cupertino-dark") {
-              return value;
-            }
+            return appearances.includes(value) ? value : null;
           }
-          return null;
         };
 
         let appearance = "system";
@@ -78,8 +74,10 @@
               : "light"
             : appearance === "dark" || appearance === "cupertino-dark" ? "dark" : "light";
         document.documentElement.dataset.appearance = resolved;
-        document.documentElement.dataset.themeStyle = appearance === "cupertino" || appearance === "cupertino-dark" ? "cupertino" : appearance === "aurora" ? "aurora" : appearance === "luminous" ? "luminous" : "default";
-        document.documentElement.dataset.layoutStyle = appearance === "aurora" || appearance === "cupertino" || appearance === "cupertino-dark" ? "cupertino" : document.documentElement.dataset.themeStyle;
+        const cupertino = appearance === "cupertino" || appearance === "cupertino-dark";
+        const themed = appearance === "aurora" || appearance === "luminous" || appearance === "cupertino-dense";
+        document.documentElement.dataset.themeStyle = cupertino ? "cupertino" : themed ? appearance : "default";
+        document.documentElement.dataset.layoutStyle = cupertino || appearance === "aurora" || appearance === "cupertino-dense" ? "cupertino" : document.documentElement.dataset.themeStyle;
         document.documentElement.style.colorScheme = resolved;
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = appearance === "aurora" ? "#F5F5F7" : appearance === "cupertino-dark" ? "#141416" : appearance === "luminous" ? "#eaf3ff" : resolved === "dark" ? "#000000" : "#F5F5F7";

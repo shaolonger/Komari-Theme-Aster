@@ -40,10 +40,10 @@ import {
   type DisplayTimeZone,
 } from "@/utils/timeDisplay";
 
-export type Appearance = "system" | "light" | "dark" | "aurora" | "luminous" | "cupertino" | "cupertino-dark";
+export type Appearance = "system" | "light" | "dark" | "aurora" | "luminous" | "cupertino" | "cupertino-dark" | "cupertino-dense";
 
-export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" {
-  return value === "cupertino" || value === "cupertino-dark";
+export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" | "cupertino-dense" {
+  return value === "cupertino" || value === "cupertino-dark" || value === "cupertino-dense";
 }
 // Aurora retains its own cards while sharing the complete Cupertino workspace.
 export function usesCupertinoLayout(value: unknown): boolean {
