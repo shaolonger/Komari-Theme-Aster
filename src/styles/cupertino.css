@@ -3998,3 +3998,7 @@
   align-items: start;
   gap: 8px;
 }
+[data-theme-style="cupertino-dense"][data-layout-style="cupertino"]
+  .home-node-results[data-view-mode="standard"] {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)) !important;
+}

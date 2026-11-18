@@ -14,6 +14,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { isDenseNodeViewMode } from "@/utils/themeSettings";
 import { clsx } from "clsx";
 
 const APPEARANCE_OPTIONS = [
@@ -92,9 +93,9 @@ export default function FloatingControlsMenu({ hidden }: { hidden: boolean }) {
               </button>
             ))}
           </div>
-          {appearance !== "cupertino-dense" && (
-            <div className="control-group" role="group" aria-label="节点视图">
-              {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
+          <div className="control-group" role="group" aria-label="节点视图">
+            {VIEW_OPTIONS.filter(({ value }) => appearance !== "cupertino-dense" || isDenseNodeViewMode(value))
+              .map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}
                   type="button"
@@ -111,8 +112,7 @@ export default function FloatingControlsMenu({ hidden }: { hidden: boolean }) {
                   <Icon size={16} />
                 </button>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
     </>

@@ -30,6 +30,14 @@ import { formatCompactTrafficDetail, resolveTrafficUsage } from "@/utils/traffic
 import { summarizeHomeResources } from "@/utils/homeResources";
 import { formatCnyMoney } from "@/utils/cost";
 import type { WorkbenchSortKey } from "@/utils/vpsWorkbench";
+import { isDenseNodeViewMode } from "@/utils/themeSettings";
+
+const VIEW_OPTIONS = [
+  { value: "list", label: "列表", icon: List },
+  { value: "standard", label: "标准", icon: LayoutGrid },
+  { value: "compact", label: "紧凑", icon: Rows3 },
+  { value: "large", label: "大卡片", icon: LayoutGrid },
+] as const;
 
 export default function CupertinoHome(p: HomeWorkspaceProps) {
   const { mode, setMode } = useViewMode(),
@@ -240,7 +248,7 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
           查看详情 <ChevronRight size={15} />
         </span>
       </button>
-      <section className="cupertino-toolbar" aria-label={p.fixedCardLayout ? "节点筛选" : "节点筛选与视图"}>
+      <section className="cupertino-toolbar" aria-label="节点筛选与视图">
         <div className="cupertino-status-filters">
           {statuses.map(([value, label, count]) => (
             <button
@@ -301,20 +309,9 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
             <Settings2 size={15} />
           </button>
         </div>
-        {!p.fixedCardLayout && (
-          <div
-            className="cupertino-view-switch"
-            role="group"
-            aria-label="节点视图"
-          >
-            {(
-              [
-                { value: "list", label: "列表", icon: List },
-                { value: "standard", label: "标准", icon: LayoutGrid },
-                { value: "compact", label: "紧凑", icon: Rows3 },
-                { value: "large", label: "大卡片", icon: LayoutGrid },
-              ] as const
-            ).map(({ value, label, icon: Icon }) => (
+        <div className="cupertino-view-switch" role="group" aria-label="节点视图">
+          {VIEW_OPTIONS.filter(({ value }) => !p.denseCardLayout || isDenseNodeViewMode(value))
+            .map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 aria-pressed={mode === value}
@@ -324,8 +321,7 @@ export default function CupertinoHome(p: HomeWorkspaceProps) {
                 {label}
               </button>
             ))}
-          </div>
-        )}
+        </div>
       </section>
       {p.toolsOpen && (
         <div className="cupertino-extra-filters">

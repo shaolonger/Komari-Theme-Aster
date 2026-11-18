@@ -37,7 +37,7 @@ function Segments({ value, label }: { value: number; label: string }) {
   );
 }
 
-export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
+export default memo(function CupertinoDenseCard({ uuid, compact }: { uuid: string; compact: boolean }) {
   const model = useNodeCardModel(uuid);
   const favorite = useLuminousFavorites().includes(uuid);
   const [copied, setCopied] = useState("");
@@ -50,9 +50,15 @@ export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
   const status = online
     ? uptime.unit ? `在线 ${uptime.value} ${uptime.unit}` : "在线"
     : node.online === false ? "离线" : "待上报";
+  const statusLabel = (
+    <span className="dense-status" data-online={node.online} title={node.public_remark || status}>{status}</span>
+  );
   const role = node.business_role?.trim() || node.group?.trim();
-  const captions = [role, ...tags.map(({ label }) => label), node.group, node.provider];
-  const labels = [...new Set(captions.map((label) => label?.trim()).filter(Boolean))];
+  const labels = compact ? [] : [...new Set(
+    [role, ...tags.map(({ label }) => label), node.group, node.provider]
+      .map((label) => label?.trim())
+      .filter(Boolean),
+  )];
   const resources = [
     [
       Cpu, "CPU",
@@ -77,6 +83,7 @@ export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
   ] as const;
   const expiry = expire.unit ? `余 ${expire.value} ${expire.unit}` : expire.value;
   const limited = node.traffic_limit > 0;
+  const usedPercent = traffic.fraction * 100;
   const totalUp = known ? formatBytes(node.trafficUp, 1) : "—";
   const totalDown = known ? formatBytes(node.trafficDown, 1) : "—";
   const [upValue, upUnit] = totalUp.split(" ");
@@ -94,7 +101,10 @@ export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
     <article className="aurora-node-card cupertino-dense-card" data-node={uuid}>
       <header className="dense-card-header">
         <Flag region={node.region} size={14} />
-        <Link to={detailUrl} className="dense-node-name" title={node.name}>{node.name}</Link>
+        <div className="dense-node-identity">
+          <Link to={detailUrl} className="dense-node-name" title={node.name}>{node.name}</Link>
+          {compact && statusLabel}
+        </div>
         <details className="dense-node-actions" onToggle={(event) => {
           if (!event.currentTarget.open) setCopied("");
         }}>
@@ -122,14 +132,16 @@ export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
         <OsLogo value={node.os} size={15} />
       </header>
 
-      <div className="dense-card-labels">
-        {labels.map((label) => (
-          <span className="dense-tag" key={label} data-group={label === role} title={label}>
-            {label}
-          </span>
-        ))}
-        <span className="dense-status" data-online={node.online} title={node.public_remark || status}>{status}</span>
-      </div>
+      {!compact && (
+        <div className="dense-card-labels">
+          {labels.map((label) => (
+            <span className="dense-tag" key={label} data-group={label === role} title={label}>
+              {label}
+            </span>
+          ))}
+          {statusLabel}
+        </div>
+      )}
 
       <div className="dense-resources">
         {resources.map(([Icon, label, value, fill, detail]) => (
@@ -183,13 +195,16 @@ export default memo(function CupertinoDenseCard({ uuid }: { uuid: string }) {
         </span>
         <small>{limited ? traffic.typeLabel : "不限量"}</small>
       </div>
-      <div className="dense-quota-track">
+      <div
+        className="dense-quota-track"
+        style={limited && known ? { "--meter-color": traffic.color } as CSSProperties : undefined}
+      >
         <Segments
-          value={known ? traffic.fraction * 100 : 0}
-          label={limited && known ? `已用流量 ${(traffic.fraction * 100).toFixed(1)}%` : traffic.typeLabel}
+          value={known ? usedPercent : 0}
+          label={limited && known ? `已用 ${usedPercent.toFixed(1)}% · 剩余 ${(100 - usedPercent).toFixed(1)}%` : limited ? "流量尚未上报" : "不限量"}
         />
       </div>
-      <NetworkSummary ping={model.ping} uuid={uuid} mode="standard" dense />
+      <NetworkSummary ping={model.ping} uuid={uuid} mode="standard" denseView={compact ? "compact" : "standard"} />
     </article>
   );
 });

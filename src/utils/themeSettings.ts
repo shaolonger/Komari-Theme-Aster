@@ -50,6 +50,11 @@ export function usesCupertinoLayout(value: unknown): boolean {
   return isCupertinoAppearance(value) || value === "aurora";
 }
 export type NodeViewMode = "large" | "standard" | "compact" | "list";
+export type DenseNodeViewMode = "compact" | "standard";
+
+export function isDenseNodeViewMode(value: unknown): value is DenseNodeViewMode {
+  return value === "compact" || value === "standard";
+}
 
 export interface ResolvedThemeSettings {
   reportResultStyle: "unified" | "original";

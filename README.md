@@ -99,6 +99,8 @@ Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、
 
 1.41.0 新增「原生 · 密集」外观。首页采用无侧栏的全宽工作台，保留资源总览、告警、搜索和筛选。固定白色卡片布局，同屏展示 IPv4 / IPv6 三网质量、线路和测速；1910px 桌面可排八列。可在快捷外观菜单切换，或在 Aster 工作室设为默认外观。[桌面首页](docs/images/cupertino-dense/home.png) · [卡片细节](docs/images/cupertino-dense/card.png)。
 
+1.42.0 为「原生 · 密集」增加标准视图。紧凑视图保持 228px 最小列宽，标准视图以 320px 为最小列宽并展示标签、最近检测和测速时间。三网质量历史格等宽，只显示真实采样。流量条随配额减少从绿色过渡到琥珀色和红色。[紧凑视图](docs/images/cupertino-dense/compact.png) · [标准视图](docs/images/cupertino-dense/standard.png)。
+
 ## 效果预览
 
 以下图片由当前仓库代码在官方 Komari 兼容模拟环境中直接运行并截图，展示 Aster 当前界面；演示节点和监控数值均为模拟数据。

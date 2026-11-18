@@ -29,9 +29,11 @@
 .dense-card-header > :first-child img {
   border-radius: 3px;
 }
-.dense-card-header .dense-node-name {
+.dense-node-identity {
   flex: 1;
   min-width: 0;
+}
+.dense-node-identity .dense-node-name {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -114,6 +116,12 @@
   white-space: nowrap;
   color: var(--dense-muted);
   font-weight: 650;
+}
+.dense-node-identity .dense-status {
+  display: block;
+  margin: 2px 0 0;
+  font-size: clamp(8.5px, 3.7cqi, 14px);
+  line-height: 1.2;
 }
 .dense-status::before,
 .cupertino-dense-card.aurora-node-card :is(.aurora-quality-row, .aurora-table-row) > strong::before {
@@ -263,8 +271,8 @@
   color: var(--dense-caption);
 }
 .dense-quota-track {
-  --meter-color: #399167;
-  --meter-track: #dcede3;
+  --meter-color: #8b93a2;
+  --meter-track: color-mix(in srgb, var(--meter-color) 18%, #fff);
 }
 .dense-quota-track .dense-segments {
   height: clamp(3px, 1cqi, 5px);
@@ -374,11 +382,17 @@
 .cupertino-dense-card.aurora-node-card .aurora-quality-histories {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
+  gap: clamp(4px, 1.5cqi, 8px);
 }
 .cupertino-dense-card.aurora-node-card .aurora-history {
+  --history-cell: calc((100% + 1px) / var(--history-slots, 1) - 1px);
+  display: grid;
+  grid-template-columns: repeat(var(--history-slots, 1), minmax(0, 1fr));
+  /* Snap every cell to the same whole-pixel width. Grid distributes the leftover space. */
+  grid-template-columns: repeat(var(--history-slots, 1), round(down, var(--history-cell), 1px));
+  justify-content: space-between;
   height: clamp(3px, 1.4cqi, 7px);
-  gap: .55px;
+  gap: 1px;
   filter: saturate(.79) brightness(.93);
 }
 .cupertino-dense-card.aurora-node-card .aurora-history i {

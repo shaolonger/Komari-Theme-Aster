@@ -9,6 +9,7 @@ export const auroraNames = [
 ];
 const latency = [185, 166, 235, 160, 193, 235];
 const loss = [0.7, 0, 15.3, 1.7, 2, 2.3];
+const quotaBytes = 2.93 * 1024 ** 4;
 export function auroraNodes(size = 1) {
   return Array.from({ length: size }, (_, i) => ({
     uuid: `node-${i}`,
@@ -34,13 +35,13 @@ export function auroraNodes(size = 1) {
     expired_at: new Date(Date.now() + 25.5 * 86400000).toISOString(),
     tags: "落地<gray>;BGP直连;1000M;PPFlight",
     public_remark: "洛杉矶",
-    traffic_limit: 2.93 * 1024 ** 4,
+    traffic_limit: quotaBytes,
     traffic_limit_type: "max",
     ipv4: `192.0.2.${i + 1}`,
     ipv6: `2001:db8::${i + 1}`,
   }));
 }
-export function auroraStatus() {
+export function auroraStatus(quotaFraction) {
   return {
     online: true,
     cpu: 5,
@@ -56,7 +57,7 @@ export function auroraStatus() {
     net_in: 1.98 * 1024,
     net_out: 2.32 * 1024,
     net_total_up: 11.5 * 1024 ** 3,
-    net_total_down: 20.8 * 1024 ** 3,
+    net_total_down: quotaFraction == null ? 20.8 * 1024 ** 3 : Math.round(quotaBytes * quotaFraction),
     connections: 1057,
     connections_udp: 8,
     uptime: 4 * 86400,
@@ -87,15 +88,15 @@ export function auroraStats(entityIds) {
     count: entityIds.length * 6,
   };
 }
-export function auroraSeries(series) {
+export function auroraSeries(series, pointCount = 16) {
   const now = Date.now();
   return series.flatMap((s) =>
     s.metric_key.startsWith("ping.")
       ? latency.map((v, i) => ({
           ...s,
           tags: { task_id: String(i + 1) },
-          points: Array.from({ length: 16 }, (_, n) => ({
-            time: new Date(now - (15 - n) * 60000).toISOString(),
+          points: Array.from({ length: pointCount }, (_, n) => ({
+            time: new Date(now - (pointCount - 1 - n) * 60000).toISOString(),
             value:
               s.metric_key === "ping.latency_ms"
                 ? n < 7

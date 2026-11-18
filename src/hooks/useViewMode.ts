@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
-import { usesCupertinoLayout, isNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
+import { usesCupertinoLayout, isDenseNodeViewMode, isNodeViewMode, type DenseNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
 
 // Legacy keys retained so session view-mode overrides survive the rename.
 const DESKTOP_OVERRIDE_KEY = "komaritheme:node-view-mode-session:desktop";
@@ -12,6 +12,7 @@ const MOBILE_QUERY = "(max-width: 720px)";
 interface ViewModeState {
   device: "desktop" | "mobile";
   override: NodeViewMode | null;
+  denseOverride: DenseNodeViewMode | null;
 }
 
 const listeners = new Set<() => void>();
@@ -20,6 +21,7 @@ let subscribedMediaQuery: MediaQueryList | null = null;
 let snapshot: ViewModeState = {
   device: "desktop",
   override: null,
+  denseOverride: null,
 };
 
 function readOverride(key: string): NodeViewMode | null {
@@ -57,21 +59,24 @@ function getDevice(): ViewModeState["device"] {
   return getMediaQuery()?.matches ? "mobile" : "desktop";
 }
 
-function getOverrideKey(device: ViewModeState["device"]) {
-  return device === "mobile" ? MOBILE_OVERRIDE_KEY : DESKTOP_OVERRIDE_KEY;
+function getOverrideKey(device: ViewModeState["device"], dense = false) {
+  const key = device === "mobile" ? MOBILE_OVERRIDE_KEY : DESKTOP_OVERRIDE_KEY;
+  return dense ? key + ":cupertino-dense" : key;
 }
 
 function readSnapshot(): ViewModeState {
   const device = getDevice();
+  const denseOverride = readOverride(getOverrideKey(device, true));
   return {
     device,
     override: readOverride(getOverrideKey(device)),
+    denseOverride: isDenseNodeViewMode(denseOverride) ? denseOverride : null,
   };
 }
 
 function refreshSnapshot() {
   const next = readSnapshot();
-  if (snapshot.device !== next.device || snapshot.override !== next.override) {
+  if (snapshot.device !== next.device || snapshot.override !== next.override || snapshot.denseOverride !== next.denseOverride) {
     snapshot = next;
   }
   return snapshot;
@@ -118,7 +123,7 @@ function clearMediaSubscription() {
 // 跨标签页同步 override。整个模块只注册一次（在第一个订阅者时），而不是每个 hook
 // 实例都注册——所有消费者共享同一份全局状态，否则 N 个组件会装 N 个一样的 listener。
 const handleStorage = (event: StorageEvent) => {
-  if (event.key === DESKTOP_OVERRIDE_KEY || event.key === MOBILE_OVERRIDE_KEY) {
+  if (event.key === null || event.key === getOverrideKey(snapshot.device) || event.key === getOverrideKey(snapshot.device, true)) {
     refreshSnapshot();
     emit();
   }
@@ -158,19 +163,21 @@ export function useViewMode() {
   const themeSettings = useThemeSettings();
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { appearance } = usePreferences();
-  const fixed = appearance === "cupertino-dense";
-  const defaultMode: NodeViewMode = fixed ? "compact" :
-    (appearance === "luminous" || usesCupertinoLayout(appearance)) && themeSettings.defaultAppearance !== appearance
+  const dense = appearance === "cupertino-dense";
+  const defaultMode: NodeViewMode = dense
+    ? "compact"
+    : (appearance === "luminous" || usesCupertinoLayout(appearance)) && themeSettings.defaultAppearance !== appearance
       ? state.device === "mobile" ? "compact" : "standard"
       : state.device === "mobile"
         ? themeSettings.mobileNodeViewMode
         : themeSettings.desktopNodeViewMode;
-  const mode = fixed ? defaultMode : state.override ?? defaultMode;
+  const override = dense ? state.denseOverride : state.override;
+  const mode = override ?? defaultMode;
 
   const setMode = useCallback(
     (next: NodeViewMode) => {
-      if (fixed) return;
-      const key = getOverrideKey(state.device);
+      if (dense && !isDenseNodeViewMode(next)) return;
+      const key = getOverrideKey(state.device, dense);
       // 选中当前主题默认值时，清掉 session override 重新跟随默认值，而不是钉一个
       // 永远去不掉的 override（那样还会让未来的默认值变化无法生效）。
       if (next === defaultMode) {
@@ -181,14 +188,14 @@ export function useViewMode() {
       refreshSnapshot();
       emit();
     },
-    [state.device, defaultMode, fixed],
+    [state.device, defaultMode, dense],
   );
 
   return {
     device: state.device,
     mode,
     defaultMode,
-    isOverridden: !fixed && state.override != null,
+    isOverridden: override != null,
     setMode,
   };
 }
@@ -198,7 +205,9 @@ export function useViewMode() {
 // hook），但 device + override 在常见情况下已能区分 compact 和 large。
 export function readViewModeHint(): string {
   try {
-    const { device, override } = readSnapshot();
+    const state = readSnapshot();
+    const { device } = state;
+    const override = document.documentElement.dataset.themeStyle === "cupertino-dense" ? state.denseOverride : state.override;
     return override ? `${device}/${override}(override)` : `${device}/default`;
   } catch {
     return "unknown";

@@ -274,7 +274,7 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
-  if (activeFixture.aurora) return {...auroraStatus(), online: !activeFixture.auroraOffline};
+  if (activeFixture.aurora) return {...auroraStatus(activeFixture.auroraQuotaFractions?.[index]), online: !activeFixture.auroraOffline};
   const docsOffline = (activeFixture.reportOffline || activeFixture.docs) && index === 0;
   return {
     online: activeFixture.cupertino ? index !== 7 : activeFixture.luminousReference ? index < 42 : !docsOffline,
@@ -366,7 +366,7 @@ function officialPingMetricSeries(params, fixture) {
   return {
     start: new Date(windowStart).toISOString(),
     end: new Date(end).toISOString(),
-    series: fixture.aurora ? fixture.auroraEmpty || fixture.auroraNoMeasurements ? [] : auroraSeries(series) : fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
+    series: fixture.aurora ? fixture.auroraEmpty || fixture.auroraNoMeasurements ? [] : auroraSeries(series, fixture.auroraHistoryPoints) : fixture.workspaceMetrics ? series.flatMap(s => s.metric_key.startsWith('ping.') ? [1,2,3,4,5,6].map(id => ({...s,tags:{task_id:String(id)},points:s.points?.map((p,i)=>({...p,tags:{task_id:String(id)},value:s.metric_key==='ping.latency_ms' ? [165,281,37,85,178,28][id-1] + Math.sin(i / (id+2)) * (id===4?40:6) + (id===4?Math.exp(-Math.pow((i-65)/16,2))*310:0) : id===1 ? (i%5===0?1:0) : id===4 ? (i%20===0?.5:0) : 0}))})) : [s]) : series,
     count: series.length,
   };
 }
@@ -2095,7 +2095,7 @@ try {
   }
   if (!process.env.BROWSER_CUPERTINO_ONLY && !process.env.BROWSER_LUMINOUS_ONLY && !process.env.BROWSER_REPORT_GATES_ONLY) {
     await clearFixturePage(cdp);
-    activeFixture = {backend: BACKEND_PROFILES.official.id, nodes: 8, aurora: true, luminousReference: true, workspaceMetrics: true, reports: true, ui: true, docs: true, run: "cupertino-dense"};
+    activeFixture = {backend: BACKEND_PROFILES.official.id, nodes: 8, aurora: true, luminousReference: true, workspaceMetrics: true, reports: true, ui: true, docs: true, run: "cupertino-dense", auroraHistoryPoints: 13, auroraQuotaFractions: [null, 0.78, 0.98]};
     savedUiSettings = {defaultAppearance: "cupertino-dense", showHomeOverview: true, showCostSummary: true};
     results.push(await checkCupertinoDense({cdp, origin: `http://127.0.0.1:${address.port}`, waitUntil, failGate, captureScreenshot, setFixture: patch => {activeFixture = {...activeFixture, ...patch};}}));
   }

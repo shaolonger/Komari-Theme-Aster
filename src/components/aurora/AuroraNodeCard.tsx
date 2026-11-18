@@ -47,6 +47,7 @@ import {
 import { formatBytes } from "@/utils/format";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 import { regionLabel } from "@/utils/regionLabel";
+import type { DenseNodeViewMode } from "@/utils/themeSettings";
 import { routeHeadline } from "@/utils/carrierRoutePresentation";
 import type { RouteEvidence } from "@/services/homeRoutes";
 import type { HomeSpeedNode, SpeedValue } from "@/services/homeSpeeds";
@@ -73,6 +74,7 @@ const SpeedDetails = lazy(
 type Model = ReturnType<typeof useNodeCardModel>;
 type Mode = "compact" | "standard" | "large";
 type Panel = "all" | "quality" | "routes" | "speeds";
+const QUALITY_HISTORY_SEGMENTS = 16;
 const pct = (v: number) => Math.max(0, Math.min(100, v));
 
 function Meter({
@@ -103,18 +105,22 @@ function HistoryStrip({
   source,
   lossOnly = false,
   segments = 32,
-  onePerSegment = false,
+  historySlots,
 }: {
   source?: HomepagePingSourceRow;
   lossOnly?: boolean;
   segments?: number;
-  onePerSegment?: boolean;
+  historySlots?: number;
 }) {
-  const samples = source?.samples.slice(onePerSegment ? -segments : -32) || [];
+  const samples = source?.samples.slice(historySlots == null ? -32 : -segments) || [];
+  const cells = historySlots == null
+    ? Array.from({ length: segments }, (_, index) => samples[Math.floor((index * samples.length) / segments)])
+    : samples;
   return (
     <div
       className="aurora-history"
       data-metric={lossOnly ? "loss" : "latency"}
+      style={historySlots ? { "--history-slots": historySlots } as CSSProperties : undefined}
       aria-label={
         source
           ? `${source.name}，${lossOnly ? "丢包率" : "延迟"}，最近 ${samples.length} 个采样；${source.title}`
@@ -122,10 +128,7 @@ function HistoryStrip({
       }
       title={source?.title || "未配置该运营商的 Ping 任务"}
     >
-      {Array.from({ length: segments }, (_, index) => {
-        const sample = samples[onePerSegment
-          ? index - (segments - samples.length)
-          : Math.floor((index * samples.length) / segments)];
+      {cells.map((sample, index) => {
         const loss = sample?.sampleCount
           ? ((sample.lossCount || 0) / sample.sampleCount) * 100
           : sample?.value === -1
@@ -146,11 +149,11 @@ function HistoryStrip({
   );
 }
 
-function QualityHistories({ source, onePerSegment }: { source?: HomepagePingSourceRow; onePerSegment?: boolean }) {
+function QualityHistories({ source, historySlots }: { source?: HomepagePingSourceRow; historySlots?: number }) {
   return (
     <div className="aurora-quality-histories">
-      <HistoryStrip source={source} segments={16} onePerSegment={onePerSegment} />
-      <HistoryStrip source={source} lossOnly segments={16} onePerSegment={onePerSegment} />
+      <HistoryStrip source={source} segments={QUALITY_HISTORY_SEGMENTS} historySlots={historySlots} />
+      <HistoryStrip source={source} lossOnly segments={QUALITY_HISTORY_SEGMENTS} historySlots={historySlots} />
     </div>
   );
 }
@@ -582,12 +585,12 @@ export const NetworkSummary = memo(function NetworkSummary({
   ping,
   uuid,
   mode,
-  dense = false,
+  denseView,
 }: {
   ping: Model["ping"];
   uuid: string;
   mode: Mode;
-  dense?: boolean;
+  denseView?: DenseNodeViewMode;
 }) {
   const settings = useThemeSettings(),
     routes = useHomeRoutes(),
@@ -697,7 +700,16 @@ export const NetworkSummary = memo(function NetworkSummary({
         })
       : "暂无检测";
   const historyCount = Math.max(0, ...rows.map((row) => row.samples.length));
-  const displayedHistoryCount = dense ? Math.min(16, historyCount) : historyCount;
+  const qualityRows = mode === "standard" ? CARRIERS.map((carrier) => ({
+    carrier,
+    sources: qualityFamilies.map((family) => ({ family, source: selectCarrierPing(rows, carrier, family) })),
+  })) : [];
+  const historySlots = denseView
+    ? Math.min(QUALITY_HISTORY_SEGMENTS, Math.max(
+        0,
+        ...qualityRows.flatMap(({ sources }) => sources.map(({ source }) => source?.samples.length ?? 0)),
+      ))
+    : undefined;
   const compareUrl = buildHomepagePingCompareUrl(
     uuid,
     rows.map((row) => row.taskId),
@@ -863,7 +875,7 @@ export const NetworkSummary = memo(function NetworkSummary({
               {heading(
                 Activity,
                 "三网质量",
-                <span>延迟 / 丢包 · {displayedHistoryCount} 次历史</span>,
+                <span>延迟 / 丢包 · {historySlots ?? historyCount} 次历史</span>,
               )}
               <div
                 className="aurora-quality-labels"
@@ -876,30 +888,27 @@ export const NetworkSummary = memo(function NetworkSummary({
                   </span>
                 ))}
               </div>
-              {CARRIERS.map((carrier) => (
+              {qualityRows.map(({ carrier, sources }) => (
                 <div
                   className="aurora-quality-row"
                   key={carrier}
                   data-family-count={qualityFamilies.length}
                 >
                   <strong data-carrier={carrier}>{carrier}</strong>
-                  {qualityFamilies.map((f) => {
-                    const source = selectCarrierPing(rows, carrier, f);
-                    return (
-                      <Link
-                        to={compareUrl}
-                        key={f}
-                        data-family={f}
-                        aria-label={`${carrier} IPv${f} 质量历史`}
-                      >
-                        <div>
-                          <QualityValue source={source} />
-                          <QualityValue source={source} loss />
-                        </div>
-                        <QualityHistories source={source} onePerSegment={dense} />
-                      </Link>
-                    );
-                  })}
+                  {sources.map(({ family, source }) => (
+                    <Link
+                      to={compareUrl}
+                      key={family}
+                      data-family={family}
+                      aria-label={`${carrier} IPv${family} 质量历史`}
+                    >
+                      <div>
+                        <QualityValue source={source} />
+                        <QualityValue source={source} loss />
+                      </div>
+                      <QualityHistories source={source} historySlots={historySlots} />
+                    </Link>
+                  ))}
                 </div>
               ))}
             </section>
@@ -935,10 +944,12 @@ export const NetworkSummary = memo(function NetworkSummary({
                   </div>
                 ))}
               </div>
-              <footer>
-                <span>最近检测 {time(routeTimes.at(-1))}</span>
-                <span>去程：大陆 → VPS · 回程：VPS → 大陆</span>
-              </footer>
+              {denseView !== "compact" && (
+                <footer>
+                  <span>最近检测 {time(routeTimes.at(-1))}</span>
+                  {!denseView && <span>去程：大陆 → VPS · 回程：VPS → 大陆</span>}
+                </footer>
+              )}
             </section>
           )}
           {speedsVisible && (
@@ -982,10 +993,12 @@ export const NetworkSummary = memo(function NetworkSummary({
                   </div>
                 ))}
               </div>
-              <footer>
-                <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>
-                <span>下行：流入 VPS · 上行：流出 VPS</span>
-              </footer>
+              {denseView !== "compact" && (
+                <footer>
+                  <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>
+                  {!denseView && <span>下行：流入 VPS · 上行：流出 VPS</span>}
+                </footer>
+              )}
             </section>
           )}
         </>

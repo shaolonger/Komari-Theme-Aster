@@ -1442,7 +1442,7 @@ export function NodeGrid() {
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
         {dense ? (
-          <Suspense fallback={<Spinner />}><CupertinoDenseCard uuid={uuid} /></Suspense>
+          <Suspense fallback={<Spinner />}><CupertinoDenseCard uuid={uuid} compact={mode === "compact"} /></Suspense>
         ) : appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : usesCupertinoLayout(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));
@@ -1608,7 +1608,7 @@ export function NodeGrid() {
         <Suspense fallback={<div className="instance-panel p-6">正在加载基础设施…</div>}>
           <HomeWorkspace
             showHeading={appearance !== "aurora" && !dense}
-            fixedCardLayout={dense}
+            denseCardLayout={dense}
             resourceMetadata={workbenchMetaByUuid}
             facets={facetRows}
             selectedFacets={facetFilters}
@@ -1850,7 +1850,7 @@ export function NodeGrid() {
         ) : (
           <div
             className={`home-node-results ${gridClassName}`}
-            data-view-mode={dense ? undefined : mode}
+            data-view-mode={mode}
             style={{ gridTemplateColumns: gridColumns }}
           >
             {cards}
