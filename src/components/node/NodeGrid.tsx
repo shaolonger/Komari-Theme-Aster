@@ -1,4 +1,4 @@
-import { usesCupertinoLayout } from "@/utils/themeSettings";
+import { isCrystalAppearance, isDenseCardAppearance, usesCupertinoLayout } from "@/utils/themeSettings";
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { matchesNodeSearch, splitNodeSearchGroups } from "@/utils/nodeSearch";
 import {
@@ -99,6 +99,7 @@ const CupertinoHome = lazy(() => import("@/components/cupertino/CupertinoHome"))
 const AuroraNodeCard = lazy(() => import("@/components/aurora/AuroraNodeCard"));
 const CupertinoNodeCard = lazy(() => import("@/components/cupertino/CupertinoNodeCard"));
 const CupertinoDenseCard = lazy(() => import("@/components/cupertino/CupertinoDenseCard"));
+const CrystalNodeCard = lazy(() => import("@/components/cupertino/CrystalNodeCard"));
 const LuminousNodeCard = lazy(() => import("@/components/luminous/LuminousNodeCard"));
 const LuminousHome = lazy(() => import("@/components/luminous/LuminousHome"));
 // 把多个 uuid 拼成单个签名串作为 memo key。逗号安全:uuid 是标准 UUID
@@ -815,7 +816,7 @@ export function NodeGrid() {
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const { appearance } = usePreferences();
-  const dense = appearance === "cupertino-dense";
+  const dense = isDenseCardAppearance(appearance);
   const nativeHome = appearance === "luminous" || usesCupertinoLayout(appearance);
 
   const HomeWorkspace = usesCupertinoLayout(appearance) ? CupertinoHome : LuminousHome;
@@ -1439,10 +1440,11 @@ export function NodeGrid() {
   };
   const cards = useMemo(() => {
     const uuids = uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : [];
+    const DenseCard = isCrystalAppearance(appearance) ? CrystalNodeCard : CupertinoDenseCard;
     return uuids.map((uuid) => (
       <div key={uuid} className="home-node-card-slot min-w-0">
         {dense ? (
-          <Suspense fallback={<Spinner />}><CupertinoDenseCard uuid={uuid} compact={mode === "compact"} /></Suspense>
+          <Suspense fallback={<Spinner />}><DenseCard uuid={uuid} compact={mode === "compact"} /></Suspense>
         ) : appearance === "aurora" ? <Suspense fallback={<Spinner/>}><AuroraNodeCard uuid={uuid} mode={mode === "large" ? "large" : mode === "compact" ? "compact" : "standard"}/></Suspense> : usesCupertinoLayout(appearance) && mode === "standard" ? <Suspense fallback={<Spinner/>}><CupertinoNodeCard uuid={uuid}/></Suspense> : appearance === "luminous" && mode === "standard" ? <Suspense fallback={<Spinner/>}><LuminousNodeCard uuid={uuid}/></Suspense> : mode === "compact" ? <CompactNodeCard uuid={uuid} /> : <Suspense fallback={<Spinner/>}><NodeCard uuid={uuid} density={mode === "large" ? "expanded" : "standard"} /></Suspense>}
       </div>
     ));

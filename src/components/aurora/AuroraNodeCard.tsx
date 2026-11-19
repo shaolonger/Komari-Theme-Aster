@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import {
   Activity,
   ArrowDown,
+  ArrowLeft,
   ArrowRight,
   ArrowUp,
   CalendarClock,
@@ -48,6 +49,7 @@ import { formatBytes } from "@/utils/format";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 import { regionLabel } from "@/utils/regionLabel";
 import type { DenseNodeViewMode } from "@/utils/themeSettings";
+import type { PingOverviewSample } from "@/types/komari";
 import { routeHeadline } from "@/utils/carrierRoutePresentation";
 import type { RouteEvidence } from "@/services/homeRoutes";
 import type { HomeSpeedNode, SpeedValue } from "@/services/homeSpeeds";
@@ -55,6 +57,7 @@ import {
   CARRIERS,
   FAMILIES,
   identifyPingSource,
+  pingSourceFamily,
   sampleColor,
   selectCarrierPing,
   observationFamilies,
@@ -75,7 +78,20 @@ type Model = ReturnType<typeof useNodeCardModel>;
 type Mode = "compact" | "standard" | "large";
 type Panel = "all" | "quality" | "routes" | "speeds";
 const QUALITY_HISTORY_SEGMENTS = 16;
+const CRYSTAL_HISTORY_SEGMENTS = 9;
 const pct = (v: number) => Math.max(0, Math.min(100, v));
+const sampleLoss = (sample?: PingOverviewSample) => sample?.sampleCount
+  ? ((sample.lossCount || 0) / sample.sampleCount) * 100
+  : sample?.value === -1 ? 100 : 0;
+
+function crystalHistoryTone(sample: PingOverviewSample | undefined, loss: boolean) {
+  if (!sample || !Number.isFinite(sample.value)) return "empty";
+  const value = loss ? sampleLoss(sample) : sample.value;
+  if (sample.value < 0 || value >= (loss ? 10 : 225)) return "red";
+  if (value >= (loss ? 6 : 205)) return "orange";
+  if (value >= (loss ? 3 : 150)) return "yellow";
+  return value >= (loss ? 1 : 125) ? "lime" : "green";
+}
 
 function Meter({
   value,
@@ -129,11 +145,7 @@ function HistoryStrip({
       title={source?.title || "未配置该运营商的 Ping 任务"}
     >
       {cells.map((sample, index) => {
-        const loss = sample?.sampleCount
-          ? ((sample.lossCount || 0) / sample.sampleCount) * 100
-          : sample?.value === -1
-            ? 100
-            : 0;
+        const loss = sampleLoss(sample);
         return (
           <i
             key={index}
@@ -195,33 +207,61 @@ function QualityValue({
   );
 }
 
+function CrystalQuality({ source, loss = false }: { source?: HomepagePingSourceRow; loss?: boolean }) {
+  const samples = source?.samples.slice(-CRYSTAL_HISTORY_SEGMENTS) ?? [];
+  const value = loss ? source?.lossPercent : source?.latencyMs;
+  const unit = loss ? "%" : "ms";
+  return (
+    <span className="crystal-quality-metric" title={source?.title || "暂无质量观测"}>
+      <span><b>{value == null ? "--" : value.toFixed(loss ? 1 : 2)}</b>{value != null && <> {unit}</>}</span>
+      <span className="crystal-history" aria-hidden="true">
+        {Array.from({ length: CRYSTAL_HISTORY_SEGMENTS }, (_, index) => {
+          const sample = samples[index - CRYSTAL_HISTORY_SEGMENTS + samples.length];
+          return <i key={index} data-tone={crystalHistoryTone(sample, loss)} />;
+        })}
+      </span>
+    </span>
+  );
+}
+
 function RouteValue({
   value,
   direction,
   carrier,
   timeZone,
   labelMode,
+  crystalDirection,
 }: {
   value?: RouteEvidence | null;
   direction: string;
-  carrier: Carrier;
+  carrier?: Carrier;
   timeZone: string;
   labelMode: "preferred" | "full";
+  crystalDirection?: "forward" | "return";
 }) {
   const [open, setOpen] = useState(false);
   const headline = routeHeadline(value || null, labelMode);
+  const Icon = crystalDirection === "return" ? ArrowLeft : ArrowRight;
   return (
     <>
       <button
         type="button"
-        className="aurora-pill"
+        className={crystalDirection ? "crystal-route-value" : "aurora-pill"}
         data-carrier={carrier}
         data-state={value?.state || "missing"}
+        data-direction={crystalDirection}
+        data-network={crystalDirection ? headline : undefined}
+        aria-label={crystalDirection ? `${direction} · ${headline}` : undefined}
         disabled={!value}
         onClick={() => setOpen(true)}
         title={`${direction} · ${headline} · ${value?.state === "stale" ? "超过 24 小时" : "查看线路证据"}`}
       >
-        {headline}
+        {crystalDirection ? (
+          <>
+            <span className="crystal-arrow"><Icon aria-hidden="true" /></span>
+            <span className="crystal-route-label">{crystalDirection === "forward" ? "去" : "回"} <b>{value ? headline : "--"}</b></span>
+          </>
+        ) : headline}
       </button>
       {open && (
         <Suspense fallback={<span role="status">正在读取证据…</span>}>
@@ -250,23 +290,32 @@ function Speed({
   direction,
   onClick,
   bar = false,
+  crystal = false,
 }: {
   value?: SpeedValue;
   direction: "download" | "upload";
   onClick: () => void;
   bar?: boolean;
+  crystal?: boolean;
 }) {
   const bits = value?.bitsPerSecond;
   const Icon = direction === "download" ? ArrowDown : ArrowUp;
   return (
     <button
       type="button"
-      className="aurora-speed"
+      className={crystal ? "crystal-speed-value" : "aurora-speed"}
+      data-direction={crystal ? direction : undefined}
+      aria-label={crystal ? `${direction === "download" ? "下行" : "上行"} ${bits == null ? "暂无测速" : `${(bits / 1e6).toFixed(1)} Mbps`}` : undefined}
       disabled={bits == null}
       onClick={onClick}
       title={`${direction === "download" ? "下行 · 流入 VPS" : "上行 · 流出 VPS"} · ${value?.state === "partial" ? "部分结果 · " : ""}查看测量详情`}
     >
-      <span>
+      {crystal ? (
+        <>
+          <span className="crystal-arrow"><Icon aria-hidden="true" /></span>
+          <b>{bits == null ? "--" : (bits / 1e6).toFixed(1)}</b>
+        </>
+      ) : <span>
         <Icon />
         <b>
           {bits == null
@@ -276,7 +325,7 @@ function Speed({
               })}
         </b>
         <small>Mbps</small>
-      </span>
+      </span>}
       {bar && (
         <Meter
           value={speedMeterPercent(bits)}
@@ -586,11 +635,13 @@ export const NetworkSummary = memo(function NetworkSummary({
   uuid,
   mode,
   denseView,
+  crystal = false,
 }: {
   ping: Model["ping"];
   uuid: string;
   mode: Mode;
   denseView?: DenseNodeViewMode;
+  crystal?: boolean;
 }) {
   const settings = useThemeSettings(),
     routes = useHomeRoutes(),
@@ -604,7 +655,14 @@ export const NetworkSummary = memo(function NetworkSummary({
     settings.homepagePingTaskGroups,
     settings.homepagePingTaskOrder[uuid],
   );
-  const extraRows = rows.filter((row) => !identifyPingSource(row));
+  const nonCarrierRows = rows.filter((row) => !identifyPingSource(row));
+  const privateRows = crystal && settings.showPingChart ? FAMILIES.flatMap(family => {
+    const source = nonCarrierRows.find(row =>
+      /内网|私网|\b(?:private|lan)\b/i.test(`${row.group} ${row.name}`) && pingSourceFamily(row) === family,
+    );
+    return source ? [{ family, source }] : [];
+  }) : [];
+  const extraRows = nonCarrierRows.filter(row => !privateRows.some(({ source }) => source === row));
   const routeNode =
     routes.data?.display === false ? undefined : routes.data?.nodes[uuid];
   const speedNode =
@@ -700,11 +758,11 @@ export const NetworkSummary = memo(function NetworkSummary({
         })
       : "暂无检测";
   const historyCount = Math.max(0, ...rows.map((row) => row.samples.length));
-  const qualityRows = mode === "standard" ? CARRIERS.map((carrier) => ({
+  const qualityRows = mode === "standard" && !crystal ? CARRIERS.map((carrier) => ({
     carrier,
     sources: qualityFamilies.map((family) => ({ family, source: selectCarrierPing(rows, carrier, family) })),
   })) : [];
-  const historySlots = denseView
+  const historySlots = denseView && !crystal
     ? Math.min(QUALITY_HISTORY_SEGMENTS, Math.max(
         0,
         ...qualityRows.flatMap(({ sources }) => sources.map(({ source }) => source?.samples.length ?? 0)),
@@ -729,36 +787,41 @@ export const NetworkSummary = memo(function NetworkSummary({
       </select>
     </label>
   );
-  const routePair = (carrier: Carrier, family: Family) => {
-    const row = routeNode?.[family].find((row) => row.carrier === carrier);
+  const routePair = (carrier: Carrier | undefined, family: Family) => {
+    const row = carrier && (!crystal || routeFamilies.includes(family))
+      ? routeNode?.[family].find((row) => row.carrier === carrier)
+      : undefined;
+    const title = `${carrier ?? "内网"} IPv${family}`;
     return (
-      <div className="aurora-route-pair">
+      <div className={crystal ? "crystal-route-pair" : "aurora-route-pair"}>
         <RouteValue
           value={row?.forward}
-          direction={`${carrier} IPv${family} 去程（大陆 → VPS）`}
+          direction={`${title} 去程（大陆 → VPS）`}
           carrier={carrier}
           timeZone={settings.displayTimeZone}
           labelMode={routes.data?.labelMode || "preferred"}
+          crystalDirection={crystal ? "forward" : undefined}
         />
-        <ArrowRight />
+        {!crystal && <ArrowRight />}
         <RouteValue
           value={row?.return}
-          direction={`${carrier} IPv${family} 回程（VPS → 大陆）`}
+          direction={`${title} 回程（VPS → 大陆）`}
           carrier={carrier}
           timeZone={settings.displayTimeZone}
           labelMode={routes.data?.labelMode || "preferred"}
+          crystalDirection={crystal ? "return" : undefined}
         />
       </div>
     );
   };
-  const speedPair = (carrier: Carrier, family: Family, bar = false) => {
-    const snapshot = speedNode?.[family],
+  const speedPair = (carrier: Carrier | undefined, family: Family, bar = false) => {
+    const snapshot = carrier && (!crystal || speedFamilies.includes(family)) ? speedNode?.[family] : undefined,
       row = snapshot?.cities
         .find((c) => c.city === selectedCity)
         ?.rows.find((r) => r.carrier === carrier);
     return (
       <div
-        className="aurora-speed-pair"
+        className={crystal ? "crystal-speed-pair" : "aurora-speed-pair"}
         data-stale={snapshot?.stale}
         title={snapshot?.stale ? "测速结果超过有效期" : undefined}
       >
@@ -766,12 +829,14 @@ export const NetworkSummary = memo(function NetworkSummary({
           value={row?.download}
           direction="download"
           bar={bar}
+          crystal={crystal}
           onClick={() => setSpeedDetail(snapshot || null)}
         />
         <Speed
           value={row?.upload}
           direction="upload"
           bar={bar}
+          crystal={crystal}
           onClick={() => setSpeedDetail(snapshot || null)}
         />
       </div>
@@ -832,12 +897,32 @@ export const NetworkSummary = memo(function NetworkSummary({
         ))}
     </div>
   );
+  const crystalRows = crystal ? [
+    ...CARRIERS.flatMap(carrier => families.map(family => ({
+      carrier,
+      family,
+      source: qualityFamilies.includes(family) ? selectCarrierPing(rows, carrier, family) : undefined,
+    }))),
+    ...FAMILIES.flatMap(family => {
+      const privateRow = privateRows.find(row => row.family === family);
+      return privateRow || (family === "4" && families.includes("4"))
+        ? [{ carrier: undefined, family, source: privateRow?.source }]
+        : [];
+    }),
+  ] : [];
+  const crystalColumns = [
+    "minmax(0, 20fr)",
+    routes.data?.display !== false && "minmax(0, 21fr)",
+    settings.showPingChart && "minmax(0, 38fr)",
+    speeds.data?.display !== false && "minmax(0, 19fr)",
+  ].filter(Boolean).join(" ");
   return (
     <section
-      className={`aurora-network aurora-network-${mode}`}
+      className={crystal ? "crystal-network" : `aurora-network aurora-network-${mode}`}
       aria-label="三网网络表现"
       data-panel={panel}
-      style={{ "--aurora-metrics": gridMetrics || "1fr" } as CSSProperties}
+      style={crystal ? { "--crystal-network-columns": crystalColumns } as CSSProperties
+        : { "--aurora-metrics": gridMetrics || "1fr" } as CSSProperties}
     >
       {mode === "compact" && (
         <header className="aurora-network-heading">
@@ -868,7 +953,35 @@ export const NetworkSummary = memo(function NetworkSummary({
           {panel === "speeds" && cityPicker}
         </header>
       )}
-      {mode === "standard" ? (
+      {crystal ? (
+        <>
+          {crystalRows.map(({ carrier, family, source }) => {
+            const name = `${carrier ?? "内网"} IPv${family}`;
+            const quality = <><CrystalQuality source={source} /><CrystalQuality source={source} loss /></>;
+            return (
+              <div className="crystal-network-row" key={name} data-family={family} data-carrier={carrier ?? "内网"}>
+                <strong className="crystal-network-name">{name}</strong>
+                {routes.data?.display !== false && routePair(carrier, family)}
+                {settings.showPingChart && (source ? (
+                  <Link className="crystal-quality" to={compareUrl} aria-label={`${name} 质量历史 · 延迟 ${source.latencyLabel} · 丢包 ${source.lossLabel}`}>
+                    {quality}
+                  </Link>
+                ) : <div className="crystal-quality" aria-label={`${name} 暂无质量观测`}>{quality}</div>)}
+                {speeds.data?.display !== false && speedPair(carrier, family)}
+              </div>
+            );
+          })}
+          {(routesVisible || speedsVisible) && (
+            <footer className="crystal-network-controls">
+              {denseView === "standard" && routesVisible && <span>最近检测 {time(routeTimes.at(-1))}</span>}
+              {denseView === "standard" && speedsVisible && <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>}
+              {speedsVisible && (cities.length > 1 || denseView === "standard") && cityPicker}
+              {routesVisible && <CheckAction uuid={uuid} module="routes" label="检测线路" />}
+              {speedsVisible && <CheckAction uuid={uuid} module="china-speed" label="测速" />}
+            </footer>
+          )}
+        </>
+      ) : mode === "standard" ? (
         <>
           {qualityVisible && (
             <section className="aurora-section aurora-quality-section aurora-inset">
@@ -1216,7 +1329,7 @@ export const NetworkSummary = memo(function NetworkSummary({
             : "暂无线路观测；可在工作室配置网络观测。"}
         </p>
       )}
-      {!families.length && !routes.isPending && !extraRows.length && (
+      {!families.length && !routes.isPending && !extraRows.length && !privateRows.length && (
         <p className="aurora-empty">尚未配置三网检测任务</p>
       )}
       {settings.showPingChart && !!extraRows.length && (

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Appearance } from "@/utils/themeSettings";
 
 /** Schema 接受服务端发来的宽松/不完整数据,并填充合理默认值。 */
 
@@ -155,7 +156,7 @@ export interface NodeMetrics {
 
 export interface ThemeSettings {
   reportResultStyle?: "unified" | "original";
-  defaultAppearance?: "system" | "light" | "dark" | "aurora" | "luminous" | "cupertino" | "cupertino-dark" | "cupertino-dense";
+  defaultAppearance?: Appearance;
   displayTimeZone?: string;
   desktopNodeViewMode?: "large" | "standard" | "compact" | "list";
   mobileNodeViewMode?: "large" | "standard" | "compact" | "list";

@@ -43,6 +43,15 @@ describe("appearance before first paint", () => {
     expect(root.dataset).toEqual({ appearance: "light", themeStyle: "cupertino-dense", layoutStyle: "cupertino" });
     expect(root.style.colorScheme).toBe("light");
   });
+  it.each([["light", "#edf3fc"], ["dark", "#0b111c"]])("applies the crystal %s palette before first paint", (scheme, color) => {
+    const appearance = `crystal-${scheme}`;
+    for (const [stored, cached] of [[JSON.stringify(appearance), null], [null, appearance]]) {
+      const { root, meta } = firstPaint(stored, cached, scheme === "light");
+      expect(root.dataset).toEqual({ appearance: scheme, themeStyle: appearance, layoutStyle: "cupertino" });
+      expect(root.style.colorScheme).toBe(scheme);
+      expect(meta.content).toBe(color);
+    }
+  });
   it.each(["light", "dark", "system", "luminous", "cupertino", "cupertino-dark"])("accepts the retained %s appearance", (appearance) => {
     const { root } = firstPaint(JSON.stringify(appearance), null);
     expect(root.dataset.themeStyle).toBe(appearance.startsWith("cupertino") ? "cupertino" : appearance === "luminous" ? "luminous" : "default");

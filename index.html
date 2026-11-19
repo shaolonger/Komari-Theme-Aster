@@ -37,7 +37,7 @@
     </script>
     <script>
       (() => {
-        const appearances = ["aurora", "system", "light", "dark", "luminous", "cupertino", "cupertino-dark", "cupertino-dense"];
+        const appearances = ["aurora", "system", "light", "dark", "luminous", "cupertino", "cupertino-dark", "cupertino-dense", "crystal-light", "crystal-dark"];
         const parseAppearance = (value) => {
           if (value == null) return null;
           try {
@@ -72,15 +72,20 @@
             ? window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light"
-            : appearance === "dark" || appearance === "cupertino-dark" ? "dark" : "light";
+            : ["dark", "cupertino-dark", "crystal-dark"].includes(appearance) ? "dark" : "light";
         document.documentElement.dataset.appearance = resolved;
         const cupertino = appearance === "cupertino" || appearance === "cupertino-dark";
-        const themed = appearance === "aurora" || appearance === "luminous" || appearance === "cupertino-dense";
+        const dense = ["cupertino-dense", "crystal-light", "crystal-dark"].includes(appearance);
+        const themed = appearance === "aurora" || appearance === "luminous" || dense;
         document.documentElement.dataset.themeStyle = cupertino ? "cupertino" : themed ? appearance : "default";
-        document.documentElement.dataset.layoutStyle = cupertino || appearance === "aurora" || appearance === "cupertino-dense" ? "cupertino" : document.documentElement.dataset.themeStyle;
+        document.documentElement.dataset.layoutStyle = cupertino || dense || appearance === "aurora" ? "cupertino" : document.documentElement.dataset.themeStyle;
         document.documentElement.style.colorScheme = resolved;
         const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.content = appearance === "aurora" ? "#F5F5F7" : appearance === "cupertino-dark" ? "#141416" : appearance === "luminous" ? "#eaf3ff" : resolved === "dark" ? "#000000" : "#F5F5F7";
+        if (meta) meta.content = appearance === "crystal-dark" ? "#0b111c"
+          : appearance === "crystal-light" ? "#edf3fc"
+          : appearance === "cupertino-dark" ? "#141416"
+          : appearance === "luminous" ? "#eaf3ff"
+          : resolved === "dark" ? "#000000" : "#F5F5F7";
 
         // Apply the cached custom background + card transparency before first
         // paint so a refresh doesn't flash the solid theme before React mounts.

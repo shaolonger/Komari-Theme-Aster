@@ -14,7 +14,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useViewMode } from "@/hooks/useViewMode";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
-import { isDenseNodeViewMode } from "@/utils/themeSettings";
+import { isDenseCardAppearance, isDenseNodeViewMode } from "@/utils/themeSettings";
 import { clsx } from "clsx";
 
 const APPEARANCE_OPTIONS = [
@@ -25,6 +25,8 @@ const APPEARANCE_OPTIONS = [
   { value: "cupertino", icon: Sparkles, label: "原生 · Cupertino" },
   { value: "cupertino-dark", icon: Moon, label: "原生 · 暗色" },
   { value: "cupertino-dense", icon: Rows3, label: "原生 · 密集" },
+  { value: "crystal-light", icon: Sun, label: "晶透 · 亮色" },
+  { value: "crystal-dark", icon: Moon, label: "晶透 · 暗色" },
   { value: "luminous", icon: Sparkles, label: "光域未来" },
 ] as const;
 
@@ -94,7 +96,7 @@ export default function FloatingControlsMenu({ hidden }: { hidden: boolean }) {
             ))}
           </div>
           <div className="control-group" role="group" aria-label="节点视图">
-            {VIEW_OPTIONS.filter(({ value }) => appearance !== "cupertino-dense" || isDenseNodeViewMode(value))
+            {VIEW_OPTIONS.filter(({ value }) => !isDenseCardAppearance(appearance) || isDenseNodeViewMode(value))
               .map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}

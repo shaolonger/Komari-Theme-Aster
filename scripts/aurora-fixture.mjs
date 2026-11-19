@@ -9,13 +9,15 @@ export const auroraNames = [
 ];
 const latency = [185, 166, 235, 160, 193, 235];
 const loss = [0.7, 0, 15.3, 1.7, 2, 2.3];
+const crystalLatency = [155.86, 190.74, 198.44, 160.09, 193.68, 235.06];
+const crystalLoss = [6.9, 5.2, 3.4, 1.7, 2, 2.3];
 const quotaBytes = 2.93 * 1024 ** 4;
-export function auroraNodes(size = 1) {
+export function auroraNodes(size = 1, crystal = false) {
   return Array.from({ length: size }, (_, i) => ({
     uuid: `node-${i}`,
-    name: i ? `Aurora Node ${i}` : "PPFlight LAX Global S2",
+    name: i ? `Aurora Node ${i}` : crystal ? "PPFlight-Global" : "PPFlight LAX Global S2",
     group: "PPFlight",
-    region: "US",
+    region: crystal ? "US · 洛杉矶" : "US",
     hidden: false,
     cpu_name: "AMD EPYC",
     cpu_cores: 1,
@@ -41,7 +43,7 @@ export function auroraNodes(size = 1) {
     ipv6: `2001:db8::${i + 1}`,
   }));
 }
-export function auroraStatus(quotaFraction) {
+export function auroraStatus(quotaFraction, crystal = false) {
   return {
     online: true,
     cpu: 5,
@@ -63,20 +65,25 @@ export function auroraStatus(quotaFraction) {
     uptime: 4 * 86400,
     process: 24,
     time: Math.floor(Date.now() / 1000),
+    ...(crystal && {
+      cpu: 8.3, ram: Math.round(.309 * 1024 ** 3), disk: .232 * 20 * 1024 ** 3,
+      load: .02, net_in: 1.96 * 1024, uptime: 46 * 3600,
+    }),
   };
 }
-export function auroraStats(entityIds) {
+export function auroraStats(entityIds, crystal = false) {
+  const losses = crystal ? crystalLoss : loss;
   return {
     stats: entityIds.flatMap((uuid) =>
-      latency.map((value, i) => ({
+      (crystal ? crystalLatency : latency).map((value, i) => ({
         entity_id: uuid,
         task_id: String(i + 1),
         name: auroraNames[i],
         type: "icmp",
         interval: 60,
         total: 1000,
-        valid: 1000 - Math.round(loss[i] * 10),
-        loss: loss[i],
+        valid: 1000 - Math.round(losses[i] * 10),
+        loss: losses[i],
         loss_approximate: false,
         min: value - 10,
         max: value + 10,
@@ -88,8 +95,24 @@ export function auroraStats(entityIds) {
     count: entityIds.length * 6,
   };
 }
-export function auroraSeries(series, pointCount = 16) {
+export function auroraSeries(series, pointCount = 16, crystal = false) {
   const now = Date.now();
+  const crystalSamples = [
+    [156, 158, 160, 160, 152, 90, 95, 250, 100],
+    [175, 182, 160, 190, 185, 229, 231, 242, 130],
+    [190, 171, 232, 239, 241, 170, 230, 130, 100],
+    [161, 157, 160, 190, 185, 90, 130, 250, 210],
+    [181, 180, 188, 192, 196, 200, 199, 222, 232],
+    [241, 239, 243, 259, 250, 225, 242, 176, 100],
+  ];
+  const crystalLossSamples = [
+    [0, 0, 0, 0, 1, 4, 4, 0, 0],
+    [0, 0, 0, 0, 4, 4, 4, 0, 0],
+    [0, 0, 0, 0, 0, 0, 12, 4, 0],
+    [0, 0, 0, 0, 4, 4, 4, 0, 0],
+    [0, 0, 0, 0, 4, 4, 4, 0, 0],
+    [0, 0, 0, 0, 0, 0, 4, 0, 0],
+  ];
   return series.flatMap((s) =>
     s.metric_key.startsWith("ping.")
       ? latency.map((v, i) => ({
@@ -97,8 +120,11 @@ export function auroraSeries(series, pointCount = 16) {
           tags: { task_id: String(i + 1) },
           points: Array.from({ length: pointCount }, (_, n) => ({
             time: new Date(now - (pointCount - 1 - n) * 60000).toISOString(),
-            value:
-              s.metric_key === "ping.latency_ms"
+            value: crystal && n >= pointCount - 9
+              ? s.metric_key === "ping.latency_ms"
+                ? crystalSamples[i][n - pointCount + 9]
+                : crystalLossSamples[i][n - pointCount + 9] / 100
+              : s.metric_key === "ping.latency_ms"
                 ? n < 7
                   ? v + n * 4
                   : 65 + n * 2
@@ -113,7 +139,7 @@ export function auroraSeries(series, pointCount = 16) {
   );
 }
 const carriers = ["电信", "联通", "移动"];
-export function auroraRoutes() {
+export function auroraRoutes(crystal = false) {
   const evidence = (label) => ({
     label,
     displayLabel: label,
@@ -134,11 +160,11 @@ export function auroraRoutes() {
     4: [
       ["163", "163"],
       ["4837", "4837"],
-      ["CMI", "CMI"],
+      ["CMI", crystal ? "CMIN2" : "CMI"],
     ],
     6: [
-      ["CTGNet", "CN2"],
-      ["10099", "9929"],
+      crystal ? ["163", "4837"] : ["CTGNet", "CN2"],
+      crystal ? ["4837", "4837"] : ["10099", "9929"],
       ["CMI", "CMIN2"],
     ],
   };
@@ -165,9 +191,9 @@ export function auroraRoutes() {
     },
   };
 }
-export function auroraSpeeds() {
-  const download = { 4: [921.6, 886.3, 905.8], 6: [908.4, 872.1, 916.7] },
-    upload = { 4: [168.2, 152.7, 176.4], 6: [162.6, 148.5, 181.2] };
+export function auroraSpeeds(crystal = false, crystalControls = false) {
+  const download = crystal ? { 4: [59.8, .2, 273.2], 6: [46.7, 46.7, 195.7] } : { 4: [921.6, 886.3, 905.8], 6: [908.4, 872.1, 916.7] };
+  const upload = crystal ? { 4: [107.7, 75.1, 447.3], 6: [15.7, 14, 400.4] } : { 4: [168.2, 152.7, 176.4], 6: [162.6, 148.5, 181.2] };
   const value = (v) => ({
     bitsPerSecond: v * 1e6,
     state: "ok",
@@ -191,14 +217,14 @@ export function auroraSpeeds() {
             family: f,
             state: "ok",
             stale: false,
-            cities: ["北京", "上海", "广州"].map((city, c) => ({
+            cities: (crystal && !crystalControls ? ["北京"] : ["北京", "上海", "广州"]).map((city, c) => ({
               city,
               rows: carriers.map((carrier, i) => ({
                 carrier,
                 at: new Date().toISOString(),
                 provider: carrier,
-                download: value(download[f][i] - c * 100),
-                upload: value(upload[f][i] - c * 10),
+                download: value(Math.max(0, download[f][i] - c * 100)),
+                upload: value(Math.max(0, upload[f][i] - c * 10)),
               })),
             })),
           },

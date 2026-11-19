@@ -1,4 +1,4 @@
-import { usesCupertinoLayout } from "@/utils/themeSettings";
+import { isDarkAppearance, usesCupertinoLayout } from "@/utils/themeSettings";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
@@ -527,7 +527,7 @@ export function LoadChart({
   const themeSettings = useThemeSettings();
   const displayTimeZone = themeSettings.displayTimeZone;
   const native = appearance === "luminous" || usesCupertinoLayout(appearance);
-  const cupertinoColors = appearance === "cupertino-dark" ? CUPERTINO_DARK_COLORS : CUPERTINO_COLORS;
+  const cupertinoColors = isDarkAppearance(appearance) ? CUPERTINO_DARK_COLORS : CUPERTINO_COLORS;
   const { w, h } = useResponsiveChartSize(native ? "workspace" : "grid");
   const [selectedMetric, setSelectedMetric] = useState(0);
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);

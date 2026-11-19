@@ -3939,18 +3939,18 @@
   }
 }
 
-[data-theme-style="cupertino-dense"][data-layout-style="cupertino"] .app-main {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .app-main {
   margin-left: 0;
   padding-inline: 12px;
 }
-[data-theme-style="cupertino-dense"] .app-main > div {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .app-main > div {
   max-width: none;
 }
-[data-theme-style="cupertino-dense"] .cupertino-masthead {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-masthead {
   left: 0;
   padding-inline: 12px;
 }
-[data-theme-style="cupertino-dense"] .cupertino-mobile-menu {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-mobile-menu {
   display: grid;
   place-items: center;
   width: 30px;
@@ -3958,7 +3958,7 @@
   flex-shrink: 0;
   color: var(--text-secondary);
 }
-[data-theme-style="cupertino-dense"] .cupertino-drawer-backdrop {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-drawer-backdrop {
   display: block;
   position: fixed;
   z-index: 35;
@@ -3989,7 +3989,7 @@
   color: var(--accent-600);
   background: var(--fill-secondary);
 }
-[data-theme-style="cupertino-dense"] .cupertino-toolbar {
+:is([data-theme-style="cupertino-dense"], [data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-toolbar {
   margin-block: 10px;
   gap: 8px;
 }

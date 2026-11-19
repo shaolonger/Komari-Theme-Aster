@@ -2,7 +2,7 @@ import { notifyPaletteChanged } from "@/utils/palette";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
-import { isAppearance, isCupertinoAppearance, usesCupertinoLayout, type Appearance } from "@/utils/themeSettings";
+import { isAppearance, isCupertinoAppearance, isDarkAppearance, isDenseCardAppearance, usesCupertinoLayout, type Appearance } from "@/utils/themeSettings";
 
 type ResolvedAppearance = "light" | "dark";
 const APPEARANCE_STORAGE_KEY = "appearance";
@@ -33,7 +33,7 @@ function resolveAppearance(a: Appearance): ResolvedAppearance {
   if (a === "system") {
     return getSystemAppearanceMediaQuery()?.matches ? "dark" : "light";
   }
-  return a === "dark" || a === "cupertino-dark" ? "dark" : "light";
+  return isDarkAppearance(a) ? "dark" : "light";
 }
 
 function parseStoredAppearance(raw: string | null): Appearance | null {
@@ -115,13 +115,19 @@ function applyAppearance(appearance: Appearance, resolvedAppearance: ResolvedApp
   const root = document.documentElement;
   const previous = `${root.dataset.appearance}:${root.dataset.themeStyle}`;
   root.dataset.appearance = resolvedAppearance;
-  root.dataset.themeStyle = appearance === "cupertino-dense" ? appearance : isCupertinoAppearance(appearance) ? "cupertino" : (appearance === "luminous" || appearance === "aurora") ? appearance : "default";
+  root.dataset.themeStyle = isDenseCardAppearance(appearance) || appearance === "luminous" || appearance === "aurora"
+    ? appearance
+    : isCupertinoAppearance(appearance) ? "cupertino" : "default";
   root.dataset.layoutStyle = usesCupertinoLayout(appearance) ? "cupertino" : root.dataset.themeStyle;
   root.style.colorScheme = resolvedAppearance;
   if (previous !== `${root.dataset.appearance}:${root.dataset.themeStyle}`) notifyPaletteChanged();
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) {
-    meta.content = appearance === "cupertino-dark" ? "#141416" : appearance === "aurora" ? "#F5F5F7" : appearance === "luminous" ? "#eaf3ff" : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
+    meta.content = appearance === "crystal-dark" ? "#0b111c"
+      : appearance === "crystal-light" ? "#edf3fc"
+      : appearance === "cupertino-dark" ? "#141416"
+      : appearance === "luminous" ? "#eaf3ff"
+      : resolvedAppearance === "dark" ? "#000000" : "#F5F5F7";
   }
 }
 

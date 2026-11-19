@@ -40,10 +40,23 @@ import {
   type DisplayTimeZone,
 } from "@/utils/timeDisplay";
 
-export type Appearance = "system" | "light" | "dark" | "aurora" | "luminous" | "cupertino" | "cupertino-dark" | "cupertino-dense";
+type CrystalAppearance = "crystal-light" | "crystal-dark";
+export type Appearance = "system" | "light" | "dark" | "aurora" | "luminous" | "cupertino" | "cupertino-dark" | "cupertino-dense" | CrystalAppearance;
 
-export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" | "cupertino-dense" {
-  return value === "cupertino" || value === "cupertino-dark" || value === "cupertino-dense";
+export function isCrystalAppearance(value: unknown): value is CrystalAppearance {
+  return value === "crystal-light" || value === "crystal-dark";
+}
+
+export function isDenseCardAppearance(value: unknown): value is "cupertino-dense" | CrystalAppearance {
+  return value === "cupertino-dense" || isCrystalAppearance(value);
+}
+
+export function isCupertinoAppearance(value: unknown): value is "cupertino" | "cupertino-dark" | "cupertino-dense" | CrystalAppearance {
+  return value === "cupertino" || value === "cupertino-dark" || isDenseCardAppearance(value);
+}
+
+export function isDarkAppearance(value: Appearance) {
+  return value === "dark" || value === "cupertino-dark" || value === "crystal-dark";
 }
 // Aurora retains its own cards while sharing the complete Cupertino workspace.
 export function usesCupertinoLayout(value: unknown): boolean {

@@ -4,12 +4,11 @@ export const CARRIERS = ["电信", "联通", "移动"] as const;
 export const FAMILIES = ["4", "6"] as const;
 export type Carrier = (typeof CARRIERS)[number];
 export type Family = (typeof FAMILIES)[number];
+type PingIdentityFields = Pick<HomepagePingSourceRow, "name" | "group" | "target">;
 
 // Only explicitly identifiable sources belong in the carrier matrix. Never
 // infer a carrier or address family from a task's position in the response.
-export function identifyPingSource(
-  row: Pick<HomepagePingSourceRow, "name" | "group" | "target">,
-) {
+export function identifyPingSource(row: PingIdentityFields) {
   const label = `${row.group} ${row.name}`;
   const carrier: Carrier | undefined = /电信|telecom|chinanet|ctgnet/i.test(
     label,
@@ -20,6 +19,10 @@ export function identifyPingSource(
       : /移动|mobile|cmnet|cminet/i.test(label)
         ? "移动"
         : undefined;
+  return carrier ? { carrier, family: pingSourceFamily(row) } : null;
+}
+
+export function pingSourceFamily(row: PingIdentityFields): Family {
   // Scheme and port colons are not IPv6 address delimiters.
   let host = row.target;
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(host)) {
@@ -29,11 +32,9 @@ export function identifyPingSource(
       /* Preserve malformed targets for the existing fallback. */
     }
   }
-  const family: Family =
-    /(?:ipv?\s*6|v6|IPv6)/i.test(label) || (host.match(/:/g)?.length || 0) >= 2
+  return /(?:ipv?\s*6|v6|IPv6)/i.test(`${row.group} ${row.name}`) || (host.match(/:/g)?.length || 0) >= 2
       ? "6"
       : "4";
-  return carrier ? { carrier, family } : null;
 }
 
 export function selectCarrierPing(

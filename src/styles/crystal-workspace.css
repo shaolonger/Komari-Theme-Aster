@@ -1,0 +1,111 @@
+:root[data-theme-style="crystal-light"][data-layout-style="cupertino"] {
+  --bg-0: #edf3fc;
+  --bg-1: #e5edf9;
+  --surface: #f8fbff;
+  --surface-elev: #fff;
+  --surface-sunken: #e9f0fb;
+  --surface-a: #f3f7fe;
+  --text-primary: #172139;
+  --text-secondary: #41536e;
+  --text-tertiary: #546781;
+  --border: #cedbf0;
+  --border-subtle: #dae5f5;
+  --border-strong: #a4b9d8;
+  --hairline: #d5e1f1;
+  --accent-500: #0676f5;
+  --accent-600: #0059c6;
+  --fill-secondary: #dceaff;
+  --fill-tertiary: #eff5ff;
+  --hover-bg: #e5efff;
+  --status-success: #087d25;
+  --status-online: #078d24;
+  --cupertino-control-border: #d2def1;
+  --cupertino-text-detail: #41536e;
+  --cupertino-blue-border: #b5d0f6;
+  --cupertino-button-bottom: #005fcf;
+  --crystal-workspace-panel: linear-gradient(155deg, #fbfdff, #eaf2ff);
+  --crystal-workspace-shadow: inset 0 1px #fff, 0 7px 22px #567ab416;
+}
+
+:root[data-theme-style="crystal-dark"][data-layout-style="cupertino"] {
+  --bg-0: #0b111c;
+  --bg-1: #101928;
+  --surface: #171f2c;
+  --surface-elev: #202c3d;
+  --surface-sunken: #0e1622;
+  --surface-a: #151e2b;
+  --text-primary: #f0f5fd;
+  --text-secondary: #b3c3d9;
+  --text-tertiary: #9aadc9;
+  --border: #33465d;
+  --border-subtle: #28384d;
+  --border-strong: #516780;
+  --hairline: #293a50;
+  --accent-500: #62c8ff;
+  --accent-600: #a0d9ff;
+  --fill-secondary: #1a3553;
+  --fill-tertiary: #141e2c;
+  --hover-bg: #21354d;
+  --status-success: #56e65e;
+  --status-online: #49e456;
+  --cupertino-control-border: #384b64;
+  --cupertino-text-detail: #b3c3d9;
+  --cupertino-text-emphasis: #edf4ff;
+  --cupertino-blue-border: #315982;
+  --crystal-workspace-panel: linear-gradient(155deg, #202c3c, #141e2b);
+  --crystal-workspace-shadow: inset 0 1px #35465c8c, 0 7px 22px #0004;
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] body {
+  background: radial-gradient(ellipse at 52% 0%, var(--bg-1), transparent 72%) var(--bg-0);
+}
+
+:root:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] :is(
+  .cupertino-masthead, .cupertino-overview-card, .cupertino-top-navigation
+) {
+  background: var(--crystal-workspace-panel);
+  border-color: var(--border);
+  box-shadow: var(--crystal-workspace-shadow);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] :is(
+  .cupertino-status-filters button, .cupertino-filters :is(select, button), .cupertino-view-switch
+) {
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+:root:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] :is(
+  .cupertino-status-filters, .cupertino-view-switch
+) [aria-pressed="true"] {
+  background: var(--fill-secondary);
+  color: var(--accent-600);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .home-node-results {
+  --crystal-min-column: 330px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--crystal-min-column)), 1fr));
+  align-items: start;
+  gap: clamp(8px, 1vw, 16px);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .home-node-results[data-view-mode="standard"] {
+  --crystal-min-column: 490px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--crystal-min-column)), 1fr)) !important;
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .home-node-results:has(> :only-child) {
+  grid-template-columns: minmax(0, 1052px) !important;
+  justify-content: center;
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .home-node-results > .home-node-card-slot {
+  container-type: inline-size;
+  overflow-clip-margin: 36px;
+}
+
+@media (min-width: 1251px) {
+  [data-theme-style="crystal-dark"][data-layout-style="cupertino"][data-cupertino-page="home"] .app-main {
+    padding-right: 12px;
+  }
+}

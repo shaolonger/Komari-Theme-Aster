@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { subscribeMediaQuery } from "@/utils/mediaQuery";
-import { usesCupertinoLayout, isDenseNodeViewMode, isNodeViewMode, type DenseNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
+import { usesCupertinoLayout, isDenseCardAppearance, isDenseNodeViewMode, isNodeViewMode, type DenseNodeViewMode, type NodeViewMode } from "@/utils/themeSettings";
 
 // Legacy keys retained so session view-mode overrides survive the rename.
 const DESKTOP_OVERRIDE_KEY = "komaritheme:node-view-mode-session:desktop";
@@ -163,7 +163,7 @@ export function useViewMode() {
   const themeSettings = useThemeSettings();
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { appearance } = usePreferences();
-  const dense = appearance === "cupertino-dense";
+  const dense = isDenseCardAppearance(appearance);
   const defaultMode: NodeViewMode = dense
     ? "compact"
     : (appearance === "luminous" || usesCupertinoLayout(appearance)) && themeSettings.defaultAppearance !== appearance
@@ -207,7 +207,7 @@ export function readViewModeHint(): string {
   try {
     const state = readSnapshot();
     const { device } = state;
-    const override = document.documentElement.dataset.themeStyle === "cupertino-dense" ? state.denseOverride : state.override;
+    const override = isDenseCardAppearance(document.documentElement.dataset.themeStyle) ? state.denseOverride : state.override;
     return override ? `${device}/${override}(override)` : `${device}/default`;
   } catch {
     return "unknown";

@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowDown,
@@ -9,17 +9,14 @@ import {
   Cpu,
   Database,
   Gauge,
-  Globe,
   HardDrive,
   MemoryStick,
 } from "lucide-react";
 import { NetworkSummary } from "@/components/aurora/AuroraNodeCard";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
-import {
-  toggleLuminousFavorite,
-  useLuminousFavorites,
-} from "@/hooks/useLuminousFavorites";
+import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
+import { DenseNodeActions } from "./DenseNodeActions";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { formatBytes } from "@/utils/format";
 import "@/styles/aurora.css";
@@ -40,7 +37,6 @@ function Segments({ value, label }: { value: number; label: string }) {
 export default memo(function CupertinoDenseCard({ uuid, compact }: { uuid: string; compact: boolean }) {
   const model = useNodeCardModel(uuid);
   const favorite = useLuminousFavorites().includes(uuid);
-  const [copied, setCopied] = useState("");
   if (!model.node) return <article className="cupertino-dense-card" aria-busy="true" />;
 
   const { node, uptime, expire, renewalPrice, traffic, upRate, downRate, tags } = model;
@@ -88,14 +84,6 @@ export default memo(function CupertinoDenseCard({ uuid, compact }: { uuid: strin
   const totalDown = known ? formatBytes(node.trafficDown, 1) : "—";
   const [upValue, upUnit] = totalUp.split(" ");
   const [downValue, downUnit] = totalDown.split(" ");
-  const copy = async (address: string) => {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied("已复制");
-    } catch {
-      setCopied("复制失败");
-    }
-  };
 
   return (
     <article className="aurora-node-card cupertino-dense-card" data-node={uuid}>
@@ -105,27 +93,7 @@ export default memo(function CupertinoDenseCard({ uuid, compact }: { uuid: strin
           <Link to={detailUrl} className="dense-node-name" title={node.name}>{node.name}</Link>
           {compact && statusLabel}
         </div>
-        <details className="dense-node-actions" onToggle={(event) => {
-          if (!event.currentTarget.open) setCopied("");
-        }}>
-          <summary aria-label={`${node.name} 节点操作`} title="节点操作">
-            <Globe />
-          </summary>
-          <div className="dense-node-menu">
-            <Link to={detailUrl}>节点详情</Link>
-            <Link to={`${detailUrl}?focus=ping`}>网络监控</Link>
-            <Link to={`${detailUrl}/report`}>生成报告</Link>
-            <button type="button" aria-pressed={favorite} onClick={() => toggleLuminousFavorite(uuid)}>
-              {favorite ? "取消收藏" : "收藏节点"}
-            </button>
-            {([["IPv4", node.ipv4], ["IPv6", node.ipv6]] as const).map(([family, address]) => address && (
-              <button type="button" key={family} onClick={() => void copy(address)} title={address}>
-                复制 {family} · {address}
-              </button>
-            ))}
-            {copied && <small role="status">{copied}</small>}
-          </div>
-        </details>
+        <DenseNodeActions node={node} detailUrl={detailUrl} favorite={favorite} />
         <Link to={`${detailUrl}?focus=load`} aria-label={`${node.name} 性能趋势`} title="性能趋势">
           <ChartNoAxesColumnIncreasing />
         </Link>

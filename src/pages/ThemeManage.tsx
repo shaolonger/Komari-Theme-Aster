@@ -97,6 +97,7 @@ import {
 import { NetworkBindingEditor } from "@/components/settings/NetworkBindingEditor";
 import { buildPingDiagnostics } from "@/utils/pingDiagnostics";
 import {
+  isDenseCardAppearance,
   normalizeThemeSettings,
   type ResolvedThemeSettings,
 } from "@/utils/themeSettings";
@@ -893,7 +894,7 @@ export function ThemeManage() {
         <TimeZoneEditor value={draftDisplayTimeZoneText} invalid={draftDisplayTimeZoneInvalid} preview={displayTimeZonePreview} onChange={setDraftDisplayTimeZoneText}/>
       </StudioPanel>
 
-      {draftAppearance !== "cupertino-dense" && <StudioPanel
+      {!isDenseCardAppearance(draftAppearance) && <StudioPanel
         title="默认卡片视图"
         description="分别设置桌面端与移动端的默认卡片尺寸；首页右上角按钮只临时切换当前设备的显示。"
         aside={<LayoutGrid size={16} />}

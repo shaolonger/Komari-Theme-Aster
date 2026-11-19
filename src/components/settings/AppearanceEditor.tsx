@@ -10,6 +10,8 @@ const appearances: { value: Appearance; label: string; detail: string }[] = [
   { value: 'cupertino', label: '原生 · Cupertino', detail: '珍珠白、石墨文字与系统蓝，清晰而克制的监控工作台' },
   { value: 'cupertino-dark', label: '原生 · 暗色', detail: '深石墨、柔和灰白与系统蓝，苹果风格的暗色监控工作台' },
   { value: 'cupertino-dense', label: '原生 · 密集', detail: '全宽工作台，支持紧凑和标准卡片，同屏查看双栈三网质量、线路和测速' },
+  { value: 'crystal-light', label: '晶透 · 亮色', detail: '冰蓝工作台与珠白卡片，按运营商和地址族对齐网络指标' },
+  { value: 'crystal-dark', label: '晶透 · 暗色', detail: '深蓝黑工作台与石墨卡片，按运营商和地址族对齐网络指标' },
   { value: 'luminous', label: '光域未来', detail: '蓝白玻璃、实时三维地球与动态云端装置' },
 ];
 const layouts: { value: NodeViewMode; label: string; detail: string }[] = [

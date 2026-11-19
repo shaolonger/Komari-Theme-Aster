@@ -26,14 +26,16 @@ import { getDisplayRegionCode } from "@/utils/geo";
 import { regionLabel } from "@/utils/regionLabel";
 import { formatBytes } from "@/utils/format";
 import { notifyPaletteChanged } from "@/utils/palette";
+import { isDenseCardAppearance } from "@/utils/themeSettings";
 import "@/styles/cupertino.css";
+import "@/styles/crystal-workspace.css";
 
 export default function CupertinoShell() {
   const location = useLocation(),
     navigate = useNavigate();
   const { data: me } = useAuth();
   const { appearance } = usePreferences();
-  const dense = appearance === "cupertino-dense";
+  const dense = isDenseCardAppearance(appearance);
   const allNodes = useAllNodeMeta(),
     summaries = useHomeNodeSummaries();
   const nodes = useMemo(
