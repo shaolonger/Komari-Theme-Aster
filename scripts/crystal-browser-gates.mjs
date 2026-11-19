@@ -38,12 +38,13 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         document.querySelector('.cupertino-sidebar')===null &&
         document.querySelectorAll('.cupertino-overview-card').length===4 &&
         document.querySelector('.cupertino-home-search input')!==null &&
-        rows.map(row=>row.firstElementChild.textContent).join('|')==='电信 IPv4|电信 IPv6|联通 IPv4|联通 IPv6|移动 IPv4|移动 IPv6|内网 IPv4' &&
+        rows.map(row=>row.firstElementChild.textContent).join('|')==='电信 IPv4|电信 IPv6|联通 IPv4|联通 IPv6|移动 IPv4|移动 IPv6' &&
         rows.every(row=>row.children.length===4 && row.querySelectorAll('.crystal-history i').length===18) &&
-        rows.at(-1).querySelectorAll('[data-tone="empty"]').length===18 &&
+        card.querySelector('.crystal-location,.crystal-favorite')===null &&
+        card.querySelector('.crystal-flag img[alt="地区旗帜: US"]') &&
         getComputedStyle(document.documentElement).getPropertyValue('--bg-0').trim()===${JSON.stringify(scheme === "light" ? "#edf3fc" : "#0b111c")} &&
         [...card.querySelectorAll('.crystal-route-label')].every(label=>label.scrollWidth<=label.clientWidth+1) &&
-        ['PPFlight-Global','美国 · 洛杉矶','在线 1天22小时','8.3%','30.9%','23.2%','60%','1049','155.86','59.8','107.7'].every(value=>card.textContent.includes(value)) &&
+        ['PPFlight-Global','在线 1天22小时','8.3%','30.9%','23.2%','60%','1049','155.86','59.8','107.7'].every(value=>card.textContent.includes(value)) &&
         card.querySelectorAll('.crystal-quota-track [data-filled="true"]').length===21 &&
         card.querySelectorAll('.crystal-quota-track i').length===35;
     })()`), "Crystal reference card is missing live data, aligned network rows, or the selected palette");
@@ -81,7 +82,9 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   setFixture({ nodes: 4, crystalControls: true });
   await cdp.call("Page.reload");
   await waitFor(`${card} .crystal-network-controls .aurora-check button`);
-  await click(`${card} .crystal-favorite`);
+  await click(`${card} .dense-node-actions summary`);
+  await click(`${card} .dense-node-menu button[aria-pressed="false"]`);
+  await click(`${card} .dense-node-actions summary`);
   await click(".cupertino-status-filters button:last-child");
   await waitUntil(cdp, "document.querySelectorAll('.crystal-card[data-node]').length===1", 6000);
   await click(".cupertino-status-filters button:first-child");
@@ -106,14 +109,18 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         const geometry = await cdp.value(`(()=>{
           const card=document.querySelector(${JSON.stringify(card)}), bounds=card.getBoundingClientRect();
           const cells=[...card.querySelectorAll('.crystal-network-row > *, .crystal-resource-value')];
+          const controls=[...card.querySelectorAll('.crystal-network-controls .aurora-city,.crystal-network-controls .aurora-check > button')].map(el=>el.getBoundingClientRect());
+          const header=[...card.querySelector('.crystal-header').children].map(el=>el.getBoundingClientRect());
           return {
             width: innerWidth, card: Math.round(bounds.width),
             aligned: cells.every(cell=>cell.getBoundingClientRect().right<=bounds.right && cell.scrollWidth<=cell.clientWidth+1),
             overflow: document.documentElement.scrollWidth>innerWidth,
+            equalControls: controls.length===3 && controls.every(el=>el.height>=26 && Math.abs(el.height-controls[0].height)<.5 && Math.abs(el.y-controls[0].y)<.5),
+            singleHeader: header.length===5 && header.every(el=>Math.abs(el.y+el.height/2-header[0].y-header[0].height/2)<1 && el.right<=bounds.right),
             standard: card.textContent.includes('最近测速') && !!card.querySelector('.crystal-tags'),
           };
         })()`);
-        failGate(geometry.aligned && !geometry.overflow && geometry.standard === (mode === "standard"),
+        failGate(geometry.aligned && !geometry.overflow && geometry.equalControls && geometry.singleHeader && geometry.standard === (mode === "standard"),
           `Crystal ${scheme} ${mode} layout at ${width}px: ${JSON.stringify(geometry)}`);
         layouts.push({ scheme, mode, ...geometry });
       }
@@ -125,22 +132,40 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     }
   }
 
-  setFixture({ nodes: 1, auroraOffline: true, auroraFamilies: ["4"], auroraSpeedFamilies: ["6"], auroraRouteFamilies: ["4"] });
+  setFixture({
+    auroraOffline: true,
+    auroraSpeedFamilies: ["6"],
+    auroraRouteFamilies: ["4"],
+    crystalPingBindings: { 1: ["node-0", "node-3"], 2: ["node-3"], 3: ["node-3"], 4: ["node-1"], 7: ["node-1"], 8: ["node-1"] },
+  });
   await cdp.call("Page.reload");
   await waitFor(`${card} .crystal-status[data-online="false"]`);
   await waitFor(view("standard"));
-  await waitFor(`${card} [data-family="6"] .crystal-speed-value:enabled`);
+  await waitFor(`${card} .crystal-route-value:enabled`);
+  await waitFor('.crystal-card[data-node="node-1"] [data-carrier="内网"] .crystal-quality');
+  await waitFor('.crystal-card[data-node="node-1"] [data-family="6"] .crystal-speed-value:enabled');
+  await waitFor('.crystal-card[data-node="node-3"] .crystal-quality');
+  await click(`${card} .dense-node-actions summary`);
   failGate(await cdp.value(`(()=>{
-    const card=document.querySelector(${JSON.stringify(card)});
-    return card.querySelector('.crystal-favorite[aria-pressed="true"]') &&
-      !card.querySelector('[data-family="4"] .crystal-speed-value:enabled') &&
-      !card.querySelector('[data-family="6"] .crystal-route-value:enabled') &&
-      !card.querySelector('[data-family="6"] a.crystal-quality');
-  })()`), "Crystal card presents stale evidence from an unconfigured protocol or loses saved preferences");
+    const nodes=[0,1,2,3].map(index=>document.querySelector('.crystal-card[data-node="node-'+index+'"]'));
+    const labels=node=>[...node.querySelectorAll('.crystal-network-name')].map(label=>label.textContent).join('|');
+    const privateRow=nodes[1].querySelector('[data-carrier="内网"]');
+    return labels(nodes[0])==='电信 IPv4' &&
+      labels(nodes[1])==='电信 IPv6|内网 IPv4' &&
+      labels(nodes[2])==='' &&
+      labels(nodes[3])==='电信 IPv4|联通 IPv4|移动 IPv4' &&
+      nodes[0].querySelector('.dense-node-menu button[aria-pressed="true"]') &&
+      !nodes[0].querySelector('.crystal-speed-value:enabled') &&
+      !nodes[1].querySelector('.crystal-route-value:enabled') &&
+      privateRow.querySelectorAll('[data-tone="empty"]').length===18 &&
+      new URL(privateRow.querySelector('a.crystal-quality').href).searchParams.get('pingTasks')==='7' &&
+      nodes[1].querySelector('.aurora-extra a').textContent.includes('机房网关') &&
+      !nodes[2].querySelector('.aurora-extra');
+  })()`), "Crystal cards show unbound Ping tasks or hide a valid binding with no samples");
   setFixture({ auroraHidden: true });
   await cdp.call("Page.reload");
   await waitFor(`${card} a.crystal-quality`);
-  await waitUntil(cdp, `document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-row > *`)}).length===8 &&
+  await waitUntil(cdp, `document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-row > *`)}).length===2 &&
     !document.querySelector(${JSON.stringify(`${card} .crystal-route-pair, ${card} .crystal-speed-pair`)})`, 8000);
 
   await metric(1086);
@@ -154,5 +179,5 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.documentElement.dataset.themeStyle==='crystal-dark' && localStorage.getItem('appearance_default')===JSON.stringify('crystal-dark')", 8000);
   await waitFor(card);
-  return { crystal: "light and dark palettes, aligned matrix, actions, permissions, favorites and mixed address-family configuration", layouts };
+  return { crystal: "light and dark palettes, single-row header, equal-height controls, actions, and per-node Ping bindings", layouts };
 }

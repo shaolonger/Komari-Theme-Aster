@@ -183,6 +183,13 @@ function isOfficialFixture(fixture) {
   return fixture.backend === BACKEND_PROFILES.official.id;
 }
 
+function fixturePingTaskNames(fixture) {
+  if (fixture.crystal) return [...auroraNames, "内网 IPv4", "机房网关"];
+  if (fixture.aurora) return auroraNames;
+  if (fixture.luminousReference) return ["电信", "联通", "移动", "电信V6", "联通V6", "移动V6"];
+  return Array.from({ length: 6 }, (_, index) => `Task ${index + 1}`);
+}
+
 function nodeList(size) {
   if (activeFixture.aurora) return auroraNodes(size, activeFixture.crystal);
   const docsNames = [
@@ -469,7 +476,7 @@ const server = createServer(async (request, response) => {
         // Use an absolute URL: production correctly rejects relative rate
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
-        homepagePingBindings: Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : [1]).filter(id=>!fixture.aurora || !fixture.auroraFamilies || fixture.auroraFamilies.includes(id<=3?"4":"6")).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
+        homepagePingBindings: fixture.crystalPingBindings ?? Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : [1]).filter(id=>!fixture.aurora || !fixture.auroraFamilies || fixture.auroraFamilies.includes(id<=3?"4":"6")).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
         ...(fixture.cupertinoResources ? { showConnections: true } : {}),
@@ -491,7 +498,7 @@ const server = createServer(async (request, response) => {
     return sendJson(response, { logged_in: Boolean(fixture.ui) && !fixture.auroraGuest, username: "test", uuid: "test" });
   }
   if (fixture.ui && url.pathname === "/api/admin/client/list") return sendJson(response, nodeList(fixture.nodes).map(node => fixture.docs ? node : ({ ...node, capability_ping: false })));
-  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
+  if (fixture.ui && url.pathname === "/api/admin/ping") return sendJson(response, fixturePingTaskNames(fixture).map((name, index) => ({ id: index + 1, name, type: "icmp", interval: 60, clients: nodeList(fixture.nodes).map((node) => node.uuid) })));
   if ((url.pathname === '/api/aster-network-observatory/v3/public/speeds' || (url.pathname === '/api/aster-network-observatory/v3/home-speeds' && request.method === 'GET'))) {
     count('home-speeds');
     if (fixture.aurora) {
@@ -598,7 +605,7 @@ const server = createServer(async (request, response) => {
         return sendRpcResult(response, payload.id, reports);
       }
       if (payload.method === "public:getPublicPingTasks") {
-        if (fixture.ui) return sendRpcResult(response, payload.id, Array.from({ length: 6 }, (_, index) => ({ id: index + 1, name: fixture.aurora ? auroraNames[index] : fixture.luminousReference ? ["电信","联通","移动","电信V6","联通V6","移动V6"][index] : `Task ${index + 1}`, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
+        if (fixture.ui) return sendRpcResult(response, payload.id, fixturePingTaskNames(fixture).map((name, index) => ({ id: index + 1, name, weight: index, clients: nodeList(fixture.nodes).map((node) => node.uuid), default_on: true, type: "icmp", interval: 60 })));
         return sendRpcResult(response, payload.id, [{
           id: 1,
           weight: 1,

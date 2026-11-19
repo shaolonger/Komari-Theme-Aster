@@ -1,14 +1,12 @@
 import { memo, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, Ellipsis, MapPin, Star } from "lucide-react";
+import { ArrowDown, ArrowUp, Ellipsis } from "lucide-react";
 import { NetworkSummary } from "@/components/aurora/AuroraNodeCard";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
-import { toggleLuminousFavorite, useLuminousFavorites } from "@/hooks/useLuminousFavorites";
+import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { formatBytes } from "@/utils/format";
-import { getDisplayRegionCode } from "@/utils/geo";
-import { regionLabel } from "@/utils/regionLabel";
 import { DenseNodeActions } from "./DenseNodeActions";
 import "@/styles/aurora.css";
 import "@/styles/crystal-card.css";
@@ -30,11 +28,6 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
   const status = online
     ? uptime.unit ? `在线 ${uptime.value}${uptime.unit}${uptimeHours ? `${uptimeHours}小时` : ""}` : "在线"
     : node.online === false ? "离线" : "待上报";
-  const country = regionLabel(node.region);
-  const locality = getDisplayRegionCode(node.region) !== "UN"
-    ? node.region?.split(/[·/|,，]/).slice(1).map(part => part.trim()).filter(Boolean).join(" · ")
-    : "";
-  const location = locality ? `${country} · ${locality}` : country;
   const labels = compact ? [] : [...new Set(
     [node.business_role, ...tags.map(({ label }) => label), node.group, node.provider]
       .map(label => label?.trim())
@@ -59,9 +52,7 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
       <header className="crystal-header">
         <span className="crystal-flag"><Flag region={node.region} size={52} /></span>
         <Link className="crystal-name" to={detailUrl} title={node.name}>{node.name}</Link>
-        <span className="crystal-location" title={location}><MapPin aria-hidden="true" /><span>{location}</span></span>
-        <span className="crystal-status" data-online={node.online} title={node.public_remark || status}>{status}</span>
-        <button type="button" className="crystal-favorite" aria-label={favorite ? "取消收藏" : "收藏节点"} aria-pressed={favorite} onClick={() => toggleLuminousFavorite(uuid)}><Star /></button>
+        <span className="crystal-status" data-online={node.online} title={node.public_remark ? `${status} · ${node.public_remark}` : status}>{status}</span>
         <Link className="crystal-os" to={perfUrl} aria-label={`${node.name} 性能趋势`} title={`${model.osName} · 性能趋势`}><OsLogo value={node.os} size={42} /></Link>
         <DenseNodeActions icon={Ellipsis} node={node} detailUrl={detailUrl} favorite={favorite} />
       </header>

@@ -207,12 +207,12 @@ function QualityValue({
   );
 }
 
-function CrystalQuality({ source, loss = false }: { source?: HomepagePingSourceRow; loss?: boolean }) {
-  const samples = source?.samples.slice(-CRYSTAL_HISTORY_SEGMENTS) ?? [];
-  const value = loss ? source?.lossPercent : source?.latencyMs;
+function CrystalQuality({ source, loss = false }: { source: HomepagePingSourceRow; loss?: boolean }) {
+  const samples = source.samples.slice(-CRYSTAL_HISTORY_SEGMENTS);
+  const value = loss ? source.lossPercent : source.latencyMs;
   const unit = loss ? "%" : "ms";
   return (
-    <span className="crystal-quality-metric" title={source?.title || "暂无质量观测"}>
+    <span className="crystal-quality-metric" title={source.title}>
       <span><b>{value == null ? "--" : value.toFixed(loss ? 1 : 2)}</b>{value != null && <> {unit}</>}</span>
       <span className="crystal-history" aria-hidden="true">
         {Array.from({ length: CRYSTAL_HISTORY_SEGMENTS }, (_, index) => {
@@ -655,14 +655,6 @@ export const NetworkSummary = memo(function NetworkSummary({
     settings.homepagePingTaskGroups,
     settings.homepagePingTaskOrder[uuid],
   );
-  const nonCarrierRows = rows.filter((row) => !identifyPingSource(row));
-  const privateRows = crystal && settings.showPingChart ? FAMILIES.flatMap(family => {
-    const source = nonCarrierRows.find(row =>
-      /内网|私网|\b(?:private|lan)\b/i.test(`${row.group} ${row.name}`) && pingSourceFamily(row) === family,
-    );
-    return source ? [{ family, source }] : [];
-  }) : [];
-  const extraRows = nonCarrierRows.filter(row => !privateRows.some(({ source }) => source === row));
   const routeNode =
     routes.data?.display === false ? undefined : routes.data?.nodes[uuid];
   const speedNode =
@@ -897,19 +889,29 @@ export const NetworkSummary = memo(function NetworkSummary({
         ))}
     </div>
   );
+  // Ping summaries can outlive a binding change until the next poll.
+  const crystalSources = crystal ? rows.filter(({ taskId }) =>
+    settings.homepagePingBindings[String(taskId)]?.includes(uuid),
+  ) : [];
   const crystalRows = crystal ? [
-    ...CARRIERS.flatMap(carrier => families.map(family => ({
-      carrier,
-      family,
-      source: qualityFamilies.includes(family) ? selectCarrierPing(rows, carrier, family) : undefined,
-    }))),
+    ...CARRIERS.flatMap(carrier => FAMILIES.flatMap(family => {
+      if (!settings.showPingChart && !routeFamilies.includes(family) && !speedFamilies.includes(family)) return [];
+      const source = selectCarrierPing(crystalSources, carrier, family);
+      return source ? [{ carrier, family, source }] : [];
+    })),
     ...FAMILIES.flatMap(family => {
-      const privateRow = privateRows.find(row => row.family === family);
-      return privateRow || (family === "4" && families.includes("4"))
-        ? [{ carrier: undefined, family, source: privateRow?.source }]
-        : [];
+      if (!settings.showPingChart) return [];
+      const source = crystalSources.find(row =>
+        !identifyPingSource(row) &&
+        /内网|私网|\b(?:private|lan)\b/i.test(`${row.group} ${row.name}`) &&
+        pingSourceFamily(row) === family,
+      );
+      return source ? [{ carrier: undefined, family, source }] : [];
     }),
   ] : [];
+  const extraRows = crystal
+    ? crystalSources.filter(row => !crystalRows.some(({ source }) => source === row))
+    : rows.filter(row => !identifyPingSource(row));
   const crystalColumns = [
     "minmax(0, 20fr)",
     routes.data?.display !== false && "minmax(0, 21fr)",
@@ -957,16 +959,17 @@ export const NetworkSummary = memo(function NetworkSummary({
         <>
           {crystalRows.map(({ carrier, family, source }) => {
             const name = `${carrier ?? "内网"} IPv${family}`;
-            const quality = <><CrystalQuality source={source} /><CrystalQuality source={source} loss /></>;
             return (
               <div className="crystal-network-row" key={name} data-family={family} data-carrier={carrier ?? "内网"}>
                 <strong className="crystal-network-name">{name}</strong>
                 {routes.data?.display !== false && routePair(carrier, family)}
-                {settings.showPingChart && (source ? (
-                  <Link className="crystal-quality" to={compareUrl} aria-label={`${name} 质量历史 · 延迟 ${source.latencyLabel} · 丢包 ${source.lossLabel}`}>
-                    {quality}
+                {settings.showPingChart && (
+                  <Link className="crystal-quality" to={buildHomepagePingCompareUrl(uuid, [source.taskId])}
+                    aria-label={`${name} 质量历史 · ${source.name} · 延迟 ${source.latencyLabel} · 丢包 ${source.lossLabel}`}>
+                    <CrystalQuality source={source} />
+                    <CrystalQuality source={source} loss />
                   </Link>
-                ) : <div className="crystal-quality" aria-label={`${name} 暂无质量观测`}>{quality}</div>)}
+                )}
                 {speeds.data?.display !== false && speedPair(carrier, family)}
               </div>
             );
@@ -975,9 +978,11 @@ export const NetworkSummary = memo(function NetworkSummary({
             <footer className="crystal-network-controls">
               {denseView === "standard" && routesVisible && <span>最近检测 {time(routeTimes.at(-1))}</span>}
               {denseView === "standard" && speedsVisible && <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>}
-              {speedsVisible && (cities.length > 1 || denseView === "standard") && cityPicker}
-              {routesVisible && <CheckAction uuid={uuid} module="routes" label="检测线路" />}
-              {speedsVisible && <CheckAction uuid={uuid} module="china-speed" label="测速" />}
+              <div className="crystal-network-actions">
+                {speedsVisible && (cities.length > 1 || denseView === "standard") && cityPicker}
+                {routesVisible && <CheckAction uuid={uuid} module="routes" label="检测线路" />}
+                {speedsVisible && <CheckAction uuid={uuid} module="china-speed" label="测速" />}
+              </div>
             </footer>
           )}
         </>
@@ -1329,14 +1334,14 @@ export const NetworkSummary = memo(function NetworkSummary({
             : "暂无线路观测；可在工作室配置网络观测。"}
         </p>
       )}
-      {!families.length && !routes.isPending && !extraRows.length && !privateRows.length && (
+      {!crystal && !families.length && !routes.isPending && !extraRows.length && (
         <p className="aurora-empty">尚未配置三网检测任务</p>
       )}
       {settings.showPingChart && !!extraRows.length && (
         <details className="aurora-extra">
           <summary>其他质量观测（{extraRows.length}）</summary>
           {extraRows.map((row) => (
-            <Link to={compareUrl} key={row.taskId}>
+            <Link to={crystal ? buildHomepagePingCompareUrl(uuid, [row.taskId]) : compareUrl} key={row.taskId}>
               {row.name}
               <QualityValue source={row} />
               <QualityValue source={row} loss />
