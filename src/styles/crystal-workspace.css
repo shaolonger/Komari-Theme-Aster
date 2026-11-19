@@ -25,6 +25,12 @@
   --cupertino-button-bottom: #005fcf;
   --crystal-workspace-panel: linear-gradient(155deg, #fbfdff, #eaf2ff);
   --crystal-workspace-shadow: inset 0 1px #fff, 0 7px 22px #567ab416;
+  --crystal-blue: #005de1;
+  --crystal-green: #087f0d;
+  --crystal-panel: linear-gradient(161deg, #ffffffdf, #f0f4fc 89%);
+  --crystal-panel-shadow: inset 0 1px #fff, 0 1px 2px #8fa7ce45, 0 6px 15px #7797ca25;
+  --crystal-content-shadow: #234c912e;
+  --crystal-inner-highlight: #fff9;
 }
 
 :root[data-theme-style="crystal-dark"][data-layout-style="cupertino"] {
@@ -54,6 +60,12 @@
   --cupertino-blue-border: #315982;
   --crystal-workspace-panel: linear-gradient(155deg, #202c3c, #141e2b);
   --crystal-workspace-shadow: inset 0 1px #35465c8c, 0 7px 22px #0004;
+  --crystal-blue: #7cd6fc;
+  --crystal-green: #66ee61;
+  --crystal-panel: radial-gradient(ellipse at 55% -25%, #2a303d, transparent 105%), linear-gradient(115deg, #1c222d, #181e28);
+  --crystal-panel-shadow: inset 0 1px 2px #ffffff07, 0 6px 15px #0003;
+  --crystal-content-shadow: #0009;
+  --crystal-inner-highlight: #ffffff24;
 }
 
 :is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] body {
@@ -61,11 +73,61 @@
 }
 
 :root:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] :is(
-  .cupertino-masthead, .cupertino-overview-card, .cupertino-top-navigation
+  .cupertino-masthead, .cupertino-top-navigation
 ) {
   background: var(--crystal-workspace-panel);
   border-color: var(--border);
   box-shadow: var(--crystal-workspace-shadow);
+}
+
+:root:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .cupertino-overview-card {
+  background: var(--crystal-panel);
+  border-color: var(--border);
+  box-shadow: var(--crystal-panel-shadow);
+  text-shadow: 0 1px 2px var(--crystal-content-shadow);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) :is(.cupertino-overview-card, .crystal-card) {
+  font-family: "Inter Variable", Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview :is(.cupertino-stat-content > strong, .cupertino-fleet-ring b) {
+  font-weight: 700;
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .cupertino-stat-icon {
+  box-shadow: inset 0 1px var(--crystal-inner-highlight), 0 2px 5px var(--crystal-content-shadow);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .cupertino-fleet-ring {
+  background:
+    radial-gradient(circle at 30% 15%, var(--crystal-inner-highlight), transparent 65%),
+    conic-gradient(var(--crystal-green) var(--ratio), var(--border) 0);
+  box-shadow: inset 0 1px 2px var(--crystal-inner-highlight), 0 3px 8px var(--crystal-content-shadow);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .cupertino-fleet-ring::before {
+  background: var(--crystal-panel);
+  box-shadow: inset 0 2px 4px var(--crystal-content-shadow);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview :is(
+  .workspace-fleet-line, .cupertino-assets-calendar
+) {
+  filter: drop-shadow(0 2px 3px var(--crystal-content-shadow));
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .workspace-fleet-line {
+  stroke: var(--crystal-blue);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .workspace-fleet-chart svg > line {
+  stroke: var(--border-subtle);
+}
+
+:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .cupertino-overview .workspace-fleet-chart stop {
+  stop-color: var(--accent-500);
 }
 
 :is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] :is(
@@ -92,11 +154,6 @@
 :is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .home-node-results[data-view-mode="standard"] {
   --crystal-min-column: 490px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--crystal-min-column)), 1fr)) !important;
-}
-
-:is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"])[data-layout-style="cupertino"] .home-node-results:has(> :only-child) {
-  grid-template-columns: minmax(0, 1052px) !important;
-  justify-content: center;
 }
 
 :is([data-theme-style="crystal-light"], [data-theme-style="crystal-dark"]) .home-node-results > .home-node-card-slot {

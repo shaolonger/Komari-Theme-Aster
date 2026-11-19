@@ -779,11 +779,11 @@ export const NetworkSummary = memo(function NetworkSummary({
       </select>
     </label>
   );
-  const routePair = (carrier: Carrier | undefined, family: Family) => {
+  const routePair = (carrier: Carrier | undefined, family: Family, taskName?: string) => {
     const row = carrier && (!crystal || routeFamilies.includes(family))
       ? routeNode?.[family].find((row) => row.carrier === carrier)
       : undefined;
-    const title = `${carrier ?? "内网"} IPv${family}`;
+    const title = carrier ? `${carrier} IPv${family}` : taskName;
     return (
       <div className={crystal ? "crystal-route-pair" : "aurora-route-pair"}>
         <RouteValue
@@ -890,28 +890,15 @@ export const NetworkSummary = memo(function NetworkSummary({
     </div>
   );
   // Ping summaries can outlive a binding change until the next poll.
-  const crystalSources = crystal ? rows.filter(({ taskId }) =>
-    settings.homepagePingBindings[String(taskId)]?.includes(uuid),
-  ) : [];
-  const crystalRows = crystal ? [
-    ...CARRIERS.flatMap(carrier => FAMILIES.flatMap(family => {
-      if (!settings.showPingChart && !routeFamilies.includes(family) && !speedFamilies.includes(family)) return [];
-      const source = selectCarrierPing(crystalSources, carrier, family);
-      return source ? [{ carrier, family, source }] : [];
-    })),
-    ...FAMILIES.flatMap(family => {
-      if (!settings.showPingChart) return [];
-      const source = crystalSources.find(row =>
-        !identifyPingSource(row) &&
-        /内网|私网|\b(?:private|lan)\b/i.test(`${row.group} ${row.name}`) &&
-        pingSourceFamily(row) === family,
-      );
-      return source ? [{ carrier: undefined, family, source }] : [];
-    }),
-  ] : [];
-  const extraRows = crystal
-    ? crystalSources.filter(row => !crystalRows.some(({ source }) => source === row))
-    : rows.filter(row => !identifyPingSource(row));
+  const crystalRows = crystal ? rows.flatMap(source => {
+    if (!settings.homepagePingBindings[String(source.taskId)]?.includes(uuid)) return [];
+    const identity = identifyPingSource(source);
+    const carrier = identity?.carrier;
+    const family = identity?.family ?? pingSourceFamily(source);
+    if (!settings.showPingChart && (!carrier || (!routeFamilies.includes(family) && !speedFamilies.includes(family)))) return [];
+    return [{ carrier, family, source }];
+  }) : [];
+  const extraRows = crystal ? [] : rows.filter(row => !identifyPingSource(row));
   const crystalColumns = [
     "minmax(0, 20fr)",
     routes.data?.display !== false && "minmax(0, 21fr)",
@@ -958,14 +945,14 @@ export const NetworkSummary = memo(function NetworkSummary({
       {crystal ? (
         <>
           {crystalRows.map(({ carrier, family, source }) => {
-            const name = `${carrier ?? "内网"} IPv${family}`;
+            const name = source.name || `任务 #${source.taskId}`;
             return (
-              <div className="crystal-network-row" key={name} data-family={family} data-carrier={carrier ?? "内网"}>
-                <strong className="crystal-network-name">{name}</strong>
-                {routes.data?.display !== false && routePair(carrier, family)}
+              <div className="crystal-network-row" key={source.taskId} data-family={family} data-carrier={carrier}>
+                <strong className="crystal-network-name" title={name}>{name}</strong>
+                {routes.data?.display !== false && routePair(carrier, family, name)}
                 {settings.showPingChart && (
                   <Link className="crystal-quality" to={buildHomepagePingCompareUrl(uuid, [source.taskId])}
-                    aria-label={`${name} 质量历史 · ${source.name} · 延迟 ${source.latencyLabel} · 丢包 ${source.lossLabel}`}>
+                    aria-label={`${name} 质量历史 · 延迟 ${source.latencyLabel} · 丢包 ${source.lossLabel}`}>
                     <CrystalQuality source={source} />
                     <CrystalQuality source={source} loss />
                   </Link>
@@ -1341,7 +1328,7 @@ export const NetworkSummary = memo(function NetworkSummary({
         <details className="aurora-extra">
           <summary>其他质量观测（{extraRows.length}）</summary>
           {extraRows.map((row) => (
-            <Link to={crystal ? buildHomepagePingCompareUrl(uuid, [row.taskId]) : compareUrl} key={row.taskId}>
+            <Link to={compareUrl} key={row.taskId}>
               {row.name}
               <QualityValue source={row} />
               <QualityValue source={row} loss />

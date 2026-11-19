@@ -184,7 +184,7 @@ function isOfficialFixture(fixture) {
 }
 
 function fixturePingTaskNames(fixture) {
-  if (fixture.crystal) return [...auroraNames, "内网 IPv4", "机房网关"];
+  if (fixture.crystal) return [...auroraNames, "内网 IPv4", "机房网关", "广州电信·跨境链路-LongProbeName"];
   if (fixture.aurora) return auroraNames;
   if (fixture.luminousReference) return ["电信", "联通", "移动", "电信V6", "联通V6", "移动V6"];
   return Array.from({ length: 6 }, (_, index) => `Task ${index + 1}`);
@@ -335,7 +335,8 @@ function officialPingMetricSeries(params, fixture) {
   const series = [];
 
   for (const metricKey of metricKeys) {
-    if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey) && !fixture.comprehensive) continue;
+    const crystalThroughput = fixture.crystal && metricKey.startsWith("net.");
+    if (!["ping.latency_ms", "ping.loss", "net.total.up", "net.total.down"].includes(metricKey) && !fixture.comprehensive && !crystalThroughput) continue;
     for (const [index, uuid] of entityIds.entries()) {
       let points = Array.from({ length: pointCount }, (_, point) => {
         const fraction = pointCount === 1 ? 1 : fixture.comprehensive && metricKey === 'cpu.usage' && end - windowStart > 2 * 86400000
@@ -477,6 +478,7 @@ const server = createServer(async (request, response) => {
         // endpoints, which otherwise sends CI to the real public API.
         costRateApiUrl: `http://127.0.0.1:${address.port}/api/docs-rates`,
         homepagePingBindings: fixture.crystalPingBindings ?? Object.fromEntries((fixture.cupertino ? [1,2,3] : fixture.luminousReference ? [1,2,3,4,5,6] : [1]).filter(id=>!fixture.aurora || !fixture.auroraFamilies || fixture.auroraFamilies.includes(id<=3?"4":"6")).map(id=>[String(id),nodeList(fixture.nodes).map(node=>node.uuid)])),
+        homepagePingTaskOrder: fixture.crystalPingTaskOrder,
         ...(fixture.ui ? { showGroupTabs: true, showPingChart: true } : {}),
         ...(fixture.ui ? savedUiSettings : {}),
         ...(fixture.cupertinoResources ? { showConnections: true } : {}),

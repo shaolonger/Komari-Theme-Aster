@@ -1,7 +1,5 @@
 .crystal-card {
   --crystal-ink: #172039;
-  --crystal-blue: #005de1;
-  --crystal-green: #087f0d;
   --crystal-amber: #a65500;
   --crystal-line: #c0cde3;
   --crystal-track: linear-gradient(180deg, #d8e2f5, #c7d6ef);
@@ -19,12 +17,10 @@
   --crystal-shell: radial-gradient(ellipse at 46% 0%, #fff8, transparent 65%), linear-gradient(155deg, #f3f7fe, #eaf1fc 61%, #f2f6fd);
   --crystal-shell-outline: #b9ccf2;
   --crystal-shell-shadow: inset 0 0 0 1px #fff9, 0 14px 38px #6787bd27;
-  --crystal-panel: linear-gradient(161deg, #ffffffdf, #f0f4fc 89%);
   --crystal-cell: linear-gradient(155deg, #f9fbfee8, #f1f5fdee 68%, #f9fbfff7);
   --crystal-quality-cell: var(--crystal-cell);
   --crystal-panel-outline: #fff9;
   --crystal-cell-outline: #cdddf4;
-  --crystal-panel-shadow: inset 0 1px #fff, 0 1px 2px #8fa7ce45, 0 6px 15px #7797ca25;
   --crystal-cell-shadow: inset 0 1px 1px #fff, 0 1px 1px #8fa7ce63, 0 5px 12px #7797ca21;
   --crystal-space: max(7px, 1.45cqi);
   --crystal-gap: max(5px, 1.25cqi);
@@ -41,15 +37,11 @@
   background: var(--crystal-shell);
   box-shadow: var(--crystal-shell-shadow);
   color: var(--crystal-ink);
-  font-family: "Inter Variable", Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   line-height: 1.15;
-  font-variant-numeric: tabular-nums;
 }
 
 [data-theme-style="crystal-dark"] .crystal-card {
   --crystal-ink: #f1f3f8;
-  --crystal-blue: #7cd6fc;
-  --crystal-green: #66ee61;
   --crystal-amber: #ffc467;
   --crystal-line: #425567;
   --crystal-track: linear-gradient(180deg, #3c4b5e, #303c4e);
@@ -65,12 +57,10 @@
   --crystal-shell: radial-gradient(ellipse at 48% 0%, #151b259c, transparent 67%), linear-gradient(160deg, #0a0e17, #080d15);
   --crystal-shell-outline: #4d6075;
   --crystal-shell-shadow: inset 0 1px #7087a022, 0 13px 38px #0003;
-  --crystal-panel: radial-gradient(ellipse at 55% -25%, #2a303d, transparent 105%), linear-gradient(115deg, #1c222d, #181e28);
   --crystal-cell: radial-gradient(ellipse at 65% -25%, #27324391, transparent 105%), linear-gradient(145deg, #19222e, #151d28 73%, #1a2330);
   --crystal-quality-cell: radial-gradient(ellipse at 45% -30%, #19222e, transparent 115%), #0e131c;
   --crystal-panel-outline: #ffffff05;
   --crystal-cell-outline: #3c4d60;
-  --crystal-panel-shadow: inset 0 1px 2px #ffffff07, 0 6px 15px #0003;
   --crystal-cell-shadow: inset 0 1px 2px #c1d9ff18, 0 4px 9px #0006;
   --crystal-row-height: max(39px, 9.5cqi);
 }
@@ -298,7 +288,6 @@
 .crystal-billing > span:last-child strong { font-size: .96em; letter-spacing: -.02em; }
 
 .crystal-quota {
-  margin-block-end: max(10px, 3cqi);
   padding: max(5px, 1.05cqi) max(6px, 2.5cqi) max(7px, 1.9cqi);
 }
 .crystal-quota-labels {
@@ -352,12 +341,11 @@
 }
 .crystal-network-name {
   place-items: center;
-  padding-inline: 2px;
+  padding: max(3px, .55cqi);
   text-align: center;
-  font-size: clamp(9px, 3.25cqi, 35px);
+  font-size: clamp(10px, 3.15cqi, 25px);
   font-weight: 650;
-  letter-spacing: -.025em;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .crystal-route-pair,
 .crystal-speed-pair {

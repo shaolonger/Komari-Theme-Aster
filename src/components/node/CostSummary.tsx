@@ -21,10 +21,10 @@ import {
 import { getExpireDaysRemaining, LONG_TERM_EXPIRE_DAYS } from "@/utils/format";
 
 const COST_SORT_OPTIONS: Array<{ field: CostSortField; label: string }> = [
-  { field: "weight", label: "权重" },
-  { field: "price", label: "价格" },
-  { field: "remain", label: "剩余" },
   { field: "expiry", label: "到期" },
+  { field: "remain", label: "剩余" },
+  { field: "price", label: "价格" },
+  { field: "weight", label: "权重" },
 ];
 
 function formatCostCycle(days: number) {

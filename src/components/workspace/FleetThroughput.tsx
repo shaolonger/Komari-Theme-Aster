@@ -146,6 +146,7 @@ export function FleetThroughput({
               fill="url(#workspace-throughput-fill)"
             />
             <path
+              className="workspace-fleet-line"
               d={path}
               fill="none"
               stroke="#138cff"
