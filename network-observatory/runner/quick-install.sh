@@ -298,6 +298,21 @@ for name in expected:
 print(f"已下载并验证网络观测插件包 v{manifest['version']} 中的 runner。")
 PY
 
+if [ -z "$PROBE_ID" ]; then
+  packages=''
+  command -v bash >/dev/null 2>&1 || packages="$packages bash"
+  command -v jq >/dev/null 2>&1 || packages="$packages jq"
+  command -v bc >/dev/null 2>&1 || packages="$packages bc"
+  if ! command -v dig >/dev/null 2>&1; then
+    case "$(package_manager)" in
+      apt) packages="$packages dnsutils" ;;
+      apk) packages="$packages bind-tools" ;;
+      *) packages="$packages bind-utils" ;;
+    esac
+  fi
+  [ -z "$packages" ] || install_packages $packages
+fi
+
 if [ "$UPGRADE" -eq 1 ]; then
   upgrade_existing "$TEMP_DIR/runner/updater.py"
   exit

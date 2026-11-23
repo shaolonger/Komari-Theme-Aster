@@ -14,10 +14,13 @@ import {
 } from "@/services/reportObservatory";
 import { NetworkSectionHeading } from "./NetworkUi";
 import { matchesNodeSearch } from "@/utils/nodeSearch";
+import { diagnosticModules } from "@/services/homeDiagnostics";
 import { FullScheduleEditor } from "./FullScheduleEditor";
 import { reportLabels } from "./reportMetrics";
 import { formatNetworkTime } from "./shared";
 import "@/styles/network-reports.css";
+
+const isDiagnostic = (module: ReportModule) => diagnosticModules.some(value => value === module);
 
 export function ReportPlanPanel({
   uuid,
@@ -64,7 +67,7 @@ export function ReportPlanPanel({
       module: preset.module,
       preset: preset.id,
       endpoints: [...preset.endpoints],
-      family: preset.module === "nodequality-full" ? "auto" : "4",
+      family: preset.module === "nodequality-full" || isDiagnostic(preset.module) ? "auto" : "4",
       protocols: ["tcp"],
       sources: [],
       publicSources: preset.publicSources === true,
@@ -205,7 +208,9 @@ export function ReportPlanPanel({
                     {selected?.preset === preset.id && <Check size={14} />}
                   </strong>
                   <small>
-                    {preset.module === "tcpquality-full" ? "完整 TcpQuality · 长时任务" : preset.module === "nodequality-full" ? "完整 NodeQuality · 长时任务" : preset.traffic
+                    {preset.module === "tcpquality-full" ? "完整 TcpQuality · 长时任务" : preset.module === "nodequality-full" ? "完整 NodeQuality · 长时任务" : isDiagnostic(preset.module)
+                      ? "VPS 公网出口 · IPv4 / IPv6"
+                      : preset.traffic
                       ? "全速 · 需要授权资源"
                       : `${preset.endpoints.length} 个预设目标`}
                   </small>
@@ -246,13 +251,15 @@ export function ReportPlanPanel({
                   地址族
                   <select
                     value={mod.family}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const family = e.target.value as ReportModuleConfig["family"];
                       moduleChange(mod.module, {
-                        family: e.target.value as "4" | "6",
-                        endpoints: forFamily(mod.endpoints, e.target.value as "4" | "6"),
-                      })
-                    }
+                        family,
+                        endpoints: family === "auto" ? [] : forFamily(mod.endpoints, family),
+                      });
+                    }}
                   >
+                    {isDiagnostic(mod.module) && <option value="auto">IPv4 和 IPv6</option>}
                     <option value="4">IPv4</option>
                     <option value="6">IPv6</option>
                   </select>
@@ -316,7 +323,9 @@ export function ReportPlanPanel({
                 <p className="report-caption">SYN 比较需要探测器安装 nping 及 CAP_NET_RAW；未响应率不等同于业务丢包，包长结果不认证 MTU。不可用时注明原因。</p>
               </div>}
               {mod.module === "routes" && <p className="report-caption">目标名称表示目的网络，不强制选路。默认京沪广三网 9 点；增加 CN2/9929/CMIN2 可比较不同目的网络。公共去程仅按实际国家与 ASN 匹配，不承诺京沪广对称覆盖。</p>}
-              {["tcpquality-full", "nodequality-full"].includes(mod.module) ? null : mod.module === "bgp" ? (
+              {isDiagnostic(mod.module) ? (
+                <p className="report-caption">由当前 VPS 探测器执行。需要新版探测器及 bash、curl、jq、Python 3、bc、dig。首页卡片显示范围可单独设置。</p>
+              ) : ["tcpquality-full", "nodequality-full"].includes(mod.module) ? null : mod.module === "bgp" ? (
                 <p className="report-caption">
                   使用此 VPS 登记的公网 IPv4/IPv6 自动查询实际宣告前缀。公开 BGP
                   数据按来源保存；同前缀共享 55 分钟缓存。

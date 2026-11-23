@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { diagnosticModules, type DiagnosticSection } from "./homeDiagnostics";
 
 export const reportModules = [
   "routes",
@@ -10,6 +11,7 @@ export const reportModules = [
   "idc",
   "international-speed",
   "bgp",
+  ...diagnosticModules,
 ] as const;
 export type ReportModule = (typeof reportModules)[number];
 const moduleName = z.enum(reportModules);
@@ -365,6 +367,11 @@ const catalogSchema = capabilitiesSchema.extend({
   homeRouteLabelMode: z.enum(["preferred", "full"]).default("preferred"),
   homeRouteShowDetails: z.boolean().default(false),
   homeSpeedNodes: z.array(z.string()).default([]),
+  homeDiagnosticNodes: z.object({
+    "traffic-reset": z.array(z.string()).optional(),
+    "ip-quality": z.array(z.string()).optional(),
+    "media-unlock": z.array(z.string()).optional(),
+  }).default({}),
   homeSpeedDisplay: z.boolean().default(true),
   homeSpeedShowDetails: z.boolean().default(false),
   revision: z.number(),
@@ -532,4 +539,6 @@ export const publishHomeRoutes = (nodeUuids: string[], revision: number, display
 
 export const rebuildHomeRoutes = () => request("/home-routes/rebuild", "POST", {});
 export const publishHomeSpeeds = (nodeUuids: string[], revision: number, display: boolean, showDetails?: boolean) => request("/home-speeds", "PUT", { nodeUuids, revision, display, showDetails });
+export const publishHomeDiagnostics = (section: DiagnosticSection, nodeUuids: string[], revision: number) =>
+  request("/home-diagnostics", "PUT", { section, nodeUuids, revision });
 export const rebuildHomeSpeeds = () => request("/home-speeds/rebuild", "POST", {});

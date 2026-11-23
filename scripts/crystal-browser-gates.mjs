@@ -218,6 +218,52 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await waitUntil(cdp, `document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-row > *`)}).length===2 &&
     !document.querySelector(${JSON.stringify(`${card} .crystal-route-pair, ${card} .crystal-speed-pair`)})`, 8000);
 
+  const at = new Date().toISOString();
+  setFixture({ homeDiagnostics: {
+    "node-0": {
+      "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
+      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } } },
+        "6": { at, state: "partial", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
+      "media-unlock": { "4": { at, state: "partial", services: { Netflix: { status: "unlocked", region: "US", mode: "dns" }, Reddit: { status: "blocked" } } } },
+    },
+  } });
+  await cdp.call("Page.reload");
+  const reset = `${card} [aria-label="流量重置"]`, ip = `${card} [aria-label="IP"]`, unlock = `${card} [aria-label="解锁"]`;
+  await waitFor(`${unlock} .crystal-unlock-list`);
+  failGate(await cdp.value(`(() => {
+    const [reset, ip, unlock] = ${JSON.stringify([reset,ip,unlock])}.map(selector => document.querySelector(selector));
+    return reset?.textContent.includes('17%') && reset.textContent.includes('剩余 25 天（30 天周期）') &&
+      reset.querySelectorAll('.crystal-quota-track i').length === 35 &&
+      reset.compareDocumentPosition(ip) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      ip.compareDocumentPosition(unlock) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      ip.textContent.includes('机房') && unlock.textContent.includes('屏蔽') && unlock.textContent.includes('DNS') &&
+      !document.querySelector('.crystal-card[data-node="node-1"] .crystal-diagnostic');
+  })()`), "Crystal homepage lost a per-node reset, IP or unlock observation");
+  await click(`${ip} button:nth-child(2)`);
+  await waitUntil(cdp, `document.querySelector(${JSON.stringify(ip)}).textContent.includes('3.52%')`, 3000);
+  failGate(await cdp.value(exists(`${unlock} button:first-child[aria-pressed="true"]`)), "IP and unlock address family switches were coupled");
+  await click(`${unlock} button:nth-child(2)`);
+  await waitUntil(cdp, `document.querySelector(${JSON.stringify(unlock)}).textContent.includes('暂无 IPv6 检测结果')`, 3000);
+  await click(`${unlock} button:first-child`);
+  for (const scheme of ["crystal-light", "crystal-dark"]) {
+    await cdp.value(`document.documentElement.dataset.themeStyle=${JSON.stringify(scheme)}`);
+    for (const width of [320, 390]) {
+      await metric(width);
+      failGate(await cdp.value(`(() => ${JSON.stringify([reset,ip,unlock])}.every(selector => {
+        const panel = document.querySelector(selector);
+        return panel.scrollWidth <= panel.clientWidth + 1;
+      }))()`), `Crystal homepage diagnostics overflow at ${width}px in ${scheme}`);
+    }
+    failGate(await cdp.value(`new Set([...document.querySelectorAll(${JSON.stringify(`${unlock} li`)})].map(cell => cell.offsetTop)).size === 1`),
+      `Crystal did not align seven unlock services in one row at 390px in ${scheme}`);
+    if (process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE) {
+      await click(`${ip} button:first-child`);
+      await cdp.value(`document.querySelector(${JSON.stringify(ip)}).scrollIntoView({block:'center'})`);
+      const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
+      writeFileSync(`${process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE}-diagnostics-${scheme}.png`, Buffer.from(screenshot.data, "base64"));
+    }
+  }
+
   await metric(1086);
   await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage` });
   await waitFor('.studio-visual-choice input[value="crystal-light"]:checked');
@@ -229,5 +275,5 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.documentElement.dataset.themeStyle==='crystal-dark' && localStorage.getItem('appearance_default')===JSON.stringify('crystal-dark')", 8000);
   await waitFor(card);
-  return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, and exact per-node Ping names and ordering", layouts };
+  return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, exact per-node Ping bindings, and homepage diagnostics by address family", layouts };
 }

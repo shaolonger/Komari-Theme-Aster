@@ -9,6 +9,8 @@ const MODULES = [
   "tcp-quality",
   "tcpquality-full",
   "nodequality-full",
+  "ip-quality",
+  "media-unlock",
   "china-speed",
   "international",
   "idc",

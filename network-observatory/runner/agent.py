@@ -2,6 +2,7 @@
 """Outbound-only, allowlisted probe worker for Komari's network observatory."""
 
 import argparse
+import calendar
 import getpass
 import grp
 import json
@@ -23,6 +24,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
+from datetime import date, datetime, time as midnight
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,7 +34,7 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.14.0"
+RUNNER_VERSION = "1.15.0"
 RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
@@ -159,6 +161,77 @@ def tcpquality_tasks(config):
         return None
 
 
+_cached_rotate = (float("-inf"), None)
+
+
+def reset_day(proc=Path("/proc")):
+    # Standard Linux service installs name the process komari-agent. Never
+    # return argv or tokens, and do not guess between multiple agents.
+    agents = []
+    try:
+        for directory in proc.iterdir():
+            if not directory.name.isdecimal():
+                continue
+            try:
+                if (directory / "comm").read_text().strip() != "komari-agent":
+                    continue
+                agents.append(directory)
+            except OSError:
+                continue
+    except OSError:
+        return None
+    if len(agents) != 1:
+        return None
+    try:
+        args = (agents[0] / "cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return None
+    if any(arg == b"--config" or arg.startswith(b"--config=") for arg in args):
+        return None
+    values = [args[index + 1] if arg == b"--month-rotate" and index + 1 < len(args) else arg.partition(b"=")[2]
+              for index, arg in enumerate(args) if arg == b"--month-rotate" or arg.startswith(b"--month-rotate=")]
+    if not values:
+        return None
+    value = values[-1]
+    # The Agent applies environment overrides after parsing its flags.
+    try:
+        for entry in (agents[0] / "environ").read_bytes().split(b"\0"):
+            key, _, setting = entry.partition(b"=")
+            if setting and key in (b"AGENT_CONFIG_FILE", b"TZ"):
+                return None
+            if setting and key == b"AGENT_MONTH_ROTATE":
+                value = setting
+    except OSError:
+        pass
+    if not re.fullmatch(rb"[0-9]{1,2}", value):
+        return None
+    day = int(value)
+    return day if 1 <= day <= 31 else None
+
+
+def cycle(day, today):
+    def boundary(offset):
+        year, month = divmod(today.year * 12 + today.month - 1 + offset, 12)
+        if day <= calendar.monthrange(year, month + 1)[1]:
+            return date(year, month + 1, day)
+        year, month = divmod(year * 12 + month + 1, 12)
+        return date(year, month + 1, 1)
+
+    previous, current, following = (boundary(offset) for offset in (-1, 0, 1))
+    start, end = (previous, current) if today < current else (current, following)
+    return {"day": day, "elapsed": (today - start).days, "total": (end - start).days,
+            "nextAt": int(datetime.combine(end, midnight()).timestamp() * 1000)}
+
+
+def traffic_cycle():
+    global _cached_rotate
+    instant, day = _cached_rotate
+    if time.monotonic() - instant >= 300:
+        day = reset_day()
+        _cached_rotate = (time.monotonic(), day)
+    return cycle(day, date.today()) if day else None
+
+
 def heartbeat(config, stop):
     # A long route/throughput test must not make a healthy worker appear offline.
     while not stop.is_set():
@@ -173,7 +246,12 @@ def heartbeat(config, stop):
                 except (OSError, ValueError, TypeError):
                     pass  # Older helpers only support TcpQuality.
             active = native.active_tasks() + [t["id"] for t in (helper_tasks or [])]
-            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": features, "activeJobIds": list(dict.fromkeys(active))})
+            observations = {}
+            if config.get("role", "node") == "node":
+                if native.home_diagnostics_supported():
+                    features.extend(native.HOME_DIAGNOSTIC_OPERATIONS)
+                observations["trafficReset"] = traffic_cycle()
+            response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": features, "activeJobIds": list(dict.fromkeys(active)), **observations})
             if "activeJobIds" in response:
                 allowed = set(response["activeJobIds"])
                 global _helper_allowed

@@ -10,7 +10,7 @@ const G = require("../src/globalping.js");
 const A = "c388e74d-a922-4ae1-bd10-1fb30e2e53de",
   B = "59d6e276-1d4b-4657-9021-908460853ba3",
   token = "a".repeat(64);
-async function fixture(existingRoot, clients = [A], reportAssetOptions) {
+async function fixture(existingRoot, clients = [A], reportAssetOptions, publicClients) {
   const root =
       existingRoot ||
       fs.mkdtempSync(path.join(os.tmpdir(), "aster-report-api-")),
@@ -19,7 +19,7 @@ async function fixture(existingRoot, clients = [A], reportAssetOptions) {
     reportAssetOptions,
     server: {
       route: (m, p, f) => routes.set(m + " " + p, f),
-      call: async () => clients.map(uuid => ({ uuid, name: "VPS", ipv4: "8.8.8.8" })),
+      call: async () => clients.map(uuid => ({ uuid, name: "VPS", ipv4: "8.8.8.8", hidden: publicClients && !publicClients.includes(uuid) })),
     },
     storageDir: root,
     isMissingFile: (e) => e.code === "ENOENT",
@@ -92,6 +92,50 @@ const draft = () => ({
   clients: [A],
   revision: 0,
   modules: [{ module: "international", endpoints: ["aws:ap-east-1"] }],
+});
+test("homepage diagnostics schedule both address families and publish only selected snapshots", async () => {
+  const f = await fixture(undefined, [A, B], undefined, [A]);
+  try {
+    const nextAt = Date.now() + 25 * 86400000;
+    const worker = `${v2}/workers/node/${A}`;
+    const post = (suffix, data) => f.invoke("POST", worker + suffix, data, false, true);
+    assert.equal((await post("/heartbeat", {
+      version: "1.15.0", tools: [], features: ["report-v3", "ip-quality", "media-unlock"],
+      trafficReset: { day: 20, elapsed: 5, total: 30, nextAt, private: "discard me" },
+    })).status, 200);
+    assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "traffic-reset", nodeUuids: [A], revision: 0 }, false)).status, 403);
+    assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "traffic-reset", nodeUuids: [A, B], revision: 0 })).status, 200);
+    assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "ip-quality", nodeUuids: [A], revision: 0 })).status, 409);
+    assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "ip-quality", nodeUuids: [A], revision: 1 })).status, 200);
+    const saved = await f.invoke("POST", v3 + "/suites", {
+      revision: 2, clients: [A], modules: [{ module: "ip-quality", family: "auto" }, { module: "media-unlock", family: "6" }],
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const started = await f.invoke("POST", `${v3}/suites/${saved.body.suite.id}/run`);
+    assert.equal(started.status, 202, JSON.stringify(started.body));
+    const slots = [];
+    for (let index = 0; index < 3; index += 1) {
+      const { task } = (await f.invoke("GET", worker + "/poll", {}, false, true)).body;
+      assert.ok(task, "an eligible runner should receive the next diagnostics task");
+      assert.equal(task.target, "localhost");
+      slots.push([task.operation, task.options.family]);
+      const data = task.operation === "ip-quality"
+        ? { kind: task.operation, state: "partial", providers: { IPinfo: { company: "hosting" } } }
+        : { kind: task.operation, state: "partial", services: { Netflix: { status: "unlocked", region: "JP", mode: "dns" } } };
+      if (index === 0) assert.equal((await post("/result", { id: task.id, data: { ...data, providers: { IPinfo: { ip: "192.0.2.1" } } } })).status, 400);
+      assert.equal((await post("/result", { id: task.id, data })).status, 200);
+    }
+    assert.deepEqual(slots.sort(), [["ip-quality", "4"], ["ip-quality", "6"], ["media-unlock", "6"]]);
+    const read = async () => (await f.invoke("GET", v3 + "/public/routes", {}, false)).body.diagnostics;
+    const first = await read();
+    assert.deepEqual(Object.keys(first), [A]);
+    assert.deepEqual(first[A]["traffic-reset"], { day: 20, elapsed: 5, total: 30, nextAt });
+    assert.deepEqual(JSON.parse(JSON.stringify(first[A]["ip-quality"]["6"].providers)), { IPinfo: { company: "hosting" } });
+    assert.equal(first[A]["media-unlock"], undefined);
+    const revision = (await f.invoke("GET", v3 + "/catalog")).body.revision;
+    assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "media-unlock", nodeUuids: [A], revision })).status, 200);
+    assert.equal((await read())[A]["media-unlock"]["6"].services.Netflix.region, "JP");
+  } finally { f.close(); }
 });
 test("card presentation preferences survive native controller restart and remain independent", async () => {
   const first = await fixture();

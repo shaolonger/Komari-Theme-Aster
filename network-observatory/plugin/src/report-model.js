@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const M = require("./native-model.js");
 const { UUID } = require("./model.js");
 const { MODULES } = require("./round-store.js");
+const { DIAGNOSTICS } = require("./home-diagnostics.js");
 const { VERSION, ENDPOINTS, PRESETS } = require("./report-catalog.js");
 const CITIES = ["北京", "上海", "广州"];
 const INTERNATIONAL_CITIES = [
@@ -57,7 +58,7 @@ function normalizeSuite(input, resources = []) {
     if (speed && input.trafficAccepted !== true)
       throw new Error("启用全速测速前需要接受时长和流量说明");
     const family = value.family || "4";
-    if (!(value.module === "nodequality-full" ? ["4", "6", "auto"] : ["4", "6"]).includes(family)) throw new Error("请选择有效地址族");
+    if (!(value.module === "nodequality-full" || DIAGNOSTICS.includes(value.module) ? ["4", "6", "auto"] : ["4", "6"]).includes(family)) throw new Error("请选择有效地址族");
     const protocols = [...new Set(value.protocols || ["tcp"])];
     if (
       !protocols.length ||
@@ -216,6 +217,10 @@ function planSlots(s, suite, module, nodeUuid, roundId) {
   }
   const common = { family: module.family, reportVersion: 3 };
   const source = { provider: "runner", name: "当前 VPS" };
+  if (DIAGNOSTICS.includes(module.module))
+    for (const family of module.family === "auto" ? ["4", "6"] : [module.family])
+      add(module.module + ":" + family, "localhost", source, "VPS 公网出口", module.module, "node:" + nodeUuid,
+        { ...common, family }, null, "");
   if (module.module === "tcpquality-full")
     add("tcpquality-full", "localhost", source, "VPS→TcpQuality 测点", "tcpquality-full", "node:" + nodeUuid,
       { ...common, profile: module.profile, timeoutMinutes: module.timeoutMinutes }, null, "");

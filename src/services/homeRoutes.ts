@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "@/utils/abort";
 import { z } from "zod";
+import { diagnosticNodesSchema } from "./homeDiagnostics";
 const evidence = z.object({
   label: z.string().max(512),
   displayLabel: z.string().max(100).optional(),
@@ -32,6 +33,7 @@ export const homeRoutesSchema = z.object({
   labelMode: z.enum(["preferred", "full"]).default("preferred"),
   showDetails: z.boolean().default(false),
   backfillPending: z.boolean().default(false),
+  diagnostics: diagnosticNodesSchema.optional().catch(undefined),
   nodes: z.record(
     z.object({ "4": z.array(row).max(3), "6": z.array(row).max(3) }),
   ),

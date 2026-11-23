@@ -75,8 +75,10 @@ def integer(value, minimum, maximum, label):
     return value
 
 
-def execute(command, timeout=30, env=None):
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, start_new_session=True)
+def execute(command, timeout=30, env=None, cwd=None, input_text=None):
+    process = subprocess.Popen(command, stdin=subprocess.PIPE if input_text is not None else None,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
+                               start_new_session=True)
     deadline = time.monotonic() + timeout
     while True:
         if cancelled() or time.monotonic() >= deadline:
@@ -95,7 +97,8 @@ def execute(command, timeout=30, env=None):
                 output, _ = process.communicate()
             return code, output, reason
         try:
-            output, error = process.communicate(timeout=min(0.25, max(0.01, deadline - time.monotonic())))
+            pending, input_text = input_text, None
+            output, error = process.communicate(input=pending, timeout=min(0.25, max(0.01, deadline - time.monotonic())))
             return process.returncode, output, error[:4000]
         except subprocess.TimeoutExpired:
             continue
@@ -794,12 +797,164 @@ class Listener:
         self.temp.cleanup()
 
 
+# Pinned homepage checks return only fixed, public-safe fields.
+IP_SCRIPT = ("https://raw.githubusercontent.com/xykt/IPQuality/8643bcd0a0b7b42ed53030f794d63ce72067ca77/ip.sh",
+             "e2ac9648bc0ba67770599fdf769bfd5df5cc323ce8de382e72496c42caa8b9a8")
+MEDIA_SCRIPT = ("https://raw.githubusercontent.com/1-stream/RegionRestrictionCheck/ef841d0a2910a44a6ca565e3a03de0f2282d83b3/check.sh",
+                "6d5360396c736995008c912191b55a38e90835a31e161ef005d3566736593b17")
+HOME_DIAGNOSTIC_OPERATIONS = ("ip-quality", "media-unlock")
+PROVIDERS = ("IPinfo", "ipregistry", "ipapi", "IP2Location", "AbuseIPDB")
+SERVICES = {"TikTok": "TikTok", "Disney+": "DisneyPlus", "Netflix": "Netflix",
+            "YouTube Premium": "Youtube", "Amazon Prime Video": "AmazonPrimeVideo",
+            "Reddit": "Reddit", "ChatGPT": "ChatGPT"}
+IP_TYPES = {"isp": "isp", "line isp": "line-isp", "residential": "isp", "business": "business",
+            "hosting": "hosting", "data center": "hosting", "datacenter": "hosting",
+            "education": "education", "government": "government", "banking": "banking",
+            "organization": "organization", "military": "military", "library": "library",
+            "cdn": "cdn", "mobile isp": "mobile-isp", "web spider": "web-spider",
+            "reserved": "reserved", "other": "other"}
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+MAX_SCRIPT = 524288
+
+
+def home_diagnostics_supported():
+    return all(shutil.which(tool) for tool in ("bash", "curl", "jq", "python3", "bc", "dig"))
+
+
+def object_or_empty(value):
+    return value if isinstance(value, dict) else {}
+
+
+def ip_rows(report):
+    kinds = object_or_empty(report.get("Type"))
+    usage = object_or_empty(kinds.get("Usage"))
+    company = object_or_empty(kinds.get("Company"))
+    score = object_or_empty(report.get("Score"))
+    providers = {}
+    for key in PROVIDERS:
+        upstream = "IP2LOCATION" if key == "IP2Location" else key
+        row = {}
+        for field, source in (("usage", usage), ("company", company)):
+            kind = IP_TYPES.get(str(source.get(upstream, "")).strip().lower())
+            if kind:
+                row[field] = kind
+        risk = str(score.get(upstream, "")).strip()
+        if re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?", risk):
+            row["score"] = risk
+        if row:
+            providers[key] = row
+    return providers
+
+
+def media_status(message):
+    value = str(message).strip().lower()
+    if re.match(r"^(?:yes\b|unlocked\b|解锁)", value):
+        return "unlocked"
+    if re.match(r"^(?:no\b|block(?:ed)?\b|屏蔽)", value) and "(unknown)" not in value:
+        return "blocked"
+    if re.match(r"^(?:web only|originals only|available for|provided by|pending|idc\b|仅)", value):
+        return "partial"
+    if re.match(r"^(?:ipv[46] not support|unsupported)", value):
+        return "unsupported"
+    return None
+
+
+def media_rows(output, supplement):
+    result = {}
+    names = {label.lower(): key for label, key in SERVICES.items()}
+    for line in ANSI.sub("", output).splitlines():
+        label, _, text = line.strip().partition(":")
+        key = names.get(label.lower())
+        state = media_status(text)
+        if not key or not state:
+            continue
+        region = re.search(r"\bRegion:\s*([A-Z]{2})(?![A-Z])", text, re.I)
+        result[key] = {"status": state, **({"region": region[1].upper()} if region else {})}
+    for key in SERVICES.values():
+        row = object_or_empty(supplement.get(key))
+        state = media_status(row.get("Status", ""))
+        if key not in result and state:
+            region = str(row.get("Region", "")).upper()
+            result[key] = {"status": state, **({"region": region} if re.fullmatch(r"[A-Z]{2}", region) else {})}
+        mode = {"native": "native", "dns": "dns", "原生": "native"}.get(str(row.get("Type", "")).strip().lower())
+        if mode and key in result and state == result[key]["status"] == "unlocked" and result[key].get("region") == str(row.get("Region", "")).upper():
+            result[key]["mode"] = mode
+    return result
+
+
+def download(spec, destination, env):
+    url, digest = spec
+    status, _, _ = execute(["curl", "-q", "-fsS", "--proto", "=https", "--max-time", "15",
+                            "--max-filesize", str(MAX_SCRIPT), "-o", str(destination), url], timeout=17, env=env)
+    if status or not destination.is_file() or destination.stat().st_size > MAX_SCRIPT:
+        return False
+    return hashlib.sha256(destination.read_bytes()).hexdigest() == digest
+
+
+def select_media_checks(script, family):
+    # Keep the pinned initialization and functions, and run only the two groups
+    # that supply the homepage. The default menu also runs regional suites.
+    source, marker, trailing = script.read_bytes().rpartition(b"\nRunScript")
+    if not marker or trailing.strip():
+        return False
+    entry = f"\nCheckV{family}\nif [[ \"$isv{family}\" == 1 ]]; then\n    Global_UnlockTest {family}\n    AI_UnlockTest {family}\nfi\n"
+    script.write_bytes(source + entry.encode("ascii"))
+    return True
+
+
+def home_diagnostics(kind, family):
+    if kind not in HOME_DIAGNOSTIC_OPERATIONS or family not in ("4", "6"):
+        raise ValueError("主页检测类型或地址族无效")
+    failed = {"kind": kind, "state": "failed"}
+    if not home_diagnostics_supported():
+        return {**failed, "diagnostic": "测量端缺少 bash、curl、jq、Python 3、bc 或 dig"}
+    try:
+        with tempfile.TemporaryDirectory(prefix="aster-home-") as directory:
+            root = Path(directory)
+            env = {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", "HOME": directory, "TMPDIR": directory,
+                   "LC_ALL": "C", "TERM": "dumb"}
+            output = ""
+            if kind == "media-unlock":
+                script = root / "region.sh"
+                if not download(MEDIA_SCRIPT, script, env):
+                    return {**failed, "diagnostic": "解锁脚本下载或校验失败"}
+                if not select_media_checks(script, family):
+                    return {**failed, "diagnostic": "解锁脚本入口不兼容"}
+                _, output, _ = execute(["bash", str(script), "-E", "-M", family, "-S", "force6"], timeout=95, env=env,
+                                              cwd=directory, input_text="")
+            report = {}
+            if not cancelled():
+                script, target = root / "ip.sh", root / "result.json"
+                if download(IP_SCRIPT, script, env):
+                    code, _, _ = execute(["bash", str(script), "-" + family, "-n", "-p", "-E", "-o", str(target)],
+                                         timeout=150, env=env, cwd=directory, input_text="")
+                    # An IPv4-only run can exit on a false IPv6 condition
+                    # after writing its complete JSON.
+                    if code in (0, 1) and target.is_file() and target.stat().st_size <= MAX_SCRIPT:
+                        try:
+                            report = object_or_empty(json.loads(target.read_text()))
+                        except (ValueError, OSError):
+                            pass
+                elif kind == "ip-quality":
+                    return {**failed, "diagnostic": "IP 质量脚本下载或校验失败"}
+            field = "providers" if kind == "ip-quality" else "services"
+            values = ip_rows(report) if kind == "ip-quality" else media_rows(output, object_or_empty(report.get("Media")))
+            if not values:
+                return {**failed, "diagnostic": "该地址族没有返回可识别的检测结果"}
+            return {"kind": kind, "state": "ok" if len(values) == (len(PROVIDERS) if kind == "ip-quality" else len(SERVICES)) else "partial",
+                    field: values}
+    except (OSError, ValueError):
+        return {**failed, "diagnostic": "主页检测执行失败"}
+
+
 def measure(job):
-    if not isinstance(job, dict) or job.get("operation") not in {"route", "benchmark", "latency", "http-speed", "iperf-speed", "public-speed", "tcp-quality"}:
+    if not isinstance(job, dict) or job.get("operation") not in {"route", "benchmark", "latency", "http-speed", "iperf-speed", "public-speed", "tcp-quality", *HOME_DIAGNOSTIC_OPERATIONS}:
         raise ValueError("原生测量任务无效")
     options = job.get("options") or {}
     if not isinstance(options, dict):
         raise ValueError("测量参数无效")
+    if job["operation"] in HOME_DIAGNOSTIC_OPERATIONS:
+        return home_diagnostics(job["operation"], options.get("family"))
     if options.get("reportVersion") == 3 and job["operation"] in {"benchmark", "iperf-speed", "route"}:
         address = resolve_ip(job["target"], options)
         ip = ipaddress.ip_address(address)

@@ -1,4 +1,5 @@
 const { UUID, isHost } = require("./model.js");
+const { validateDiagnostics } = require("./home-diagnostics.js");
 const tz = require("./timezones.json");
 const {
   WEBSITE_CATALOG,
@@ -158,6 +159,7 @@ function validateResult(data, kind) {
   )
     bad();
   if (data.state === "application" && kind !== "website") bad();
+  validateDiagnostics(data, kind);
   if (kind === "tcpquality-full") {
     if (data.deadlineExpired !== undefined || data.lateAfterDeadline !== undefined) bad();
     if (data.reportUrl && !/^https:\/\/tcpquality\.ibsgss\.uk\/r\/[A-Za-z0-9_-]{1,128}$/.test(data.reportUrl)) bad();

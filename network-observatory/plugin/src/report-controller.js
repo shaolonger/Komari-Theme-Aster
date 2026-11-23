@@ -7,6 +7,7 @@ const { roundStore, MODULES } = require("./round-store.js");
 const { VERSION, PRESETS } = require("./report-catalog.js");
 const B = require("./bgp.js");
 const { originQuery } = require("./route-enrichment.js");
+const { DIAGNOSTICS, SECTIONS, homeDiagnosticsStore } = require("./home-diagnostics.js");
 const BASE = "/api/aster-network-observatory/v3";
 const MAX_QUEUE = 10000;
 const measurementKey = (j) =>
@@ -36,6 +37,7 @@ function registerReportController(ctx, native) {
   const reportAssets = require("./report-assets.js").createReportAssets(ctx.reportAssetOptions);
   const homeRoutes = require("./home-routes.js").homeRouteStore(ctx.storageDir, ctx.isMissingFile);
   const homeSpeeds = require("./home-speeds.js").homeSpeedStore(ctx.storageDir, ctx.isMissingFile);
+  const homeDiagnostics = homeDiagnosticsStore(ctx.storageDir, ctx.isMissingFile);
   const speedHistoryChecked = new Set();
   const speedHistoryQueue = new Map();
   let speedHistoryTimer = null;
@@ -70,7 +72,7 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full",
+      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
@@ -80,6 +82,10 @@ function registerReportController(ctx, native) {
     if (data.kind === "route") data = { ...data, routeEvidence: require("./route-evidence.js").routeFacts(data.hops || []) };
     const result = store.complete(job, data, source);
     if (result) {
+      if (DIAGNOSTICS.includes(job.operation)) {
+        try { homeDiagnostics.observe(job, result); }
+        catch (error) { console.error("Aster homepage diagnostic projection:", String(error.message || error)); }
+      }
       try { homeRoutes.observe(result, projectionDepth === 0); }
       catch (e) { console.error("Aster homepage route projection:", String(e.message || e)); }
       if (data.kind === "speed") {
@@ -209,12 +215,12 @@ function registerReportController(ctx, native) {
     if (job.executor === "globalping")
       return previewOnly ? native.coverage(s, job) : ""; // Discovery at execution occurs outside the state lock.
     if (
-      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality", "tcpquality-full", "nodequality-full"].includes(
+      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(
         job.operation,
       )
     )
       return "当前采集器未提供此测量操作";
-    const required = ["tcp-quality", "public-speed", "tcpquality-full", "nodequality-full"].includes(job.operation) ? job.operation :
+    const required = ["tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(job.operation) ? job.operation :
       job.operation === "latency"
         ? "latency-samples"
         : job.operation === "route"
@@ -592,7 +598,8 @@ function registerReportController(ctx, native) {
     if (s.homeRouteProjectionVersion !== 3) {
       rebuildHomeRoutes(ids);
     }
-    ctx.respond(res, 200, { ...homePayload(s, ids, true), quickCheck: true, quickFamilies: cardFamilies(s, "routes") });
+    ctx.respond(res, 200, { ...homePayload(s, ids, true), quickCheck: true, quickFamilies: cardFamilies(s, "routes"),
+      diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, new Set(ids)) });
   });
   route("POST", "/home-routes/rebuild", (_req, res, s) => {
     rebuildHomeRoutes(s.inventory.map(n => n.uuid), true);
@@ -619,6 +626,17 @@ function registerReportController(ctx, native) {
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
   });
+  route("PUT", "/home-diagnostics", (req, res, s) => {
+    const { revision, section, nodeUuids } = ctx.readBody(req);
+    if (revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
+    const known = new Set(s.inventory.map(node => node.uuid));
+    if (!SECTIONS.includes(section) || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
+        nodeUuids.some(id => !UUID.test(id || "") || !known.has(id))) throw new Error("首页检测项目或 VPS 范围无效");
+    (s.homeDiagnosticNodes ||= {})[section] = [...new Set(nodeUuids)];
+    s.revision++;
+    native.save(s);
+    ctx.respond(res, 200, { revision: s.revision });
+  });
   ctx.server.route("GET", BASE + "/public/routes", async (_req, res) => {
     try {
       await native.lock(() => {
@@ -626,7 +644,8 @@ function registerReportController(ctx, native) {
         // Cached inventory must have been refreshed by this plugin version. Fail closed.
         const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
         const allowed = (s.homeRouteNodes || []).filter(id => visible.has(id));
-        ctx.respond(res, 200, homePayload(s, allowed));
+        ctx.respond(res, 200, { ...homePayload(s, allowed),
+          diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, visible) });
       });
     } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
   });
@@ -747,6 +766,7 @@ function registerReportController(ctx, native) {
       homeSpeedNodes: s.homeSpeedNodes || [],
       homeSpeedDisplay: s.homeSpeedDisplay !== false,
       homeSpeedShowDetails: s.homeSpeedShowDetails === true,
+      homeDiagnosticNodes: s.homeDiagnosticNodes || {},
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,

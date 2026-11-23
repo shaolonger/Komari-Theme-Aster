@@ -50,6 +50,8 @@ const moduleTitles: Record<ReportModule, string> = {
   idc: "常见 IDC 延迟",
   "international-speed": "国际单连接测速",
   bgp: "全球 BGP 路径快照",
+  "ip-quality": "IP质量检测",
+  "media-unlock": "流媒体和AI解锁检测",
 };
 function FullTcpQualityReport({ round }: { round: ReportRound }) {
   const result = round.measurements[0];
@@ -854,13 +856,13 @@ export function NetworkReportWorkspace({
   const [tab, setTab] = useState<"routes" | "tcp-quality" | "speed" | "international">(
     (() => { const value = new URLSearchParams(window.location.search).get("tab"); return value === "routes" || value === "speed" || value === "tcp-quality" ? value : "international"; })(),
   );
-  const qualityModules = ["tcpquality-full", "nodequality-full", "tcp-quality"] as const;
+  const qualityModules = ["tcpquality-full", "nodequality-full", "tcp-quality", "ip-quality", "media-unlock"] as const;
   const [qualityTab, setQualityTab] = useState<(typeof qualityModules)[number]>("tcpquality-full");
   const visibleQuality = qualityModules.filter(module => availableModules.includes(module));
   const selectedQuality = visibleQuality.includes(qualityTab) ? qualityTab : visibleQuality[0];
   const tabs = {
     routes: ["routes", "bgp"],
-    "tcp-quality": ["tcpquality-full", "nodequality-full", "tcp-quality"],
+    "tcp-quality": [...qualityModules],
     speed: ["china-speed"],
     international: ["international", "idc", "international-speed"],
   } as const;

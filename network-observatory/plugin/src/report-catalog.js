@@ -223,6 +223,10 @@ const publicSpeed = ["北京", "上海", "广州"].flatMap(city => ["电信", "�
 })));
 const ENDPOINTS = [...aws, ...sites, ...dcs, ...routes, ...leaseweb, ...xtom, ...publicSpeed];
 const PRESETS = [
+  { id: "ip-quality", name: "IP质量检测", module: "ip-quality", endpoints: [],
+    timing: { type: "daily", times: ["05:00"], timezone: "Asia/Shanghai" } },
+  { id: "media-unlock", name: "流媒体和AI解锁检测", module: "media-unlock", endpoints: [],
+    timing: { type: "daily", times: ["05:30"], timezone: "Asia/Shanghai" } },
   { id: "tcpquality-full", name: "TcpQuality 完整检测", module: "tcpquality-full", endpoints: [],
     timing: { type: "daily", times: ["03:00"], timezone: "Asia/Shanghai" } },
   { id: "nodequality-full", name: "NodeQuality 完整检测", module: "nodequality-full", endpoints: [],

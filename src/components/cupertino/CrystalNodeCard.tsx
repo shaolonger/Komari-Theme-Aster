@@ -8,10 +8,10 @@ import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { formatBytes } from "@/utils/format";
 import { DenseNodeActions } from "./DenseNodeActions";
+import { CrystalDiagnostics, CrystalSegments, CrystalTrafficReset } from "./CrystalDiagnostics";
 import "@/styles/aurora.css";
 import "@/styles/crystal-card.css";
 
-const QUOTA_SEGMENTS = 35;
 const MISSING = "--";
 
 export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; compact: boolean }) {
@@ -41,7 +41,6 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
   ] as const;
   const limited = traffic.usagePercent != null;
   const usedPercent = known && limited ? Math.max(0, traffic.usagePercent ?? 0) : 0;
-  const quotaFill = Math.min(QUOTA_SEGMENTS, Math.round(QUOTA_SEGMENTS * usedPercent / 100));
   const [used, total] = traffic.detail.split(" / ");
   const [upTotal, upUnit] = (known ? formatBytes(node.trafficUp) : MISSING).split(" ");
   const [downTotal, downUnit] = (known ? formatBytes(node.trafficDown) : MISSING).split(" ");
@@ -101,11 +100,11 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
           <span>流量使用 <b>{limited ? known ? `${Math.round(usedPercent)}%` : MISSING : "不限量"}</b></span>
           <small title={limited ? `${traffic.typeLabel} · 剩余 ${known ? traffic.remainingLabel : MISSING}` : undefined}>已用 {known ? used : MISSING} / 总计 {total}</small>
         </div>
-        <div className="crystal-quota-track" aria-hidden="true">
-          {Array.from({ length: QUOTA_SEGMENTS }, (_, index) => <i key={index} data-filled={index < quotaFill} />)}
-        </div>
+        <CrystalSegments percent={usedPercent} />
       </section>
+      <CrystalTrafficReset uuid={uuid} />
       <NetworkSummary ping={model.ping} uuid={uuid} mode="standard" denseView={compact ? "compact" : "standard"} crystal />
+      <CrystalDiagnostics uuid={uuid} />
     </article>
   );
 });

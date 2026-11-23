@@ -7,9 +7,11 @@ import { HomeSpeedsPublishPanel } from "./HomeSpeedsPublishPanel";
 import { MeasurementPointsPanel } from "./MeasurementPointsPanel";
 import { ReportResourcesPanel } from "./ReportResourcesPanel";
 import { ReportPlanPanel } from "./ReportPlanPanel";
+import { HomeDiagnosticsPublishPanel } from "./HomeDiagnosticsPublishPanel";
+import type { DiagnosticSection } from "@/services/homeDiagnostics";
 import "@/styles/network-observatory.css";
 import "@/styles/network-reports.css";
-type Props = { panel: "routes" | "speeds" | "plans" | "agents" | "targets" };
+type Props = { panel: "routes" | "speeds" | "plans" | "agents" | "targets" | DiagnosticSection };
 export function NetworkSettingsPanel(props: Props) {
   const active = useStudioSectionActive("network");
   return active ? <ActivePanel {...props} /> : null;
@@ -48,9 +50,11 @@ function ActivePanel({ panel }: Props) {
   if (!catalog.data)
     return (
       <p role="status">
-        {catalog.error?.message || "正在读取三网线路设置…"}
+        {catalog.error?.message || "正在读取网络观测设置…"}
         <button onClick={() => void catalog.refetch()}>重试</button>
       </p>
     );
-  return panel === "speeds" ? <HomeSpeedsPublishPanel catalog={catalog.data} /> : <HomeRoutesPublishPanel catalog={catalog.data} />;
+  if (panel === "routes") return <HomeRoutesPublishPanel catalog={catalog.data} />;
+  if (panel === "speeds") return <HomeSpeedsPublishPanel catalog={catalog.data} />;
+  return <HomeDiagnosticsPublishPanel section={panel} catalog={catalog.data} />;
 }
