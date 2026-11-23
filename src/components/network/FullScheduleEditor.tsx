@@ -21,6 +21,7 @@ function RuleEditor({ rule, index, count, timezones, onChange, onRemove }: { rul
       <option value="interval">固定间隔</option><option value="daily">每天指定时刻</option><option value="every-days">每隔 N 天的指定时刻</option><option value="weekly">每周指定星期</option>
     </select></label><button type="button" onClick={onRemove} disabled={count === 1} aria-label={`删除规则 ${index + 1}`}>删除规则</button></div>
     {rule.type === "interval" ? <label>检测间隔<select value={rule.minutes} onChange={e => onChange({ ...rule, minutes: Number(e.target.value), anchor: undefined })}>
+      {!intervals.includes(rule.minutes) && <option value={rule.minutes}>每 {rule.minutes} 分钟（现有配置）</option>}
       {intervals.map(m => <option key={m} value={m}>{m === 1440 ? "每 24 小时" : `每 ${m / 60} 小时`}</option>)}
     </select></label> : <>
       <label>时区<select value={rule.timezone} onChange={e => onChange({ ...rule, timezone: e.target.value })}>{timezones.map(t => <option key={t}>{t}</option>)}</select></label>

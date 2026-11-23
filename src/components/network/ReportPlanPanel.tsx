@@ -545,7 +545,7 @@ export function ReportPlanPanel({
                 }
                 description="各模块独立调度；测速不会随延迟测试的频率触发。"
               />
-              {["tcpquality-full", "nodequality-full"].includes(mod.module) ? <FullScheduleEditor key={mod.module} timing={mod.timing} timezones={catalog.timezones} onChange={timing => moduleChange(mod.module, { timing })} /> : <>
+              {["tcpquality-full", "nodequality-full"].includes(mod.module) || isDiagnostic(mod.module) ? <FullScheduleEditor key={mod.module} timing={mod.timing} timezones={catalog.timezones} onChange={timing => moduleChange(mod.module, { timing })} /> : <>
               <label>
                 执行方式
                 <select

@@ -5,6 +5,7 @@ const { jsonState } = require("./json-state.js");
 const DIAGNOSTICS = ["ip-quality", "media-unlock"];
 const SECTIONS = ["traffic-reset", ...DIAGNOSTICS];
 const PROVIDERS = ["IPinfo", "ipregistry", "ipapi", "IP2Location", "AbuseIPDB"];
+const RISK_PROVIDERS = ["IP2Location", "Scamalytics", "ipapi", "AbuseIPDB"];
 const SERVICES = ["TikTok", "DisneyPlus", "Netflix", "Youtube", "AmazonPrimeVideo", "Reddit", "ChatGPT"];
 const TYPES = ["isp", "line-isp", "hosting", "business", "education", "government", "banking",
   "organization", "military", "library", "cdn", "mobile-isp", "web-spider", "reserved", "other"];
@@ -16,9 +17,12 @@ const region = value => typeof value === "string" && /^[A-Z]{2}$/.test(value);
 function validateDiagnostics(data, kind) {
   if (!DIAGNOSTICS.includes(kind)) return;
   const ip = kind === "ip-quality", rows = data[ip ? "providers" : "services"];
+  if (data.riskScores !== undefined && (!ip || !object(data.riskScores) ||
+      Object.entries(data.riskScores).some(([name, value]) => !RISK_PROVIDERS.includes(name) || !score(value))))
+    throw new Error("风险评分格式无效");
   if (rows === undefined && data.state === "failed") return;
   const keys = ip ? PROVIDERS : SERVICES;
-  if (!object(rows) || !Object.keys(rows).length || Object.entries(rows).some(([key, value]) =>
+  if (!object(rows) || (!Object.keys(rows).length && (!ip || !Object.keys(data.riskScores || {}).length)) || Object.entries(rows).some(([key, value]) =>
     !keys.includes(key) || !object(value) || (ip
       ? !Object.keys(value).length || Object.entries(value).some(([field, item]) =>
         field === "score" ? !score(item) : !["usage", "company"].includes(field) || !TYPES.includes(item))
@@ -71,12 +75,14 @@ function homeDiagnosticsStore(root, isMissingFile) {
           : { status: value.status, region: value.region, mode: value.mode };
       }
     } catch (_error) { return; }
-    store.write({ ...all, [kind]: { ...families, [family]: { at, state: data.state, order, [field]: rows } } });
+    const risk = ip && data.state !== "failed" && data.riskScores ? { riskScores: data.riskScores } : {};
+    store.write({ ...all, [kind]: { ...families, [family]: { at, state: data.state, order, [field]: rows, ...risk } } });
   }
 
-  function summary(settings, workers, visible) {
+  function summary(settings, workers, visible, display) {
     const nodes = {};
     for (const section of SECTIONS) {
+      if (display?.[section] === false) continue;
       for (const uuid of settings?.[section] || []) {
         if (!visible.has(uuid)) continue;
         const node = nodes[uuid] ||= {};

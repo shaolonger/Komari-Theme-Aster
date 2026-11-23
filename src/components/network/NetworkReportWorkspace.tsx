@@ -16,13 +16,15 @@ import {
   deleteFullReportRound,
   getReportRound,
   listReportRounds,
-  reportCatalog,
   runReportSuite,
   type ReportModule,
   type ReportRound,
   type ReportMeasurement,
   type ReportSlot,
+  type ReportSuite,
 } from "@/services/reportObservatory";
+import { diagnosticModules } from "@/services/homeDiagnostics";
+import { DiagnosticRoundReport } from "./DiagnosticRoundReport";
 import { NetworkDrawer } from "./NetworkDrawer";
 import { NetworkBadge, NetworkSectionHeading } from "./NetworkUi";
 import {
@@ -470,33 +472,39 @@ function MtrReport({
 function RoundModule({
   uuid,
   module,
+  suiteId,
+  suites,
+  linkedRound,
   onConfigure,
 }: {
   uuid: string;
   module: ReportModule;
+  suiteId?: string;
+  suites: ReportSuite[];
+  linkedRound?: ReportRound;
   onConfigure: () => void;
 }) {
-  const [selection, setSelection] = useState<string | null>(() => module === "routes" ? new URLSearchParams(window.location.search).get("round") : null),
+  const [selection, setSelection] = useState<string | null>(null),
     [error, setError] = useState(""),
     [inspected, setInspected] = useState<{
       slot: ReportSlot;
       result?: ReportMeasurement;
     } | null>(null);
   const history = useInfiniteQuery({
-    queryKey: ["report-rounds", uuid, module],
-    queryFn: ({ pageParam }) => listReportRounds(uuid, module, pageParam),
+    queryKey: ["report-rounds", uuid, module, suiteId],
+    queryFn: ({ pageParam }) => listReportRounds(uuid, module, pageParam, suiteId),
     initialPageParam: "",
     getNextPageParam: (last) => last.nextCursor || undefined,
     refetchInterval: 15000,
   });
   const rounds = [
     ...new Map(
-      history.data?.pages.flatMap((p) => p.rounds).map((r) => [r.id, r]) || [],
+      history.data?.pages.flatMap((p) => p.rounds).filter(r => !suiteId || r.suiteId === suiteId).map((r) => [r.id, r]) || [],
     ).values(),
   ];
-  const picked =
-    rounds.find((r) => r.id === selection) ||
-    (["tcpquality-full", "nodequality-full"].includes(module) ? rounds[0] : undefined) ||
+  const diagnostic = diagnosticModules.some(value => value === module);
+  const picked = rounds.find((r) => r.id === selection) || (!selection ? linkedRound : undefined) ||
+    (diagnostic || ["tcpquality-full", "nodequality-full"].includes(module) ? rounds[0] : undefined) ||
     rounds.find((r) => r.state === "complete" && r.detailAvailable) ||
     rounds[0];
   const pickedId = selection || picked?.id;
@@ -506,23 +514,7 @@ function RoundModule({
     enabled: !!pickedId,
     refetchInterval: picked?.state === "running" ? 5000 : false,
   });
-  const catalog = useQuery({
-    queryKey: ["report-catalog"],
-    queryFn: reportCatalog,
-    staleTime: 15000,
-  });
-  const policies =
-    catalog.data?.suites.filter(
-      (s) =>
-        s.enabled &&
-        (s.clients.includes(uuid) ||
-          s.groups.some((g) =>
-            catalog.data?.inventory.some(
-              (n) => n.uuid === uuid && n.group === g,
-            ),
-          )) &&
-        s.modules.some((m) => m.module === module && m.enabled),
-    ) || [];
+  const policy = suites.find(s => s.id === suiteId && s.enabled && s.modules.some(m => m.module === module && m.enabled));
   const [share, setShare] = useState<string>(""),
     [shareRound, setShareRound] = useState<string>("");
   const selectedIndex = rounds.findIndex((r) => r.id === picked?.id),
@@ -530,7 +522,8 @@ function RoundModule({
   async function run() {
     setError("");
     try {
-      for (const policy of policies) await runReportSuite(policy.id, module, [uuid]);
+      if (!policy) return;
+      await runReportSuite(policy.id, module, [uuid]);
       const next = await history.refetch();
       setSelection(next.data?.pages[0].rounds[0]?.id || null);
     } catch (e) {
@@ -549,8 +542,8 @@ function RoundModule({
         }
         aside={
           <div className="report-actions">
-            <button onClick={policies.length ? () => void run() : onConfigure}>
-              {policies.length ? "立即检测" : "设置计划"}
+            <button onClick={policy ? () => void run() : onConfigure}>
+              {policy ? "立即检测" : "设置计划"}
             </button>
             {round && (
               <details
@@ -577,7 +570,7 @@ function RoundModule({
                     <Download size={15} />
                     完整 JSON
                   </button>
-                  {!["tcpquality-full", "nodequality-full"].includes(module) && <button onClick={() => exportReportPng(round)}>
+                  {!diagnostic && !["tcpquality-full", "nodequality-full"].includes(module) && <button onClick={() => exportReportPng(round)}>
                     汇总 PNG
                   </button>}
                   {["tcpquality-full", "nodequality-full"].includes(module) && round.state !== "running" && <button onClick={() => {
@@ -651,7 +644,7 @@ function RoundModule({
         <span><strong>{round.counts.failed}</strong>测量失败</span>
       </div>}
       {round && module === "routes" && <p className="report-caption">任务结束包含失败和未确认终点；终点是否到达以每条路径的实际观测为准。</p>}
-      {!!rounds.length && (
+      {(!!rounds.length || !!picked || history.hasNextPage) && (
         <div className="report-round-selector">
           <span>检测轮次</span>
           <button
@@ -666,6 +659,7 @@ function RoundModule({
             value={picked?.id || ""}
             onChange={(e) => setSelection(e.target.value)}
           >
+            {picked && selectedIndex < 0 && <option value={picked.id}>{formatNetworkTime(picked.plannedAt)} · {reportLabels[picked.state]}</option>}
             {rounds.map((r) => (
               <option key={r.id} value={r.id}>
                 {formatNetworkTime(r.plannedAt)} · {reportLabels[r.state]}
@@ -708,7 +702,7 @@ function RoundModule({
         </p>
       )}
       {history.isPending && <p role="status">正在读取轮次…</p>}
-      {!history.isPending && !rounds.length && (
+      {!history.isPending && !picked && (
         <div className="report-empty">
           <strong>尚无{moduleTitles[module]}报告</strong>
           <p>
@@ -718,7 +712,7 @@ function RoundModule({
           <button onClick={onConfigure}>设置报告计划</button>
         </div>
       )}
-      {round && !round.detailAvailable && (
+      {round && !round.detailAvailable && !diagnostic && (
         <div className="report-empty">
           本轮明细已超过七天保留期。完成度和每个目标的汇总保留九十天；原始样本无法恢复。
           <div className="report-table-scroll">
@@ -745,7 +739,8 @@ function RoundModule({
           </div>
         </div>
       )}
-      {round?.detailAvailable &&
+      {round && diagnostic && <DiagnosticRoundReport key={round.id} round={round} />}
+      {round?.detailAvailable && !diagnostic &&
         (module === "nodequality-full" ? <FullNodeQualityReport round={round} /> : module === "tcpquality-full" ? <FullTcpQualityReport round={round} /> : ["international", "idc", "tcp-quality"].includes(module) ? (
           <LatencyMatrix
             key={round.id}
@@ -775,7 +770,7 @@ function RoundModule({
             ))}
           </div>
         ))}
-      {round && module !== "routes" && module !== "bgp" && !["tcpquality-full", "nodequality-full"].includes(module) && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
+      {round && !diagnostic && module !== "routes" && module !== "bgp" && !["tcpquality-full", "nodequality-full"].includes(module) && rounds.length > 0 && <ReportHistory key={module} uuid={uuid} summaries={rounds} current={round} onSelect={setSelection} />}
       {inspected && (
         <NetworkDrawer
           title={
@@ -848,24 +843,48 @@ export function NetworkReportWorkspace({
   uuid,
   onConfigure,
   availableModules,
+  suites,
+  loadingSuites,
 }: {
   uuid: string;
-  onConfigure: () => void;
+  onConfigure: (suiteId?: string) => void;
   availableModules: ReportModule[];
+  suites: ReportSuite[];
+  loadingSuites: boolean;
 }) {
-  const [tab, setTab] = useState<"routes" | "tcp-quality" | "speed" | "international">(
-    (() => { const value = new URLSearchParams(window.location.search).get("tab"); return value === "routes" || value === "speed" || value === "tcp-quality" ? value : "international"; })(),
-  );
-  const qualityModules = ["tcpquality-full", "nodequality-full", "tcp-quality", "ip-quality", "media-unlock"] as const;
-  const [qualityTab, setQualityTab] = useState<(typeof qualityModules)[number]>("tcpquality-full");
-  const visibleQuality = qualityModules.filter(module => availableModules.includes(module));
-  const selectedQuality = visibleQuality.includes(qualityTab) ? qualityTab : visibleQuality[0];
-  const tabs = {
-    routes: ["routes", "bgp"],
-    "tcp-quality": [...qualityModules],
-    speed: ["china-speed"],
-    international: ["international", "idc", "international-speed"],
-  } as const;
+  const [choice, setChoice] = useState<{ planId: string; module?: ReportModule }>();
+  const params = new URLSearchParams(window.location.search);
+  const requestedRound = params.get("round");
+  const requestedTab = params.get("tab");
+  const requestedModule = requestedTab === "speed" ? "china-speed" : requestedTab;
+  const linked = useQuery({
+    queryKey: ["report-round", uuid, requestedRound],
+    queryFn: () => getReportRound(uuid, requestedRound!),
+    enabled: Boolean(requestedRound),
+    staleTime: 5000,
+  });
+  const plans = suites.map(suite => ({
+    id: suite.id, name: suite.name, suiteId: suite.id,
+    modules: suite.modules.map(config => config.module).filter(module => availableModules.includes(module)),
+  })).filter(plan => plan.modules.length);
+  const moduleFromLink = linked.data?.module;
+  const suiteFromLink = linked.data?.suiteId;
+  if (linked.data && moduleFromLink && suiteFromLink && !plans.some(plan => plan.suiteId === suiteFromLink && plan.modules.includes(moduleFromLink))) {
+    plans.push({ id: linked.data.id, name: moduleTitles[moduleFromLink], suiteId: suiteFromLink, modules: [moduleFromLink] });
+  }
+  const usePresets = !plans.length;
+  const tabs = usePresets
+    ? availableModules.map(module => ({ id: module, name: moduleTitles[module], suiteId: undefined, modules: [module] }))
+    : plans;
+  const selected = tabs.find(tab => tab.id === choice?.planId)
+    || tabs.find(tab => !!suiteFromLink && tab.suiteId === suiteFromLink && tab.modules.some(module => module === moduleFromLink))
+    || tabs.find(tab => tab.modules.some(module => module === requestedModule))
+    || (usePresets ? tabs.find(tab => tab.id === "international") : undefined)
+    || tabs[0];
+  const module = selected?.modules.find(value => value === choice?.module)
+    || selected?.modules.find(value => value === moduleFromLink || value === requestedModule)
+    || selected?.modules[0];
+  const linkedRound = module === moduleFromLink && (!selected?.suiteId || selected.suiteId === suiteFromLink) ? linked.data : undefined;
   return (
     <div className="network-report-workspace">
       <div className="report-workspace-heading">
@@ -876,40 +895,33 @@ export function NetworkReportWorkspace({
             成组测量与历史报告
           </h3>
         </div>
-        <button onClick={onConfigure}>
+        <button onClick={() => onConfigure()}>
           <Settings2 size={16} />
           定时计划
         </button>
       </div>
-      <div className="report-main-tabs" aria-label="网络报告标签">
-        {(["routes", "tcp-quality", "speed", "international"] as const).map((key) => (
+      {loadingSuites || (requestedRound && linked.isPending) ? <p role="status">正在读取检测方案…</p> : <>
+      <div className="report-main-tabs" aria-label="检测方案">
+        {tabs.map(tab => (
           <button
-            key={key}
-            aria-pressed={tab === key}
-            onClick={() => setTab(key)}
+            key={tab.id}
+            aria-pressed={selected?.id === tab.id}
+            onClick={() => setChoice({ planId: tab.id })}
           >
-            {{ routes: "路由", "tcp-quality": "TCP 质量", speed: "测速", international: "国际" }[key]}
+            {tab.name}
           </button>
         ))}
       </div>
-      {tab === "tcp-quality" && visibleQuality.length > 0 && <div className="report-quality-tabs" aria-label="TCP 质量报告类型">
-        {visibleQuality.map(module => <button key={module} type="button" aria-pressed={selectedQuality === module} onClick={() => setQualityTab(module)}>{moduleTitles[module]}</button>)}
+      {selected && selected.modules.length > 1 && <div className="report-plan-module-tabs" aria-label="方案检测模块">
+        {selected.modules.map(value => <button key={value} type="button" aria-pressed={module === value}
+          onClick={() => setChoice({ planId: selected.id, module: value })}>{moduleTitles[value]}</button>)}
       </div>}
-      {(tab === "tcp-quality" ? (selectedQuality ? [selectedQuality] : []) : tabs[tab])
-        .filter((m) => availableModules.includes(m))
-        .map((module) => (
-          <RoundModule
-            key={module}
-            module={module}
-            uuid={uuid}
-            onConfigure={onConfigure}
-          />
-        ))}
-      {!tabs[tab].some((m) => availableModules.includes(m)) && (
-        <div className="report-empty">
-          此插件未提供本标签的报告能力，请升级网络观测插件。
-        </div>
-      )}
+      {linked.error && <p role="alert">{linked.error.message}</p>}
+      {selected && module ? <RoundModule key={selected.id + ":" + module} uuid={uuid} module={module}
+        suiteId={selected.suiteId} suites={suites} linkedRound={linkedRound}
+        onConfigure={() => onConfigure(suites.some(suite => suite.id === selected.suiteId) ? selected.suiteId : undefined)} />
+        : <div className="report-empty">暂无可查看的检测方案或报告。</div>}
+      </>}
     </div>
   );
 }

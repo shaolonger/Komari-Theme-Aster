@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { diagnosticModules, type DiagnosticSection } from "./homeDiagnostics";
+import { diagnosticModules, ipProvidersSchema, mediaServicesSchema, riskScoresSchema, type DiagnosticSection } from "./homeDiagnostics";
 
 export const reportModules = [
   "routes",
@@ -212,6 +212,9 @@ const measurementDataSchema = z
     method: z.string().optional(),
     diagnostic: z.string().default(""),
     rawOutput: z.string().optional(),
+    providers: ipProvidersSchema.optional().catch(undefined),
+    riskScores: riskScoresSchema.optional().catch(undefined),
+    services: mediaServicesSchema.optional().catch(undefined),
     profile: z.string().optional(),
     reportUrl: z.string().optional(),
     cleanLog: z.string().optional(),
@@ -372,6 +375,11 @@ const catalogSchema = capabilitiesSchema.extend({
     "ip-quality": z.array(z.string()).optional(),
     "media-unlock": z.array(z.string()).optional(),
   }).default({}),
+  homeDiagnosticDisplay: z.object({
+    "traffic-reset": z.boolean().optional(),
+    "ip-quality": z.boolean().optional(),
+    "media-unlock": z.boolean().optional(),
+  }).default({}),
   homeSpeedDisplay: z.boolean().default(true),
   homeSpeedShowDetails: z.boolean().default(false),
   revision: z.number(),
@@ -481,6 +489,7 @@ export const listReportRounds = async (
   uuid: string,
   module: ReportModule,
   cursor = "",
+  suiteId?: string,
 ) =>
   z
     .object({
@@ -489,7 +498,7 @@ export const listReportRounds = async (
     })
     .parse(
       await request(
-        `/nodes/${encodeURIComponent(uuid)}/rounds?module=${module}&cursor=${encodeURIComponent(cursor)}`,
+        `/nodes/${encodeURIComponent(uuid)}/rounds?module=${module}&cursor=${encodeURIComponent(cursor)}${suiteId ? `&suite=${encodeURIComponent(suiteId)}` : ""}`,
       ),
     );
 export const getReportRound = async (uuid: string, id: string) =>
@@ -539,6 +548,6 @@ export const publishHomeRoutes = (nodeUuids: string[], revision: number, display
 
 export const rebuildHomeRoutes = () => request("/home-routes/rebuild", "POST", {});
 export const publishHomeSpeeds = (nodeUuids: string[], revision: number, display: boolean, showDetails?: boolean) => request("/home-speeds", "PUT", { nodeUuids, revision, display, showDetails });
-export const publishHomeDiagnostics = (section: DiagnosticSection, nodeUuids: string[], revision: number) =>
-  request("/home-diagnostics", "PUT", { section, nodeUuids, revision });
+export const publishHomeDiagnostics = (section: DiagnosticSection, nodeUuids: string[], revision: number, display?: boolean) =>
+  request("/home-diagnostics", "PUT", { section, nodeUuids, revision, display });
 export const rebuildHomeSpeeds = () => request("/home-speeds/rebuild", "POST", {});

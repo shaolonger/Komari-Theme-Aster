@@ -1192,7 +1192,7 @@ export function ThemeManage() {
       </StudioPanel>
       <StudioPanel title="主页三网线路" description="管理员预览、首页显示与访客发布；每次保存立即生效。"><div id="network-routes"><NetworkSettingsPanel panel="routes" /></div></StudioPanel>
       <StudioPanel title="主页三网测速" description="最近一轮大陆测速、P1 上下行与测试时间；可单独设置首页显示和访客发布范围。"><div id="network-speeds"><NetworkSettingsPanel panel="speeds" /></div></StudioPanel>
-      <StudioPanel title="流量重置"><div id="network-traffic-reset"><NetworkSettingsPanel panel="traffic-reset" /></div></StudioPanel>
+      <StudioPanel title="主页流量重置"><div id="network-traffic-reset"><NetworkSettingsPanel panel="traffic-reset" /></div></StudioPanel>
       <StudioPanel title="主页IP质量"><div id="network-ip-quality"><NetworkSettingsPanel panel="ip-quality" /></div></StudioPanel>
       <StudioPanel title="主页解锁情况"><div id="network-media-unlock"><NetworkSettingsPanel panel="media-unlock" /></div></StudioPanel>
       <StudioPanel title="检测方案" description="模块、定时、目标与 VPS / 分组范围；保存到网络插件后立即生效。"><div id="network-plans"><NetworkSettingsPanel panel="plans" /></div></StudioPanel>

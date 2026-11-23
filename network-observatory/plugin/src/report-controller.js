@@ -72,7 +72,7 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics",
+      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics", "home-diagnostic-display", "suite-history",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
@@ -317,9 +317,10 @@ function registerReportController(ctx, native) {
           j.policyId === suite.id &&
           j.reportModule === mod.module,
       );
-    const competing = ["tcpquality-full", "nodequality-full"].includes(mod.module) && s.jobs.some(j => j.nodeUuid === nodeUuid && j.reportModule === mod.module);
+    const recordOverlap = ["tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(mod.module);
+    const competing = recordOverlap && s.jobs.some(j => j.nodeUuid === nodeUuid && j.reportModule === mod.module);
     if (pending.length && pending.some(j => j.roundId === stableId)) return stableId;
-    if (pending.length && !["tcpquality-full", "nodequality-full"].includes(mod.module)) return scheduled && pending.some(j => j.expiresAt <= Date.now()) ? false : null;
+    if (pending.length && !recordOverlap) return scheduled && pending.some(j => j.expiresAt <= Date.now()) ? false : null;
     if (competing && !scheduled) return null;
     const roundId = stableId || crypto.randomUUID();
     const existing = stableId && store.get(nodeUuid, roundId, false);
@@ -342,7 +343,9 @@ function registerReportController(ctx, native) {
     if (competing) {
       // Record the scheduled occurrence rather than silently losing it or
       // running a second intrusive benchmark concurrently on the same VPS.
-      const reason = "同一 VPS 的完整检测仍在运行或排队，本次计划已跳过";
+      const reason = DIAGNOSTICS.includes(mod.module)
+        ? "同一 VPS 的同类检测仍在运行或排队，本次计划已跳过"
+        : "同一 VPS 的完整检测仍在运行或排队，本次计划已跳过";
       for (const job of plan.jobs) job.missingReason = reason;
       for (const slot of plan.slots) slot.missingReason = reason;
     }
@@ -599,7 +602,7 @@ function registerReportController(ctx, native) {
       rebuildHomeRoutes(ids);
     }
     ctx.respond(res, 200, { ...homePayload(s, ids, true), quickCheck: true, quickFamilies: cardFamilies(s, "routes"),
-      diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, new Set(ids)) });
+      diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, new Set(ids), s.homeDiagnosticDisplay) });
   });
   route("POST", "/home-routes/rebuild", (_req, res, s) => {
     rebuildHomeRoutes(s.inventory.map(n => n.uuid), true);
@@ -627,12 +630,13 @@ function registerReportController(ctx, native) {
     ctx.respond(res, 200, { revision: s.revision });
   });
   route("PUT", "/home-diagnostics", (req, res, s) => {
-    const { revision, section, nodeUuids } = ctx.readBody(req);
+    const { revision, section, nodeUuids, display } = ctx.readBody(req);
     if (revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
     const known = new Set(s.inventory.map(node => node.uuid));
-    if (!SECTIONS.includes(section) || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
+    if (!SECTIONS.includes(section) || (display !== undefined && typeof display !== "boolean") || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
         nodeUuids.some(id => !UUID.test(id || "") || !known.has(id))) throw new Error("首页检测项目或 VPS 范围无效");
     (s.homeDiagnosticNodes ||= {})[section] = [...new Set(nodeUuids)];
+    if (display !== undefined) (s.homeDiagnosticDisplay ||= {})[section] = display;
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -645,7 +649,7 @@ function registerReportController(ctx, native) {
         const visible = new Set(s.inventory.filter(n => n.publicVisible === true).map(n => n.uuid));
         const allowed = (s.homeRouteNodes || []).filter(id => visible.has(id));
         ctx.respond(res, 200, { ...homePayload(s, allowed),
-          diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, visible) });
+          diagnostics: homeDiagnostics.summary(s.homeDiagnosticNodes, s.workers, visible, s.homeDiagnosticDisplay) });
       });
     } catch (_error) { ctx.respond(res, 503, { error: "线路摘要暂不可用" }); }
   });
@@ -767,6 +771,7 @@ function registerReportController(ctx, native) {
       homeSpeedDisplay: s.homeSpeedDisplay !== false,
       homeSpeedShowDetails: s.homeSpeedShowDetails === true,
       homeDiagnosticNodes: s.homeDiagnosticNodes || {},
+      homeDiagnosticDisplay: s.homeDiagnosticDisplay || {},
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,
@@ -919,6 +924,7 @@ function registerReportController(ctx, native) {
       store.list(part(req, 2), query(req, "module") || "international", {
         limit: query(req, "limit"),
         cursor: query(req, "cursor"),
+        suiteId: query(req, "suite"),
       }),
     );
   });
@@ -926,7 +932,8 @@ function registerReportController(ctx, native) {
   // raw measurement files expire. They do not load the measurement files.
   route("GET", "/nodes/:uuid/history-summary", (req, res) => {
     const uuid = part(req, 2), module = query(req, "module") || "international";
-    const page = store.list(uuid, module, { limit: Math.min(20, Number(query(req, "limit")) || 20), cursor: query(req, "cursor") });
+    const page = store.list(uuid, module, { limit: Math.min(20, Number(query(req, "limit")) || 20),
+      cursor: query(req, "cursor"), suiteId: query(req, "suite") });
     const rounds = page.rounds.map(row => {
       if (row.detailAvailable !== false) return row;
       const round = store.get(uuid, row.id, false);

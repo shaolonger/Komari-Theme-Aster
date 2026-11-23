@@ -107,10 +107,18 @@ test("homepage diagnostics schedule both address families and publish only selec
     assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "traffic-reset", nodeUuids: [A, B], revision: 0 })).status, 200);
     assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "ip-quality", nodeUuids: [A], revision: 0 })).status, 409);
     assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "ip-quality", nodeUuids: [A], revision: 1 })).status, 200);
+    const timing = { type: "rules", rules: [
+      { type: "weekly", weekdays: [1, 5], time: "03:30", timezone: "Asia/Shanghai" },
+      { type: "every-days", days: 3, startDate: "2025-11-23", time: "05:30", timezone: "Asia/Shanghai" },
+      { type: "interval", minutes: 120 },
+    ] };
     const saved = await f.invoke("POST", v3 + "/suites", {
-      revision: 2, clients: [A], modules: [{ module: "ip-quality", family: "auto" }, { module: "media-unlock", family: "6" }],
+      revision: 2, clients: [A], modules: [{ module: "ip-quality", family: "auto", timing }, { module: "media-unlock", family: "6", timing }],
     });
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.deepEqual(saved.body.suite.modules.map(module => module.timing.rules.map(rule => rule.type)),
+      [["weekly", "every-days", "interval"], ["weekly", "every-days", "interval"]]);
+    assert.ok(saved.body.suite.modules.every(module => module.nextAt > Date.now()));
     const started = await f.invoke("POST", `${v3}/suites/${saved.body.suite.id}/run`);
     assert.equal(started.status, 202, JSON.stringify(started.body));
     const slots = [];
@@ -120,7 +128,7 @@ test("homepage diagnostics schedule both address families and publish only selec
       assert.equal(task.target, "localhost");
       slots.push([task.operation, task.options.family]);
       const data = task.operation === "ip-quality"
-        ? { kind: task.operation, state: "partial", providers: { IPinfo: { company: "hosting" } } }
+        ? { kind: task.operation, state: "partial", providers: { IPinfo: { company: "hosting" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%" } }
         : { kind: task.operation, state: "partial", services: { Netflix: { status: "unlocked", region: "JP", mode: "dns" } } };
       if (index === 0) assert.equal((await post("/result", { id: task.id, data: { ...data, providers: { IPinfo: { ip: "192.0.2.1" } } } })).status, 400);
       assert.equal((await post("/result", { id: task.id, data })).status, 200);
@@ -131,10 +139,32 @@ test("homepage diagnostics schedule both address families and publish only selec
     assert.deepEqual(Object.keys(first), [A]);
     assert.deepEqual(first[A]["traffic-reset"], { day: 20, elapsed: 5, total: 30, nextAt });
     assert.deepEqual(JSON.parse(JSON.stringify(first[A]["ip-quality"]["6"].providers)), { IPinfo: { company: "hosting" } });
+    assert.deepEqual(first[A]["ip-quality"]["4"].riskScores, { Scamalytics: "63", ipapi: "0.00%" });
     assert.equal(first[A]["media-unlock"], undefined);
     const revision = (await f.invoke("GET", v3 + "/catalog")).body.revision;
     assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "media-unlock", nodeUuids: [A], revision })).status, 200);
     assert.equal((await read())[A]["media-unlock"]["6"].services.Netflix.region, "JP");
+    const publish = (section, latestRevision, display) => f.invoke("PUT", v3 + "/home-diagnostics", { section, nodeUuids: [A], revision: latestRevision, display });
+    assert.equal((await publish("ip-quality", revision + 1, false)).status, 200);
+    assert.equal((await publish("traffic-reset", revision + 2, false)).status, 200);
+    assert.deepEqual(Object.keys((await read())[A]), ["media-unlock"]);
+    const admin = (await f.invoke("GET", v3 + "/home-routes")).body;
+    assert.deepEqual(Object.keys(admin.diagnostics[A]), ["media-unlock"]);
+    const catalog = (await f.invoke("GET", v3 + "/catalog")).body;
+    assert.deepEqual(catalog.homeDiagnosticNodes["traffic-reset"], [A]);
+    assert.equal(catalog.homeDiagnosticDisplay["ip-quality"], false);
+    const second = await f.invoke("POST", v3 + "/suites", { revision: catalog.revision, clients: [A],
+      modules: [{ module: "ip-quality", family: "4" }] });
+    assert.equal(second.status, 200);
+    assert.equal((await f.invoke("POST", `${v3}/suites/${second.body.suite.id}/run`)).status, 202);
+    const prefix = `${v3}/nodes/${A}/rounds?module=ip-quality`;
+    const all = (await f.invoke("GET", prefix)).body.rounds;
+    assert.equal(all.length, 2);
+    const scoped = (await f.invoke("GET", prefix + "&suite=" + saved.body.suite.id)).body.rounds;
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].suiteId, saved.body.suite.id);
+    const detail = (await f.invoke("GET", `${v3}/nodes/${A}/rounds/${scoped[0].id}`)).body;
+    assert.equal(detail.slots[0].metrics.riskScores.Scamalytics, "63");
   } finally { f.close(); }
 });
 test("card presentation preferences survive native controller restart and remain independent", async () => {

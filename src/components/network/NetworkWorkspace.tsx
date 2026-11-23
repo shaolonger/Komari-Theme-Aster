@@ -123,8 +123,10 @@ export function NetworkWorkspace({
       <NetworkReportWorkspace
         uuid={uuid}
         availableModules={capability.data.modules}
-        onConfigure={() => {
-          window.location.href = configure;
+        suites={suites}
+        loadingSuites={catalog.isPending}
+        onConfigure={(suiteId) => {
+          window.location.href = suiteId ? `${configure}&suite=${encodeURIComponent(suiteId)}` : configure;
         }}
       />
     </div>

@@ -110,7 +110,7 @@ function normalizeSuite(input, resources = []) {
       throw new Error("NodeQuality 检测项目或超时时间无效");
     const timing = M.timing(
       value.timing || preset.timing,
-      speed ? "speed" : value.module === "routes" ? "routes" : ["tcpquality-full", "nodequality-full"].includes(value.module) ? value.module : "websites",
+      speed ? "speed" : value.module === "routes" ? "routes" : ["tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(value.module) ? value.module : "websites",
     );
     if (
       value.module === "bgp" &&

@@ -41,7 +41,7 @@ class HomeDiagnosticsTests(unittest.TestCase):
         digest = hashlib.sha256(payload).hexdigest()
         report = {
             "Type": {"Usage": {"IP2LOCATION": "Hosting", "IPinfo": "ISP", "AbuseIPDB": "Mobile ISP"}, "Company": {"ipapi": "Line ISP"}},
-            "Score": {"ipapi": "3.52%", "IP2LOCATION": 3, "AbuseIPDB": 0},
+            "Score": {"ipapi": "3.52%", "IP2LOCATION": 3, "AbuseIPDB": 0, "SCAMALYTICS": 63},
             "IP": "192.0.2.13",
             "Media": {
                 "Netflix": {"Status": "Yes", "Region": "US", "Type": "DNS"},
@@ -79,6 +79,7 @@ class HomeDiagnosticsTests(unittest.TestCase):
         self.assertEqual(ip["providers"]["IP2Location"], {"usage": "hosting", "score": "3"})
         self.assertEqual(ip["providers"]["ipapi"], {"company": "line-isp", "score": "3.52%"})
         self.assertEqual(ip["providers"]["AbuseIPDB"], {"usage": "mobile-isp", "score": "0"})
+        self.assertEqual(ip["riskScores"], {"IP2Location": "3", "Scamalytics": "63", "ipapi": "3.52%", "AbuseIPDB": "0"})
         self.assertNotIn("192.0.2.13", json.dumps(ip))
         self.assertEqual(unlock["services"], {
             "Netflix": {"status": "unlocked", "mode": "dns", "region": "US"},

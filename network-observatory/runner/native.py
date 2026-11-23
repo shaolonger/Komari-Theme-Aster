@@ -804,6 +804,7 @@ MEDIA_SCRIPT = ("https://raw.githubusercontent.com/1-stream/RegionRestrictionChe
                 "6d5360396c736995008c912191b55a38e90835a31e161ef005d3566736593b17")
 HOME_DIAGNOSTIC_OPERATIONS = ("ip-quality", "media-unlock")
 PROVIDERS = ("IPinfo", "ipregistry", "ipapi", "IP2Location", "AbuseIPDB")
+RISK_PROVIDERS = {"IP2Location": "IP2LOCATION", "Scamalytics": "SCAMALYTICS", "ipapi": "ipapi", "AbuseIPDB": "AbuseIPDB"}
 SERVICES = {"TikTok": "TikTok", "Disney+": "DisneyPlus", "Netflix": "Netflix",
             "YouTube Premium": "Youtube", "Amazon Prime Video": "AmazonPrimeVideo",
             "Reddit": "Reddit", "ChatGPT": "ChatGPT"}
@@ -844,6 +845,16 @@ def ip_rows(report):
         if row:
             providers[key] = row
     return providers
+
+
+def risk_scores(report):
+    values = object_or_empty(report.get("Score"))
+    scores = {}
+    for name, key in RISK_PROVIDERS.items():
+        value = str(values.get(key, "")).strip()
+        if re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?", value):
+            scores[name] = value
+    return scores
 
 
 def media_status(message):
@@ -939,10 +950,12 @@ def home_diagnostics(kind, family):
                     return {**failed, "diagnostic": "IP 质量脚本下载或校验失败"}
             field = "providers" if kind == "ip-quality" else "services"
             values = ip_rows(report) if kind == "ip-quality" else media_rows(output, object_or_empty(report.get("Media")))
-            if not values:
+            scores = risk_scores(report) if kind == "ip-quality" else {}
+            if not values and not scores:
                 return {**failed, "diagnostic": "该地址族没有返回可识别的检测结果"}
-            return {"kind": kind, "state": "ok" if len(values) == (len(PROVIDERS) if kind == "ip-quality" else len(SERVICES)) else "partial",
-                    field: values}
+            complete = len(values) == len(SERVICES) if kind == "media-unlock" else len(values) == len(PROVIDERS) and len(scores) == len(RISK_PROVIDERS)
+            return {"kind": kind, "state": "ok" if complete else "partial", field: values,
+                    **({"riskScores": scores} if scores else {})}
     except (OSError, ValueError):
         return {**failed, "diagnostic": "主页检测执行失败"}
 

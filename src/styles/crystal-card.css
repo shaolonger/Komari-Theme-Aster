@@ -561,7 +561,7 @@ a.crystal-quality:hover { filter: brightness(.93); }
   justify-items: stretch;
   gap: .35em;
   min-width: 0;
-  padding: max(4px, .66cqi);
+  padding: max(2px, .66cqi);
   border-radius: max(5px, 1cqi);
   text-align: center;
 }
@@ -569,7 +569,8 @@ a.crystal-quality:hover { filter: brightness(.93); }
   display: grid;
   place-items: center;
   min-height: 2.1em;
-  overflow-wrap: anywhere;
+  font-size: clamp(7px, 2.05cqi, 19px);
+  white-space: nowrap;
 }
 .crystal-diagnostic-badge {
   display: block;
@@ -600,6 +601,43 @@ a.crystal-quality:hover { filter: brightness(.93); }
   color: var(--crystal-amber);
 }
 .crystal-diagnostic-empty { margin: .7em .3em .35em; color: var(--text-secondary); }
+.crystal-risk {
+  display: grid;
+  grid-template-columns: 1fr 4.7fr;
+  gap: var(--crystal-diagnostic-gap);
+  padding-block-start: max(4px, .7cqi);
+  margin-block-start: max(3px, .55cqi);
+  border-top: 1px solid var(--crystal-cell-outline);
+}
+.crystal-risk-heading, .crystal-risk-list > li {
+  min-width: 0;
+  border: 1px solid var(--crystal-cell-outline);
+  border-radius: max(4px, 1cqi);
+  background: var(--crystal-cell);
+  box-shadow: var(--crystal-cell-shadow);
+  text-align: center;
+}
+.crystal-risk-heading {
+  display: grid;
+  align-content: center;
+  gap: .15em;
+  color: var(--text-primary);
+  font-size: clamp(8px, 2.15cqi, 23px);
+}
+.crystal-risk-heading small { color: var(--text-secondary); font-size: .76em; }
+.crystal-risk-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--crystal-diagnostic-gap); }
+.crystal-risk-list > li { display: grid; gap: .2em; padding: max(2px, .35cqi); }
+.crystal-risk-list > li > strong {
+  padding-block: .18em;
+  border-radius: max(3px, .55cqi);
+  background: color-mix(in srgb, var(--crystal-blue) 10%, var(--surface));
+  color: var(--text-primary);
+  font-size: clamp(7px, 1.85cqi, 17px);
+  white-space: nowrap;
+}
+.crystal-risk-list .crystal-diagnostic-badge { display: grid; gap: .12em; }
+.crystal-risk-list b { font-size: 1.24em; }
+.crystal-risk-list small { font-size: .84em; font-weight: 600; }
 
 @container (max-width: 335px) {
   .crystal-unlock-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }

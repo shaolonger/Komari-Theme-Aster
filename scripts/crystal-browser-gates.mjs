@@ -222,7 +222,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   setFixture({ homeDiagnostics: {
     "node-0": {
       "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
-      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } } },
+      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
         "6": { at, state: "partial", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
       "media-unlock": { "4": { at, state: "partial", services: { Netflix: { status: "unlocked", region: "US", mode: "dns" }, Reddit: { status: "blocked" } } } },
     },
@@ -236,7 +236,10 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
       reset.querySelectorAll('.crystal-quota-track i').length === 35 &&
       reset.compareDocumentPosition(ip) & Node.DOCUMENT_POSITION_FOLLOWING &&
       ip.compareDocumentPosition(unlock) & Node.DOCUMENT_POSITION_FOLLOWING &&
-      ip.textContent.includes('机房') && unlock.textContent.includes('屏蔽') && unlock.textContent.includes('DNS') &&
+      ip.textContent.includes('机房') && ip.querySelector('table tbody').rows.length === 2 &&
+      ip.querySelector('.crystal-risk').textContent.includes('Scamalytics63高风险') &&
+      ip.querySelector('.crystal-risk li:last-child').textContent.includes('0低风险') &&
+      unlock.textContent.includes('屏蔽') && unlock.textContent.includes('DNS') &&
       !document.querySelector('.crystal-card[data-node="node-1"] .crystal-diagnostic');
   })()`), "Crystal homepage lost a per-node reset, IP or unlock observation");
   await click(`${ip} button:nth-child(2)`);
@@ -253,6 +256,11 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         const panel = document.querySelector(selector);
         return panel.scrollWidth <= panel.clientWidth + 1;
       }))()`), `Crystal homepage diagnostics overflow at ${width}px in ${scheme}`);
+      failGate(await cdp.value(`[...document.querySelectorAll(${JSON.stringify(`${unlock} li strong`)})].every(label => {
+        const range = new Range(); range.selectNodeContents(label);
+        const text = range.getBoundingClientRect(), cell = label.closest('li').getBoundingClientRect();
+        return range.getClientRects().length === 1 && text.left >= cell.left && text.right <= cell.right;
+      })`), `Crystal split or clipped an unlock service at ${width}px in ${scheme}`);
     }
     failGate(await cdp.value(`new Set([...document.querySelectorAll(${JSON.stringify(`${unlock} li`)})].map(cell => cell.offsetTop)).size === 1`),
       `Crystal did not align seven unlock services in one row at 390px in ${scheme}`);
@@ -275,5 +283,18 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.documentElement.dataset.themeStyle==='crystal-dark' && localStorage.getItem('appearance_default')===JSON.stringify('crystal-dark')", 8000);
   await waitFor(card);
+  await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage&section=network&panel=traffic-reset` });
+  for (const id of ["network-traffic-reset", "network-ip-quality"]) {
+    const scope = "#" + id;
+    await waitFor(`${scope} .report-checkbox input:checked`);
+    await click(`${scope} .network-actions button:first-child`);
+    failGate(await cdp.value(`[...document.querySelectorAll('${scope} .home-speeds-publish-nodes input')].every(node => node.checked)`), "select all visible nodes was ineffective");
+    await click(`${scope} .report-checkbox input`);
+    await click(`${scope} .network-actions button:last-child`);
+    await waitUntil(cdp, `document.querySelector('${scope} [role=status]')?.textContent.includes('已保存')`, 3000);
+  }
+  await cdp.call("Page.reload");
+  await waitFor("#network-traffic-reset .report-checkbox input:not(:checked)");
+  await waitFor("#network-ip-quality .report-checkbox input:not(:checked)");
   return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, exact per-node Ping bindings, and homepage diagnostics by address family", layouts };
 }

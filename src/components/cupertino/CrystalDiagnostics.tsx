@@ -1,20 +1,12 @@
 import { memo, useState, type ReactNode } from "react";
 import { Layers3, Play } from "lucide-react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
-import { IP_PROVIDERS, MEDIA_SERVICES, type HomeDiagnosticNode, type IpKind } from "@/services/homeDiagnostics";
+import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 
 const QUOTA_SEGMENTS = 35;
 type Family = "4" | "6";
 const FAMILIES = ["4", "6"] as const;
-const ipKinds: Record<IpKind, string> = {
-  isp: "家宽", "line-isp": "原宽", hosting: "机房", business: "企业", education: "教育", government: "政府",
-  banking: "银行", organization: "机构", military: "军事", library: "图书馆", cdn: "CDN",
-  "mobile-isp": "移动网络", "web-spider": "网络爬虫", reserved: "保留", other: "其他",
-};
-const mediaStatuses = {
-  unlocked: "解锁", blocked: "屏蔽", partial: "部分解锁", unsupported: "不支持",
-} as const;
 
 export function CrystalSegments({ percent }: { percent: number }) {
   const fill = Math.min(QUOTA_SEGMENTS, Math.round(QUOTA_SEGMENTS * percent / 100));
@@ -65,29 +57,39 @@ function IpQuality({ results, timeZone }: { results: NonNullable<HomeDiagnosticN
   const family = chosen ?? (results["4"] || !results["6"] ? "4" : "6");
   const snapshot = results[family];
   const providers = snapshot?.providers;
-  const fields = [["usage", "使用类型"], ["company", "公司类型"], ["score", "风险评分"]] as const;
+  const fields = [["usage", "使用类型"], ["company", "公司类型"]] as const;
   return (
     <DiagnosticPanel label="IP" icon={<Layers3 aria-hidden="true" />} family={family} select={select}
       title={snapshot ? `最近检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : "暂无检测结果"}>
-      {snapshot?.state === "failed" ? <p className="crystal-diagnostic-empty">最近检测未取得 IP 质量结果</p> : providers ? (
+      {snapshot?.state === "failed" ? <p className="crystal-diagnostic-empty">最近检测未取得 IP 质量结果</p> : providers ? <>
         <table className="crystal-diagnostic-table" aria-label={`IPv${family} IP 质量`}>
           <thead><tr><td />{IP_PROVIDERS.map(name => <th key={name} scope="col">{name}</th>)}</tr></thead>
           <tbody>{fields.map(([field, label]) => (
             <tr key={field}>
               <th scope="row">{label}</th>
               {IP_PROVIDERS.map(name => {
-                const row = providers[name];
-                const type = field === "score" ? undefined : row?.[field];
-                const score = field === "score" ? row?.score : undefined;
-                const number = Number.parseFloat(score ?? "");
+                const type = providers[name]?.[field];
                 const tone = type === "hosting" || type === "cdn" ? "bad" : type === "isp" || type === "line-isp" || type === "mobile-isp" ? "good"
-                  : score ? number >= 50 ? "bad" : number > 0 ? "warn" : "good" : "neutral";
-                return <td key={name}><span className="crystal-diagnostic-badge" data-tone={tone}>{type ? ipKinds[type] : score ?? "—"}</span></td>;
+                  : "neutral";
+                return <td key={name}><span className="crystal-diagnostic-badge" data-tone={tone}>{type ? ipKinds[type] : "—"}</span></td>;
               })}
             </tr>
           ))}</tbody>
         </table>
-      ) : <p className="crystal-diagnostic-empty">暂无 IPv{family} 检测结果</p>}
+        <section className="crystal-risk" aria-label="风险评分">
+          <div className="crystal-risk-heading"><strong>风险评分</strong><small>4 个数据库</small></div>
+          <ul className="crystal-risk-list">
+            {RISK_PROVIDERS.map(name => {
+              const value = riskValue(name, snapshot?.riskScores, providers);
+              const { label, tone } = riskPresentation(name, value);
+              return <li key={name}>
+                <strong>{name}</strong>
+                <span className="crystal-diagnostic-badge" data-tone={tone}><b>{value ?? "—"}</b><small>{label}</small></span>
+              </li>;
+            })}
+          </ul>
+        </section>
+      </> : <p className="crystal-diagnostic-empty">暂无 IPv{family} 检测结果</p>}
     </DiagnosticPanel>
   );
 }
@@ -106,7 +108,7 @@ function MediaUnlock({ results, timeZone }: { results: NonNullable<HomeDiagnosti
             const row = services[key];
             const tone = row?.status === "unlocked" ? "good" : row?.status === "blocked" ? "bad" : row?.status === "partial" ? "warn" : "neutral";
             return <li key={key}>
-              <strong>{label}</strong>
+              <strong title={key === "AmazonPrimeVideo" ? "Amazon Prime Video" : undefined}>{key === "AmazonPrimeVideo" ? "AmazonPV" : label}</strong>
               <span className="crystal-diagnostic-badge" data-tone={tone}>{row ? mediaStatuses[row.status] : "未测"}</span>
               {(row?.region || row?.mode) && <span className="crystal-unlock-tags">
                 {row.region && <span>{row.region}</span>}

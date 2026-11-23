@@ -335,6 +335,8 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       routeEvidence: data.routeEvidence,
       synProbes: data.synProbes,
     };
+    if (data.kind === "ip-quality") Object.assign(value, { providers: data.providers, riskScores: data.riskScores, diagnostic: data.diagnostic });
+    if (data.kind === "media-unlock") Object.assign(value, { services: data.services, diagnostic: data.diagnostic });
     if (data.tcpQuality)
       Object.assign(value, {
         address: data.tcpQuality.address,
@@ -494,6 +496,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
     const limit = Math.max(1, Math.min(50, Number(options.limit) || 20));
     const directory = path.join(nodeDir(node), "indexes", moduleName(module));
     const cursor = options.cursor || "";
+    if (options.suiteId && !UUID.test(options.suiteId)) throw new Error("检测方案 UUID 无效");
     if (cursor && !/^\d{4}-\d\d-\d\dT[0-9:.Z+-]+\|[0-9a-f-]{36}$/.test(cursor))
       throw new Error("分页游标无效");
     const rows = [];
@@ -502,6 +505,7 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       .sort()
       .reverse()) {
       for (const row of read(path.join(directory, name), [])) {
+        if (options.suiteId && row.suiteId !== options.suiteId) continue;
         if (FULL_MODULES.includes(module) && UUID.test(row.id || "") && deletionPending(node, row.id)) {
           resumeFullDeletion(node, row.id);
           continue;
