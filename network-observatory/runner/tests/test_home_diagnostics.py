@@ -65,6 +65,32 @@ show_ad
 '''
 
 class HomeDiagnosticsTests(unittest.TestCase):
+    def test_official_agent_executable_and_custom_systemd_install(self):
+        with tempfile.TemporaryDirectory() as root:
+            proc = Path(root)
+            process = proc / "208"
+            process.mkdir()
+            (process / "comm").write_text("agent\n")
+            command = process / "cmdline"
+            command.write_bytes(b"\0".join((b"/opt/komari/agent", b"--month-rotate", b"25", b"")))
+            self.assertEqual(agent.reset_day(proc), 25)
+
+            unrelated = proc / "209"
+            unrelated.mkdir()
+            (unrelated / "comm").write_text("agent\n")
+            (unrelated / "cmdline").write_bytes(b"/usr/bin/agent\0--month-rotate=3\0")
+            (unrelated / "cgroup").write_text("0::/system.slice/unrelated.service\n")
+            self.assertEqual(agent.reset_day(proc), 25)
+
+            command.write_bytes(b"/srv/vps-agent/agent\0--month-rotate=26\0")
+            (process / "cgroup").write_text("0::/system.slice/komari-agent.service\n")
+            self.assertEqual(agent.reset_day(proc), 26)
+
+            command.write_bytes(b"/home/monitor/.local/share/komari/agent\0--month-rotate=27\0")
+            self.assertEqual(agent.reset_day(proc), 27)
+            (unrelated / "cmdline").write_bytes(b"/opt/komari/agent\0--month-rotate=3\0")
+            self.assertIsNone(agent.reset_day(proc))
+
     def test_agent_flag_overrides_and_short_month_cycle(self):
         with tempfile.TemporaryDirectory() as root:
             proc = Path(root)

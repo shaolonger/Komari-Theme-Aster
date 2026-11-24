@@ -4,8 +4,6 @@ const fs = require("fs"),
   crypto = require("crypto");
 const { UUID } = require("./model.js");
 const CARRIERS = ["电信", "联通", "移动"];
-const CITIES = ["北京", "上海", "广州"];
-const CITY_NAMES = { "北京": "北京", "上海": "上海", "广州": "广州", beijing: "北京", shanghai: "上海", guangzhou: "广州" };
 // Stable presentation order, never a quality ranking or an AS path sequence.
 const LABEL_ORDER = ["163", "CN2", "CTGNet", "4837", "9929", "10099", "9808", "CMI", "CMIN2"];
 function orderedLabels(labels) {
@@ -14,11 +12,7 @@ function orderedLabels(labels) {
     return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi) || a.localeCompare(b);
   });
 }
-const { routeFacts, asNumbers } = require("./route-evidence.js");
-function cityName(value) {
-  const name = CITY_NAMES[String(value || "").trim().toLowerCase()];
-  return CITIES.includes(name) ? name : "";
-}
+const { routeFacts, restoreHomeEvidence } = require("./route-evidence.js");
 function carrierName(value) {
   const text = String(value || "")
     .trim()
@@ -73,12 +67,11 @@ function project(result) {
           : "无覆盖",
       asns: usable ? asns.slice(0, 64) : [],
       asPath: usable ? facts.asPath : [],
-      city: cityName(result.source?.city) || String(result.source?.city || "未声明地区").slice(0, 64),
+      city: String(result.source?.city || "未声明地区").slice(0, 64),
       provider: String(result.source?.provider || "未声明来源").slice(0, 64),
       protocol: String(result.options?.protocol || "tcp").slice(0, 16),
       ruleVersion: facts.ruleVersion,
-      networkLabels: usable ? labels : [],
-      registryLabels: usable ? facts.registryLabels : [],
+      networkLabels: labels,
       at: result.completedAt,
       reportId: result.roundId || "",
       diagnostic: usable
@@ -91,54 +84,6 @@ function project(result) {
           : "partial"
         : "missing",
     },
-  };
-}
-function reviseSavedEvidence(evidence) {
-  // Older caches retain actual ASNs but promoted the CN2-BB prefix to CN2.
-  // Repair their summaries without fetching measurement files during reads.
-  const city = cityName(evidence.city) || evidence.city;
-  const labels = evidence.networkLabels || evidence.label.split(/\s*\/\s*/);
-  if (!labels.includes("CN2") || asNumbers([...(evidence.asns || []), ...(evidence.asPath || [])].join(" ")).includes("4809"))
-    return city === evidence.city ? evidence : { ...evidence, city };
-  const networkLabels = labels.filter(label => label !== "CN2");
-  const fallback = (evidence.asns || []).map(asn => "AS" + asn);
-  const corrected = networkLabels.length ? networkLabels : fallback;
-  return { ...evidence, city, networkLabels: corrected, label: corrected.join(" / ") || "未识别",
-    registryLabels: [...new Set([...(evidence.registryLabels || []), "CN2-BB"])] };
-}
-
-function summarizeRoute(records, now) {
-  if (!records.length) return null;
-  const latest = records[0];
-  // Select one round per city and direction. Keep separate measurement
-  // sources/protocols within that round for the evidence drawer.
-  const current = records.filter(e => latest.reportId ? e.reportId === latest.reportId : e.at === latest.at);
-  const usable = current.filter(e => e.state !== "missing");
-  const labels = row => row.networkLabels?.length ? row.networkLabels : [row.label];
-  const networkLabels = [...new Set((usable.length ? usable : current).flatMap(labels))];
-  const combinedLabel = networkLabels.join(" / ");
-  const confirmed = current.filter(e => e.state === "ok").length;
-  const variants = new Set(usable.map(e => JSON.stringify(orderedLabels(labels(e))))).size;
-  const sortedLabels = orderedLabels(networkLabels);
-  const pathKind = !usable.length ? "unknown" : variants > 1 ? "varied" : sortedLabels.length > 1 ? "combined" : "single";
-  const displayLabel = pathKind === "varied" ? "多路径 · " + variants + "类" : sortedLabels.join(" + ");
-  return {
-    networkLabels: networkLabels.slice(0, 64),
-    registryLabels: [...new Set(usable.flatMap(e => e.registryLabels || []))],
-    label: combinedLabel.length > 160 ? networkLabels.length + " 个网络（展开）" : combinedLabel,
-    displayLabel: displayLabel.length > 60 ? sortedLabels.length + " 个网络" : displayLabel,
-    pathKind,
-    asns: [...new Set(current.flatMap(e => e.asns || []))].slice(0, 64),
-    at: latest.at,
-    samples: current.length,
-    confirmed, observed: usable.length, variants,
-    observations: current.slice(0, 12).map(e => ({ label: e.label, at: e.at, city: e.city || "未声明地区",
-      provider: e.provider || "未声明来源", protocol: e.protocol || "未声明协议", registryLabels: e.registryLabels || [],
-      asPath: (e.asPath || []).slice(0, 64), state: e.state, reportId: e.reportId || "" })),
-    reportId: latest.reportId || "",
-    diagnostic: latest.diagnostic || "",
-    state: now - Date.parse(latest.at) > 86400000 ? "stale"
-      : confirmed === current.length ? "ok" : !usable.length ? "missing" : "partial",
   };
 }
 function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
@@ -219,23 +164,59 @@ function homeRouteStore(root, isMissingFile, clock = () => Date.now()) {
       const families = {};
       for (const family of ["4", "6"]) {
         families[family] = CARRIERS.map((carrier) => {
-          const row = { carrier, cities: {} };
+          const row = { carrier };
           for (const direction of ["forward", "return"]) {
             const records = Object.values(
               node[family]?.[carrier]?.[direction] || {},
             )
               .filter((e) => now - Date.parse(e.at) <= 7 * 86400000)
-              .map(reviseSavedEvidence)
+              .map(restoreHomeEvidence)
               .sort((a, b) => b.at.localeCompare(a.at));
+            if (!records.length) {
+              row[direction] = null;
+              continue;
+            }
+            const latest = records[0];
             for (const evidence of records) {
               const at = Date.parse(evidence.at);
               for (const age of [86400000, 7 * 86400000]) if (at + age + 1 > now) until = Math.min(until, at + age + 1);
             }
-            row[direction] = summarizeRoute(records, now);
-            for (const city of CITIES) {
-              const selected = summarizeRoute(records.filter(e => e.city === city), now);
-              if (selected) (row.cities[city] ||= { forward: null, return: null })[direction] = selected;
-            }
+            // A card describes one round. Never stitch cities/protocols from older rounds.
+            const current = records.filter(e => latest.reportId
+              ? e.reportId === latest.reportId : e.at === latest.at);
+            const usable = current.filter(e => e.state !== "missing");
+            const networkLabels = [...new Set((usable.length ? usable : current).flatMap(e => e.networkLabels?.length ? e.networkLabels : [e.label]))];
+            const combinedLabel = networkLabels.join(" / ");
+            const confirmed = current.filter(e => e.state === "ok").length;
+            const observed = current.filter(e => e.state !== "missing").length;
+            const variants = new Set(usable.map(e => JSON.stringify(orderedLabels(e.networkLabels?.length ? e.networkLabels : [e.label])))).size;
+            const sortedLabels = orderedLabels(networkLabels);
+            const pathKind = !usable.length ? "unknown" : variants > 1 ? "varied" : sortedLabels.length > 1 ? "combined" : "single";
+            const displayLabel = pathKind === "varied" ? `多路径 · ${variants}类` : sortedLabels.join(" + ");
+            row[direction] = {
+              networkLabels: networkLabels.slice(0, 64),
+              label: combinedLabel.length > 160 ? `${networkLabels.length} 个网络（展开）` : combinedLabel,
+              displayLabel: displayLabel.length > 60 ? `${sortedLabels.length} 个网络` : displayLabel,
+              pathKind,
+              asns: [...new Set(current.flatMap((e) => e.asns))].slice(0, 64),
+              at: latest.at,
+              samples: current.length,
+              confirmed, observed,
+              variants,
+              observations: current.slice(0, 12).map(e => ({ label: e.label, at: e.at, city: e.city || "未声明地区",
+                provider: e.provider || "未声明来源", protocol: e.protocol || "未声明协议",
+                asPath: e.asPath || [], state: e.state, reportId: e.reportId || "" })),
+              reportId: latest.reportId || "",
+              diagnostic: latest.diagnostic || "",
+              state:
+                now - Date.parse(latest.at) > 86400000
+                  ? "stale"
+                  : current.every((e) => e.state === "ok")
+                    ? "ok"
+                    : current.every((e) => e.state === "missing")
+                      ? "missing"
+                      : "partial",
+            };
           }
           return row;
         });

@@ -1,5 +1,6 @@
 // A network observation is not an attestation of a purchased service product.
 const rules = require("./route-networks.json");
+const revertedRule = "2026-11-24.1";
 function asNumbers(value) {
   return [...new Set(String(value || "").replace(/\bAS(?=\d)/gi, "").split(/[\s,/{}]+/).filter(token => /^\d+$/.test(token) && Number(token) > 0 && Number(token) <= 4294967295).map(token => String(Number(token))))];
 }
@@ -19,21 +20,12 @@ function networkEvidence(hops = []) {
       if (!rule.startsWith.some(prefix => String(hop.address || "").startsWith(prefix))) continue;
       const key = "prefix:" + rule.id;
       if (!rows.has(key)) rows.set(key, { id: key, asn: "", label: rule.label,
-        description: rule.description, known: false, basis: "registry-prefix", ttls: [],
+        description: rule.description, known: true, basis: "registry-prefix", ttls: [],
         source: rule.sourceUrl, ruleVersion: rules.version });
       rows.get(key).ttls.push(ttl);
     }
   }
   return [...rows.values()];
-}
-function evidenceLabels(networks) {
-  const asnRows = networks.filter(row => row.basis === "asn");
-  const known = asnRows.filter(row => row.known);
-  return {
-    labels: [...new Set(networks.map(row => row.label))],
-    headlineLabels: [...new Set((known.length ? known : asnRows).map(row => row.label))],
-    registryLabels: [...new Set(networks.filter(row => row.basis === "registry-prefix").map(row => row.label))],
-  };
 }
 function routeFacts(hops = []) {
   const networks = networkEvidence(hops);
@@ -44,12 +36,23 @@ function routeFacts(hops = []) {
   }
   return { networks, ...evidenceLabels(networks), asPath, productStatus: "unverified", ruleVersion: rules.version };
 }
-function reviseRouteFacts(facts) {
-  if (!Array.isArray(facts?.networks) || facts.ruleVersion === rules.version) return facts;
+function evidenceLabels(networks) {
+  const labels = [...new Set(networks.map(row => row.label))];
+  const knownLabels = [...new Set(networks.filter(row => row.known).map(row => row.label))];
+  return { labels, headlineLabels: knownLabels.length ? knownLabels : labels };
+}
+function restoreRouteFacts(facts) {
+  if (facts?.ruleVersion !== revertedRule || !Array.isArray(facts.networks)) return facts;
   const networks = facts.networks.map(row => {
     const rule = row.basis === "registry-prefix" && rules.prefixes.find(prefix => row.id === "prefix:" + prefix.id);
-    return rule ? { ...row, label: rule.label, description: rule.description, known: false, ruleVersion: rules.version } : row;
+    return rule ? { ...row, label: rule.label, description: rule.description, known: true, ruleVersion: rules.version } : row;
   });
-  return { ...facts, networks, ...evidenceLabels(networks), ruleVersion: rules.version };
+  const { registryLabels: _registryLabels, ...saved } = facts;
+  return { ...saved, networks, ...evidenceLabels(networks), ruleVersion: rules.version };
 }
-module.exports = { networkEvidence, routeFacts, reviseRouteFacts, asNumbers };
+function restoreHomeEvidence(evidence) {
+  if (evidence.ruleVersion !== revertedRule || !evidence.registryLabels?.includes("CN2-BB")) return evidence;
+  const networkLabels = [...new Set([...(evidence.networkLabels || []).filter(label => !/^AS\d+$/.test(label)), "CN2"])];
+  return { ...evidence, label: networkLabels.join(" / "), networkLabels };
+}
+module.exports = { networkEvidence, routeFacts, asNumbers, restoreRouteFacts, restoreHomeEvidence };

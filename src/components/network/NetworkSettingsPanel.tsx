@@ -30,11 +30,9 @@ function ActivePanel({ panel }: Props) {
   });
   const loaded = Boolean(catalog.data);
   useEffect(() => {
-    if (
-      !loaded ||
-      new URLSearchParams(window.location.search).get("panel") !== panel
-    )
-      return;
+    const requested = new URLSearchParams(window.location.search).get("panel");
+    const destination = requested === "ip-quality" || requested === "media-unlock" ? "ip-capability" : requested;
+    if (!loaded || destination !== panel) return;
     const frame = requestAnimationFrame(() =>
       document
         .getElementById("network-" + panel)

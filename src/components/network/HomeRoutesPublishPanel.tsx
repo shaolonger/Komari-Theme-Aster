@@ -86,7 +86,7 @@ export function HomeRoutesPublishPanel({
           <option value="full">完整线路 · 全部观测网络</option>
         </select>
       </label>
-      <p>根据逐跳 ASN 生成线路标签。电信按 CN2、CTGNet、163 排序，联通按 9929、10099、4837 排序，移动按 CMIN2、CMI、9808 排序。跨运营商同级按观测顺序选择。点击线路标签可查看 ASN 序列与登记地址段。</p>
+      <p>展示优先级：CN2 ＞ CTGNet ＞ 163；9929 ＞ 10099 ＞ 4837；CMIN2 ＞ CMI ＞ 9808。跨运营商同级按观测顺序选择，仅作卡片摘要，不认证 GIA 或保证实测速率；点击数值可查看完整证据。</p>
       <label className="report-checkbox"><input type="checkbox" aria-label="显示线路确认说明" checked={showDetails ?? catalog.homeRouteShowDetails} onChange={event => setShowDetails(event.target.checked)} />显示同路径、差异与终点确认说明</label>
       <label>搜索 VPS<input type="search" aria-label="搜索线路发布 VPS" placeholder="名称、分组或 UUID；空格分词" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <div className="home-routes-publish-nodes">

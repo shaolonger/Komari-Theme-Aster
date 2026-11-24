@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-24.1",
+  "version": "2026-10-22.2",
   "networks": [
     {
       "carrier": "电信",
@@ -63,8 +63,8 @@
       "startsWith": [
         "59.43."
       ],
-      "label": "CN2-BB",
-      "description": "观察到 CN2-BB 登记地址段，未据此确认 AS4809",
+      "label": "CN2",
+      "description": "观察到 CN2-BB 登记地址段（不代填 BGP ASN）",
       "sourceUrl": "https://wq.apnic.net/apnic-bin/whois.pl?object_type=inetnum&searchtext=59.43.0.0"
     }
   ]

@@ -8,7 +8,7 @@ const { VERSION, PRESETS } = require("./report-catalog.js");
 const B = require("./bgp.js");
 const { originQuery } = require("./route-enrichment.js");
 const { DIAGNOSTICS, SECTIONS, homeDiagnosticsStore } = require("./home-diagnostics.js");
-const { routeFacts, reviseRouteFacts } = require("./route-evidence.js");
+const { routeFacts, restoreRouteFacts } = require("./route-evidence.js");
 const BASE = "/api/aster-network-observatory/v3";
 const MAX_QUEUE = 10000;
 const measurementKey = (j) =>
@@ -73,7 +73,7 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics", "home-diagnostic-display", "suite-history",
+      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics", "home-diagnostic-display", "home-ip-capability", "suite-history",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
@@ -587,13 +587,9 @@ function registerReportController(ctx, native) {
   function homePayload(s, uuids, admin = false) {
     const nodes = homeRoutes.summary(uuids);
     // Tool diagnostics can contain private endpoint addresses; only admins receive them.
-    const publicDirections = row => ({
-      forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
-      return: row.return ? { ...row.return, diagnostic: "" } : null,
-    });
     if (!admin) for (const uuid of Object.keys(nodes)) nodes[uuid] = Object.fromEntries(Object.entries(nodes[uuid]).map(([family, rows]) => [family,
-      rows.map(row => ({ carrier: row.carrier, ...publicDirections(row),
-        cities: Object.fromEntries(Object.entries(row.cities).map(([city, directions]) => [city, publicDirections(directions)])) }))]));
+      rows.map(row => ({ ...row, forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
+        return: row.return ? { ...row.return, diagnostic: "" } : null }))]));
     const configured = cardFamilies(s, "routes");
     return { available: true, configuredFamilies: Object.fromEntries(uuids.map(id => [id, configured[id] || []])), nodes, access: admin ? "admin" : "public",
       backfillPending: admin && uuids.some(uuid => routeHistoryQueue.has(uuid)),
@@ -638,10 +634,14 @@ function registerReportController(ctx, native) {
     const { revision, section, nodeUuids, display } = ctx.readBody(req);
     if (revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
     const known = new Set(s.inventory.map(node => node.uuid));
-    if (!SECTIONS.includes(section) || (display !== undefined && typeof display !== "boolean") || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
+    const combined = section === "ip-capability";
+    if ((!combined && !SECTIONS.includes(section)) || ((combined || display !== undefined) && typeof display !== "boolean") || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
         nodeUuids.some(id => !UUID.test(id || "") || !known.has(id))) throw new Error("首页检测项目或 VPS 范围无效");
-    (s.homeDiagnosticNodes ||= {})[section] = [...new Set(nodeUuids)];
-    if (display !== undefined) (s.homeDiagnosticDisplay ||= {})[section] = display;
+    const selected = [...new Set(nodeUuids)];
+    for (const key of combined ? DIAGNOSTICS : [section]) {
+      (s.homeDiagnosticNodes ||= {})[key] = selected;
+      if (display !== undefined) (s.homeDiagnosticDisplay ||= {})[key] = display;
+    }
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -945,29 +945,26 @@ function registerReportController(ctx, native) {
       return { ...row, slots: (round?.slots || []).map(slot => ({
         id: slot.id, state: slot.state, completedAt: slot.completedAt, target: slot.target, direction: slot.direction,
         source: { id: slot.source?.id, city: slot.source?.city, carrier: slot.source?.carrier, provider: slot.source?.provider, name: slot.source?.name },
-        options: { protocol: slot.options?.protocol },
-        metrics: module === "routes" ? currentRouteMetrics(slot.metrics) : slot.metrics,
+        options: { protocol: slot.options?.protocol }, metrics: module === "routes" ? restoreRouteMetrics(slot.metrics) : slot.metrics,
       })) };
     });
     ctx.respond(res, 200, { ...page, rounds });
   });
-  function currentRouteMetrics(metrics) {
+  function restoreRouteMetrics(metrics) {
     if (!metrics?.routeEvidence) return metrics;
-    return { ...metrics, routeEvidence: reviseRouteFacts(metrics.routeEvidence) };
+    const routeEvidence = restoreRouteFacts(metrics.routeEvidence);
+    return routeEvidence === metrics.routeEvidence ? metrics : { ...metrics, routeEvidence };
   }
   route("GET", "/nodes/:uuid/rounds/:id", (req, res) => {
-    let result = store.get(part(req, 2), part(req, 4));
-    if (result?.module === "routes") result = { ...result,
-      slots: result.slots.map(slot => ({ ...slot, metrics: currentRouteMetrics(slot.metrics) })),
-      measurements: result.measurements.map(measurement => ({
-        ...measurement, data: { ...measurement.data, routeEvidence: Array.isArray(measurement.data.hops)
-          ? routeFacts(measurement.data.hops) : reviseRouteFacts(measurement.data.routeEvidence) },
-      })),
-    };
+    const result = store.get(part(req, 2), part(req, 4));
     ctx.respond(
       res,
       result ? 200 : 404,
-      result || { error: "轮次不存在或已超过保留期" },
+      result?.module === "routes" ? {
+        ...result,
+        slots: result.slots.map(slot => ({ ...slot, metrics: restoreRouteMetrics(slot.metrics) })),
+        measurements: result.measurements.map(measurement => ({ ...measurement, data: restoreRouteMetrics(measurement.data) })),
+      } : result || { error: "轮次不存在或已超过保留期" },
     );
   });
   ctx.server.route("GET", BASE + "/nodes/:uuid/rounds/:id/original-images", async (req, res) => {

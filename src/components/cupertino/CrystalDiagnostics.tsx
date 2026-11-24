@@ -1,5 +1,4 @@
-import { memo, useState, type ReactNode } from "react";
-import { Layers3, Play } from "lucide-react";
+import { memo, useState } from "react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, dbIpRisk, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
@@ -36,31 +35,13 @@ export const CrystalTrafficReset = memo(function CrystalTrafficReset({ uuid }: {
   );
 });
 
-function DiagnosticPanel({ label, icon, family, select, title, children }: {
-  label: string; icon: ReactNode; family: Family; select: (family: Family) => void; title: string; children: ReactNode;
+function IpQuality({ snapshot, family, timeZone }: {
+  snapshot: NonNullable<HomeDiagnosticNode["ip-quality"]>[Family]; family: Family; timeZone: string;
 }) {
-  return (
-    <section className="crystal-panel crystal-diagnostic" aria-label={label}>
-      <header className="crystal-diagnostic-header">
-        <h3 title={title}><span>{icon}</span>{label}</h3>
-        <div className="crystal-family-tabs" role="group" aria-label={`${label} 地址族`}>
-          {FAMILIES.map(value => <button key={value} type="button" aria-pressed={family === value} onClick={() => select(value)}>IPv{value}</button>)}
-        </div>
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function IpQuality({ results, timeZone }: { results: NonNullable<HomeDiagnosticNode["ip-quality"]>; timeZone: string }) {
-  const [chosen, select] = useState<Family>();
-  const family = chosen ?? (results["4"] || !results["6"] ? "4" : "6");
-  const snapshot = results[family];
   const providers = snapshot?.providers;
   const fields = [["usage", "使用类型"], ["company", "公司类型"]] as const;
   return (
-    <DiagnosticPanel label="IP" icon={<Layers3 aria-hidden="true" />} family={family} select={select}
-      title={snapshot ? `最近检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : "暂无检测结果"}>
+    <div title={snapshot ? `IP 质量检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : undefined}>
       {snapshot?.state === "failed" ? <p className="crystal-diagnostic-empty">最近检测未取得 IP 质量结果</p> : providers ? <>
         <table className="crystal-diagnostic-table" aria-label={`IPv${family} IP 质量`}>
           <thead><tr><td />{IP_PROVIDERS.map(name => <th key={name} scope="col">{name}</th>)}</tr></thead>
@@ -92,19 +73,19 @@ function IpQuality({ results, timeZone }: { results: NonNullable<HomeDiagnosticN
         {snapshot?.ipMode === "lite" && <p className="crystal-diagnostic-empty">
           IPQuality Lite{snapshot.dbIpScore !== undefined && <> · DB-IP {snapshot.dbIpScore} · {dbIpRisk[snapshot.dbIpScore]}</>}
         </p>}
-      </> : <p className="crystal-diagnostic-empty">暂无 IPv{family} 检测结果</p>}
-    </DiagnosticPanel>
+      </> : <p className="crystal-diagnostic-empty">暂无 IPv{family} IP 质量结果</p>}
+    </div>
   );
 }
 
-function MediaUnlock({ results, timeZone }: { results: NonNullable<HomeDiagnosticNode["media-unlock"]>; timeZone: string }) {
-  const [chosen, select] = useState<Family>();
-  const family = chosen ?? (results["4"] || !results["6"] ? "4" : "6");
-  const snapshot = results[family];
+function MediaUnlock({ snapshot, family, timeZone }: {
+  snapshot: NonNullable<HomeDiagnosticNode["media-unlock"]>[Family]; family: Family; timeZone: string;
+}) {
   const services = snapshot?.services;
   return (
-    <DiagnosticPanel label="解锁" icon={<Play aria-hidden="true" />} family={family} select={select}
-      title={snapshot ? `最近检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : "暂无检测结果"}>
+    <section className="crystal-capability-unlock" aria-label="解锁"
+      title={snapshot ? `解锁检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : undefined}>
+      <h4>解锁</h4>
       {snapshot?.state === "failed" ? <p className="crystal-diagnostic-empty">最近检测未取得解锁结果</p> : services ? (
         <ul className="crystal-unlock-list">
           {(Object.entries(MEDIA_SERVICES) as [keyof typeof MEDIA_SERVICES, string][]).map(([key, label]) => {
@@ -120,19 +101,28 @@ function MediaUnlock({ results, timeZone }: { results: NonNullable<HomeDiagnosti
             </li>;
           })}
         </ul>
-      ) : <p className="crystal-diagnostic-empty">暂无 IPv{family} 检测结果</p>}
-    </DiagnosticPanel>
+      ) : <p className="crystal-diagnostic-empty">暂无 IPv{family} 解锁结果</p>}
+    </section>
   );
 }
 
 export const CrystalDiagnostics = memo(function CrystalDiagnostics({ uuid }: { uuid: string }) {
   const { data, displayTimeZone } = useHomeRoutes();
+  const [chosen, select] = useState<Family>();
   const node = data?.diagnostics?.[uuid];
-  if (!node) return null;
+  const ip = node?.["ip-quality"], media = node?.["media-unlock"];
+  if (!ip && !media) return null;
+  const family = chosen ?? (ip?.["4"] || media?.["4"] || !(ip?.["6"] || media?.["6"]) ? "4" : "6");
   return (
-    <>
-      {node["ip-quality"] && <IpQuality results={node["ip-quality"]} timeZone={displayTimeZone} />}
-      {node["media-unlock"] && <MediaUnlock results={node["media-unlock"]} timeZone={displayTimeZone} />}
-    </>
+    <section className="crystal-panel crystal-diagnostic" aria-label="IP能力">
+      <header className="crystal-diagnostic-header">
+        <h3>IP能力</h3>
+        <div className="crystal-family-tabs" role="group" aria-label="IP能力地址族">
+          {FAMILIES.map(value => <button key={value} type="button" aria-pressed={family === value} onClick={() => select(value)}>IPv{value}</button>)}
+        </div>
+      </header>
+      {ip && <IpQuality snapshot={ip[family]} family={family} timeZone={displayTimeZone} />}
+      {media && <MediaUnlock snapshot={media[family]} family={family} timeZone={displayTimeZone} />}
+    </section>
   );
 });

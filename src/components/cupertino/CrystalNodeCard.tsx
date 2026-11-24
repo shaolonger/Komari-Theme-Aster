@@ -67,7 +67,7 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
           <Link key={metric} data-metric={metric} to={perfUrl} title={`${label} · ${detail}`}>
             <span className="crystal-resource-value"><span>{label}</span><b>{known ? value : MISSING}</b></span>
             <span className="crystal-resource-track" aria-hidden="true">
-              <i style={{ width: `${known ? Math.min(100, Math.max(0, fill)) : 0}%` }} />
+              {known && fill > 0 && <i style={{ width: `${Math.min(100, fill)}%` }} />}
             </span>
             {!compact && <small className="crystal-resource-detail">{detail}</small>}
           </Link>

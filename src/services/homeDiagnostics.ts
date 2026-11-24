@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const diagnosticModules = ["ip-quality", "media-unlock"] as const;
-export const diagnosticSections = ["traffic-reset", ...diagnosticModules] as const;
+export const diagnosticSections = ["traffic-reset", "ip-capability"] as const;
 export type DiagnosticSection = typeof diagnosticSections[number];
 export const IP_PROVIDERS = ["IPinfo", "ipregistry", "ipapi", "IP2Location", "AbuseIPDB"] as const;
 export const RISK_PROVIDERS = ["IP2Location", "Scamalytics", "ipapi", "AbuseIPDB"] as const;

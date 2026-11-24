@@ -139,7 +139,7 @@ export function auroraSeries(series, pointCount = 16, crystal = false) {
   );
 }
 const carriers = ["电信", "联通", "移动"];
-export function auroraRoutes(crystal = false, regional = false) {
+export function auroraRoutes(crystal = false) {
   const evidence = (label) => ({
     label,
     displayLabel: label,
@@ -168,13 +168,6 @@ export function auroraRoutes(crystal = false, regional = false) {
       ["CMI", "CMIN2"],
     ],
   };
-  const cityEvidence = (label, asn, city, registryLabels = []) => {
-    const row = evidence(label);
-    const asPath = registryLabels.length ? [asn, "?", asn] : [asn];
-    return { ...row, asns: [asn], registryLabels, observations: [
-      { label, at: row.at, city, provider: "NextTrace", protocol: "tcp", asPath, registryLabels, state: "ok" },
-    ] };
-  };
   return {
     available: true,
     quickCheck: true,
@@ -192,11 +185,6 @@ export function auroraRoutes(crystal = false, regional = false) {
             carrier,
             forward: evidence(values[f][i][0]),
             return: evidence(values[f][i][1]),
-            ...(regional && f === "4" && i === 0 ? { cities: {
-              北京: { forward: cityEvidence("163", "4134", "北京"), return: cityEvidence("163", "4134", "北京") },
-              上海: { forward: cityEvidence("CTGNet", "23764", "上海"), return: cityEvidence("CN2", "4809", "上海") },
-              广州: { forward: null, return: cityEvidence("163", "4134", "广州", ["CN2-BB"]) },
-            } } : {}),
           })),
         ]),
       ),

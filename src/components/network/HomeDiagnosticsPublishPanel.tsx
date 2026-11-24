@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { DiagnosticSection } from "@/services/homeDiagnostics";
+import { diagnosticModules, type DiagnosticSection } from "@/services/homeDiagnostics";
 import { publishHomeDiagnostics, type ReportCatalog } from "@/services/reportObservatory";
 import { matchesNodeSearch } from "@/utils/nodeSearch";
 
 const descriptions: Record<DiagnosticSection, string> = {
   "traffic-reset": "通过新版 VPS 探测器上报可读取的 Komari Agent 月重置周期。需要 Agent 以 --month-rotate 启动。",
-  "ip-quality": "展示此 VPS 通过 IP质量检测取得的使用类型、公司类型和风险分。请先在检测方案中启用 IP质量检测。",
-  "media-unlock": "分别展示各地址族的流媒体和 AI 检测结果。请先在检测方案中启用流媒体和AI解锁检测。",
+  "ip-capability": "在同一卡片展示各地址族的 IP 质量、风险评分和流媒体及 AI 解锁结果。请先在检测方案中启用对应检测。",
 };
-const displayLabels = { "traffic-reset": "流量重置", "ip-quality": "IP质量" } as const;
+const displayLabels = { "traffic-reset": "流量重置", "ip-capability": "IP能力" } as const;
 
 export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: DiagnosticSection; catalog: ReportCatalog }) {
   const cache = useQueryClient();
@@ -18,15 +17,21 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
   const [display, setDisplay] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const published = catalog.homeDiagnosticNodes[section] ?? [];
   const known = new Set(catalog.inventory.map(node => node.uuid));
-  const selected = new Set((selection ?? published).filter(id => known.has(id)));
+  const sections = section === "ip-capability" ? diagnosticModules : ["traffic-reset"] as const;
+  const scopes = sections.map(key => ({
+    nodes: (catalog.homeDiagnosticNodes[key] ?? []).filter(id => known.has(id)),
+    display: catalog.homeDiagnosticDisplay[key] !== false,
+  }));
+  const published = new Set(scopes.flatMap(scope => scope.nodes));
+  const selected = selection === null ? new Set(published) : new Set(selection.filter(id => known.has(id)));
   const nodes = catalog.inventory.filter(node => matchesNodeSearch(search, node.name, node.group, node.uuid, node.ip));
   const visibleIds = catalog.inventory.filter(node => node.publicVisible).map(node => node.uuid);
-  const supportsDisplay = section !== "media-unlock" && catalog.features.includes("home-diagnostic-display");
-  const previousDisplay = catalog.homeDiagnosticDisplay[section] !== false;
+  const supportsDisplay = catalog.features.includes("home-diagnostic-display");
+  const previousDisplay = scopes.every(scope => scope.display) || scopes.some(scope => scope.display && scope.nodes.length > 0);
+  const scopesDiffer = scopes.some(scope => scope.nodes.length !== published.size || scope.display !== previousDisplay);
   const displayChanged = display !== null && display !== previousDisplay;
-  const selectionChanged = selection !== null && (selected.size !== published.length || published.some(id => !selected.has(id)));
+  const selectionChanged = selection !== null && (selected.size !== published.size || [...published].some(id => !selected.has(id)));
 
   async function save() {
     setSaving(true);
@@ -47,18 +52,19 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
     }
   }
 
-  if (!catalog.features.includes("home-diagnostics")) {
+  if (!catalog.features.includes(section === "ip-capability" ? "home-ip-capability" : "home-diagnostics")) {
     return <p role="status">更新网络观测插件后可配置此项目。</p>;
   }
   return (
     <div className="network-form">
       <p>{descriptions[section]} 公开 VPS 被勾选后，访客可查看其摘要。</p>
-      {section !== "media-unlock" && (supportsDisplay ? (
+      {scopesDiffer && <p>已合并列出之前选过的 VPS。保存后，两项检测结果使用同一个显示范围。</p>}
+      {supportsDisplay ? (
         <label className="report-checkbox">
           <input type="checkbox" checked={display ?? previousDisplay} disabled={saving} onChange={event => setDisplay(event.target.checked)} />
           在首页卡片显示{displayLabels[section]}
         </label>
-      ) : <p>更新网络观测插件后可使用首页总开关。</p>)}
+      ) : <p>更新网络观测插件后可使用首页总开关。</p>}
       <label>搜索 VPS<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
       {nodes.length ? (
         <div className="home-speeds-publish-nodes">
@@ -75,12 +81,10 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
         </div>
       ) : <p>没有匹配的 VPS。</p>}
       <div className="network-actions">
-        {section !== "media-unlock" && <>
-          <button type="button" disabled={saving || visibleIds.every(id => selected.has(id))}
-            onClick={() => setSelection([...new Set([...selected, ...visibleIds])])}>选择全部可见节点</button>
-          <button type="button" disabled={saving || selected.size === 0} onClick={() => setSelection([])}>取消全部选择</button>
-        </>}
-        <button type="button" disabled={(!selectionChanged && !displayChanged) || saving} onClick={() => void save()}>{saving ? "提交中…" : "保存显示范围"}</button>
+        <button type="button" disabled={saving || visibleIds.every(id => selected.has(id))}
+          onClick={() => setSelection([...new Set([...selected, ...visibleIds])])}>选择全部可见节点</button>
+        <button type="button" disabled={saving || selected.size === 0} onClick={() => setSelection([])}>取消全部选择</button>
+        <button type="button" disabled={(!selectionChanged && !displayChanged && !scopesDiffer) || saving} onClick={() => void save()}>{saving ? "提交中…" : "保存显示范围"}</button>
       </div>
       {message && <p role="status">{message}</p>}
     </div>

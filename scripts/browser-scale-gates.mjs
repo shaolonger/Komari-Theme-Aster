@@ -107,7 +107,7 @@ function cardProjection(value, stamp) {
 }
 const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
-const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki','home-diagnostics','home-diagnostic-display','suite-history'],modules:['routes','tcp-quality','tcpquality-full','nodequality-full','china-speed','international','idc','international-speed','bgp','ip-quality','media-unlock'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
+const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki','home-diagnostics','home-diagnostic-display','home-ip-capability','suite-history'],modules:['routes','tcp-quality','tcpquality-full','nodequality-full','china-speed','international','idc','international-speed','bgp','ip-quality','media-unlock'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
 let reportSavedSuite = null;
 let reportPlanRuns = [];
 const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module => {
@@ -294,7 +294,13 @@ function legacyReport(index, sequence) {
 // map instead of the fork's nested RealtimeDelta shape. Keep the fixture on
 // that wire format so this gate exercises the actual normalizer.
 function officialLatestStatus(index, sequence) {
-  if (activeFixture.aurora) return {...auroraStatus(activeFixture.auroraQuotaFractions?.[index], activeFixture.crystal), online: !activeFixture.auroraOffline};
+  if (activeFixture.aurora) {
+    const status = auroraStatus(activeFixture.auroraQuotaFractions?.[index], activeFixture.crystal);
+    if (activeFixture.crystalLowMeters) Object.assign(status, index === 0
+      ? { cpu: .04, ram: 1024 ** 2, disk: 2 * 1024 ** 2, load: .001 }
+      : { cpu: 0, ram: 0, disk: 0, load: 0 });
+    return { ...status, online: !activeFixture.auroraOffline };
+  }
   const docsOffline = (activeFixture.reportOffline || activeFixture.docs) && index === 0;
   return {
     online: activeFixture.cupertino ? index !== 7 : activeFixture.luminousReference ? index < 42 : !docsOffline,
@@ -529,7 +535,7 @@ const server = createServer(async (request, response) => {
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
     if (fixture.aurora) {
-      const data = auroraRoutes(fixture.crystal, fixture.regionalRoutes);
+      const data = auroraRoutes(fixture.crystal);
       return sendJson(response, {...data, diagnostics: fixture.homeDiagnostics, quickCheck: !fixture.crystal || Boolean(fixture.crystalControls), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,data.nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraRouteFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     }
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
@@ -566,8 +572,10 @@ const server = createServer(async (request, response) => {
     if(suffix==='home-routes' && request.method==='PUT'){homeRouteNodes=body.nodeUuids;homeRouteDisplay=body.display;homeRouteLabelMode=body.labelMode??homeRouteLabelMode;homeRouteShowDetails=body.showDetails??homeRouteShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='home-speeds' && request.method==='PUT'){homeSpeedNodes=body.nodeUuids;homeSpeedDisplay=body.display;homeSpeedShowDetails=body.showDetails??homeSpeedShowDetails;return sendJson(response,{revision:0});}
     if(suffix==='home-diagnostics' && request.method==='PUT'){
-      (fixture.homeDiagnosticNodes??={})[body.section]=body.nodeUuids;
-      (fixture.homeDiagnosticDisplay??={})[body.section]=body.display;
+      for (const section of body.section === 'ip-capability' ? ['ip-quality','media-unlock'] : [body.section]) {
+        (fixture.homeDiagnosticNodes??={})[section]=body.nodeUuids;
+        (fixture.homeDiagnosticDisplay??={})[section]=body.display;
+      }
       return sendJson(response,{revision:0});
     }
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}

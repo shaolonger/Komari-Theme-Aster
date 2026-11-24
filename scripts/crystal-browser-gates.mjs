@@ -111,7 +111,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   })()`), "Crystal overflow menu lost Dense node actions");
   await click(`${card} .dense-node-actions summary`);
 
-  setFixture({ nodes: 4, crystalControls: true, regionalRoutes: true });
+  setFixture({ nodes: 4, crystalControls: true });
   await cdp.call("Page.reload");
   await waitFor(`${card} .crystal-network-controls .aurora-check button`);
   await click(`${card} .dense-node-actions summary`);
@@ -121,38 +121,15 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await waitUntil(cdp, "document.querySelectorAll('.crystal-card[data-node]').length===1", 6000);
   await click(".cupertino-status-filters button:first-child");
   await waitUntil(cdp, "document.querySelectorAll('.crystal-card[data-node]').length===4", 6000);
-  const picker = `${card} .aurora-city select[aria-label="线路与测速地区"]`;
-  const switchCity = city => cdp.value(`(()=>{
-    const select=document.querySelector(${JSON.stringify(picker)});
-    select.value=${JSON.stringify(city)}; select.dispatchEvent(new Event('change',{bubbles:true}));
+  const routeLabels = `[...document.querySelectorAll(${JSON.stringify(`${card} .crystal-route-value`)})].map(route => route.textContent)`;
+  await waitFor(`${card} .crystal-route-value:enabled`);
+  const initialRoutes = await cdp.value(routeLabels);
+  await cdp.value(`(()=>{
+    const select=document.querySelector(${JSON.stringify(`${card} .aurora-city select`)});
+    select.value='上海'; select.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
-  const firstRoute = direction => `${card} [data-family="4"][data-carrier="电信"] .crystal-route-value[data-direction="${direction}"]`;
-  await waitFor(picker);
-  await waitFor(firstRoute("return") + '[data-network="163"]');
-  await switchCity("上海");
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(`${card} .crystal-speed-value`)}).textContent.trim()==='0.0'`, 6000);
-  await waitFor(firstRoute("forward") + '[data-network="CTGNet"]');
-  await waitFor(firstRoute("return") + '[data-network="CN2"]');
-  const drawer = ".network-drawer";
-  const close = '.network-drawer button[aria-label="关闭面板"]';
-  await click(firstRoute("forward"));
-  await waitFor(drawer + " article");
-  failGate(await cdp.value("document.querySelector('.network-drawer article').textContent.includes('上海')"), "Crystal went to the wrong city for the forward route");
-  await click(close);
-  await switchCity("广州");
-  await waitFor(firstRoute("forward") + ':disabled');
-  await waitFor(firstRoute("return") + '[data-network="163"]');
-  await click(firstRoute("return"));
-  await waitFor(drawer + " article");
-  failGate(await cdp.value(`(() => {
-    const detail = document.querySelector('.network-drawer');
-    const paths = [...detail.querySelectorAll('article')];
-    return paths.length === 1 && paths[0].textContent.includes('广州') &&
-      paths[0].textContent.includes('AS4134 → 未知 → AS4134') &&
-      detail.textContent.includes('登记地址段：CN2-BB') && !detail.textContent.includes('上海');
-  })()`), "Crystal mixed city observations or promoted a registered prefix to an ASN");
-  await click(close);
-  await switchCity("上海");
+  failGate(JSON.stringify(await cdp.value(routeLabels)) === JSON.stringify(initialRoutes), "Crystal city switch changed the restored routes");
   failGate(await cdp.value(`document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-controls .aurora-check button`)}).length===2`), "Crystal card is missing authorized quick checks");
 
   const layouts = [];
@@ -246,7 +223,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     !document.querySelector(${JSON.stringify(`${card} .crystal-route-pair, ${card} .crystal-speed-pair`)})`, 8000);
 
   const at = new Date().toISOString();
-  setFixture({ homeDiagnostics: {
+  setFixture({ crystalLowMeters: true, homeDiagnostics: {
     "node-0": {
       "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
       "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
@@ -255,14 +232,15 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     },
   } });
   await cdp.call("Page.reload");
-  const reset = `${card} [aria-label="流量重置"]`, ip = `${card} [aria-label="IP"]`, unlock = `${card} [aria-label="解锁"]`;
+  const reset = `${card} [aria-label="流量重置"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
   await waitFor(`${unlock} .crystal-unlock-list`);
   failGate(await cdp.value(`(() => {
     const [reset, ip, unlock] = ${JSON.stringify([reset,ip,unlock])}.map(selector => document.querySelector(selector));
     return reset?.textContent.includes('17%') && reset.textContent.includes('剩余 25 天（30 天周期）') &&
       reset.querySelectorAll('.crystal-quota-track i').length === 35 &&
       reset.compareDocumentPosition(ip) & Node.DOCUMENT_POSITION_FOLLOWING &&
-      ip.compareDocumentPosition(unlock) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      ip.contains(unlock) && ip.querySelector('h3').textContent==='IP能力' &&
+      !ip.querySelector('.crystal-diagnostic-header svg') && ip.querySelectorAll('.crystal-family-tabs').length===1 &&
       ip.textContent.includes('机房') && ip.querySelector('table tbody').rows.length === 2 &&
       ip.querySelector('.crystal-risk').textContent.includes('Scamalytics63高风险') &&
       ip.querySelector('.crystal-risk li:last-child').textContent.includes('0低风险') &&
@@ -273,14 +251,21 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(ip)}).textContent.includes('3.52%')`, 3000);
   failGate(await cdp.value(`document.querySelector(${JSON.stringify(ip)}).textContent.includes('IPQuality Lite · DB-IP 0 · 低风险')`),
     "Crystal did not show the measured DB-IP score in Lite mode");
-  failGate(await cdp.value(exists(`${unlock} button:first-child[aria-pressed="true"]`)), "IP and unlock address family switches were coupled");
-  await click(`${unlock} button:nth-child(2)`);
-  await waitUntil(cdp, `document.querySelector(${JSON.stringify(unlock)}).textContent.includes('暂无 IPv6 检测结果')`, 3000);
-  await click(`${unlock} button:first-child`);
+  await waitUntil(cdp, `document.querySelector(${JSON.stringify(unlock)}).textContent.includes('暂无 IPv6 解锁结果')`, 3000);
+  await click(`${ip} button:first-child`);
+  await waitFor(`${unlock} .crystal-unlock-list`);
   for (const scheme of ["crystal-light", "crystal-dark"]) {
     await cdp.value(`document.documentElement.dataset.themeStyle=${JSON.stringify(scheme)}`);
     for (const width of [320, 390]) {
       await metric(width);
+      failGate(await cdp.value(`(() => {
+        const bars = [...document.querySelectorAll(${JSON.stringify(`${card} .crystal-resource-track i`)})];
+        return bars.length===4 && bars.every(bar => {
+          const rect = bar.getBoundingClientRect();
+          return rect.width>=rect.height && getComputedStyle(bar).borderTopLeftRadius==='999px';
+        }) && getComputedStyle(bars[3]).backgroundImage.includes('rgb(0, 135, 114)') &&
+          !document.querySelector('.crystal-card[data-node="node-1"] .crystal-resource-track i');
+      })()`), `Crystal tiny or zero resource meters are incorrect at ${width}px in ${scheme}`);
       failGate(await cdp.value(`(() => ${JSON.stringify([reset,ip,unlock])}.every(selector => {
         const panel = document.querySelector(selector);
         return panel.scrollWidth <= panel.clientWidth + 1;
@@ -312,8 +297,12 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.documentElement.dataset.themeStyle==='crystal-dark' && localStorage.getItem('appearance_default')===JSON.stringify('crystal-dark')", 8000);
   await waitFor(card);
+  setFixture({ homeDiagnosticNodes: { "ip-quality": ["node-0"], "media-unlock": ["node-1"] }, homeDiagnosticDisplay: { "ip-quality": false } });
   await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage&section=network&panel=traffic-reset` });
-  for (const id of ["network-traffic-reset", "network-ip-quality"]) {
+  await waitFor("#network-ip-capability .report-checkbox input:checked");
+  failGate(await cdp.value(`document.querySelectorAll('#network-ip-capability .home-speeds-publish-nodes input:checked').length===2 &&
+    !document.querySelector('#network-ip-quality, #network-media-unlock')`), "Crystal lost the union of separately configured nodes");
+  for (const id of ["network-traffic-reset", "network-ip-capability"]) {
     const scope = "#" + id;
     await waitFor(`${scope} .report-checkbox input:checked`);
     await click(`${scope} .network-actions button:first-child`);
@@ -324,6 +313,6 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   }
   await cdp.call("Page.reload");
   await waitFor("#network-traffic-reset .report-checkbox input:not(:checked)");
-  await waitFor("#network-ip-quality .report-checkbox input:not(:checked)");
-  return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, exact per-node Ping bindings, city-specific routes and speeds, and homepage diagnostics by address family", layouts };
+  await waitFor("#network-ip-capability .report-checkbox input:not(:checked)");
+  return { crystal: "light and dark palettes, fixed card width, per-node Ping bindings, city-independent routes, round meters and unified IP capability", layouts };
 }

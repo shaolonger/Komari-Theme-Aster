@@ -1,13 +1,10 @@
 import { fetchWithTimeout } from "@/utils/abort";
 import { z } from "zod";
 import { diagnosticNodesSchema } from "./homeDiagnostics";
-export const MAINLAND_CITIES = ["北京", "上海", "广州"] as const;
-export type MainlandCity = typeof MAINLAND_CITIES[number];
 const evidence = z.object({
   label: z.string().max(512),
   displayLabel: z.string().max(100).optional(),
   networkLabels: z.array(z.string().max(100)).max(64).optional(),
-  registryLabels: z.array(z.string().max(100)).max(16).optional(),
   pathKind: z.enum(["single", "combined", "varied", "unknown"]).optional(),
   asns: z.array(z.string()).max(64),
   at: z.string().datetime(),
@@ -20,13 +17,10 @@ const evidence = z.object({
   observations: z.array(z.unknown()).max(12).default([]),
   state: z.enum(["ok", "partial", "missing", "stale"]),
 });
-const directions = z.object({
+const row = z.object({
+  carrier: z.enum(["电信", "联通", "移动"]),
   forward: evidence.nullable(),
   return: evidence.nullable(),
-});
-const row = directions.extend({
-  carrier: z.enum(["电信", "联通", "移动"]),
-  cities: z.record(z.enum(MAINLAND_CITIES), directions).optional(),
 });
 export const homeRoutesSchema = z.object({
   available: z.boolean(),
