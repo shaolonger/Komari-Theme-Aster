@@ -440,7 +440,7 @@ a.crystal-quality:hover { filter: brightness(.93); }
   color: var(--text-secondary);
   font-size: clamp(10px, 1.5cqi, 14px);
 }
-.crystal-network-controls:has(> span, .aurora-city, .aurora-check) { margin-top: max(6px, 1cqi); }
+.crystal-network-controls:has(> span, .crystal-network-actions > *) { margin-top: max(6px, 1cqi); }
 .crystal-network-actions {
   display: flex;
   flex-wrap: wrap;
@@ -448,7 +448,7 @@ a.crystal-quality:hover { filter: brightness(.93); }
   gap: 4px 8px;
 }
 .crystal-network-actions:empty { display: none; }
-.crystal-network-controls :is(.aurora-city, .aurora-check > button) {
+.crystal-network-controls :is(.aurora-city, .aurora-check > button, .crystal-ip-toggle) {
   box-sizing: border-box;
   height: var(--crystal-control-height);
   gap: .45em;
@@ -460,6 +460,15 @@ a.crystal-quality:hover { filter: brightness(.93); }
   font-size: inherit;
   line-height: 1;
 }
+.crystal-ip-toggle {
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 4px #7a83be13;
+  white-space: nowrap;
+}
+.crystal-network-controls .crystal-ip-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent-500) 12%, var(--surface));
+}
+.crystal-network-controls .crystal-ip-toggle:hover { border-color: var(--accent-500); }
 .crystal-network-controls .aurora-city select { align-self: stretch; padding-block: 0; }
 .crystal-network-controls :is(.aurora-city, .aurora-check > button) svg { width: 1em; height: 1em; flex: none; }
 .crystal-network :is(.aurora-empty, .aurora-extra) { font-size: clamp(10px, 1.42cqi, 14px); }
@@ -578,14 +587,17 @@ a.crystal-quality:hover { filter: brightness(.93); }
 .crystal-diagnostic-badge[data-tone="good"] { background: linear-gradient(#2b890d, #247107); color: white; }
 .crystal-diagnostic-badge[data-tone="bad"] { background: linear-gradient(#d22335, #b91628); color: white; }
 .crystal-diagnostic-badge[data-tone="warn"] { background: linear-gradient(#ad5b00, #8f4700); color: white; }
+.crystal-diagnostic-badge[data-tone="business"] { background: linear-gradient(#ffe585, #f2c737); color: #483300; }
 .crystal-unlock-tags {
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: .18em;
+  font-size: clamp(7px, 1.75cqi, 16px);
+  white-space: nowrap;
 }
 .crystal-unlock-tags span {
-  padding: .2em .32em;
+  padding: .2em .14em;
   border-radius: .32em;
   background: color-mix(in srgb, var(--crystal-green) 16%, var(--surface));
   color: var(--crystal-green);
@@ -597,9 +609,11 @@ a.crystal-quality:hover { filter: brightness(.93); }
 .crystal-diagnostic-empty { margin: .7em .3em .35em; color: var(--text-secondary); }
 .crystal-risk {
   display: grid;
-  grid-template-columns: 1fr 4.7fr;
+  /* Match the first of the IP table's six columns and its outer spacing. */
+  grid-template-columns: calc((100% - 5 * var(--crystal-diagnostic-gap)) / 6) minmax(0, 1fr);
   gap: var(--crystal-diagnostic-gap);
   padding-block-start: max(4px, .7cqi);
+  padding-inline: var(--crystal-diagnostic-gap);
   margin-block-start: max(3px, .55cqi);
   border-top: 1px solid var(--crystal-cell-outline);
 }

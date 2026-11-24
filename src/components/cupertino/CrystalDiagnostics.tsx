@@ -1,4 +1,5 @@
-import { memo, useState } from "react";
+import { memo, useId, useState, type ComponentProps } from "react";
+import { NetworkSummary } from "@/components/aurora/AuroraNodeCard";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, dbIpRisk, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
@@ -50,7 +51,9 @@ function IpQuality({ snapshot, family, timeZone }: {
               <th scope="row">{label}</th>
               {IP_PROVIDERS.map(name => {
                 const type = providers[name]?.[field];
-                const tone = type === "hosting" || type === "cdn" ? "bad" : type === "isp" || type === "line-isp" || type === "mobile-isp" ? "good"
+                const tone = type === "business" ? "business"
+                  : type === "hosting" || type === "cdn" ? "bad"
+                  : type === "isp" || type === "line-isp" || type === "mobile-isp" ? "good"
                   : "neutral";
                 return <td key={name}><span className="crystal-diagnostic-badge" data-tone={tone}>{type ? ipKinds[type] : "—"}</span></td>;
               })}
@@ -105,23 +108,36 @@ function MediaUnlock({ snapshot, family, timeZone }: {
   );
 }
 
-export const CrystalDiagnostics = memo(function CrystalDiagnostics({ uuid }: { uuid: string }) {
+export const CrystalNetwork = memo(function CrystalNetwork({ uuid, ping, denseView }: Pick<
+  ComponentProps<typeof NetworkSummary>, "uuid" | "ping" | "denseView"
+>) {
   const { data, displayTimeZone } = useHomeRoutes();
+  const panelId = useId();
+  const [expanded, setExpanded] = useState(true);
   const [chosen, select] = useState<Family>();
   const node = data?.diagnostics?.[uuid];
   const ip = node?.["ip-quality"], media = node?.["media-unlock"];
-  if (!ip && !media) return null;
+  const hasDiagnostics = Boolean(ip || media);
   const family = chosen ?? (ip?.["4"] || media?.["4"] || !(ip?.["6"] || media?.["6"]) ? "4" : "6");
+  const action = hasDiagnostics && (
+    <button type="button" className="crystal-ip-toggle" aria-expanded={expanded} aria-controls={panelId}
+      onClick={() => setExpanded(value => !value)}>IP能力</button>
+  );
   return (
-    <section className="crystal-panel crystal-diagnostic" aria-label="IP能力">
-      <header className="crystal-diagnostic-header">
-        <h3>IP能力</h3>
-        <div className="crystal-family-tabs" role="group" aria-label="IP能力地址族">
-          {FAMILIES.map(value => <button key={value} type="button" aria-pressed={family === value} onClick={() => select(value)}>IPv{value}</button>)}
-        </div>
-      </header>
-      {ip && <IpQuality snapshot={ip[family]} family={family} timeZone={displayTimeZone} />}
-      {media && <MediaUnlock snapshot={media[family]} family={family} timeZone={displayTimeZone} />}
-    </section>
+    <>
+      <NetworkSummary uuid={uuid} ping={ping} mode="standard" denseView={denseView} crystal crystalAction={action} />
+      {hasDiagnostics && (
+        <section id={panelId} className="crystal-panel crystal-diagnostic" aria-label="IP能力" hidden={!expanded}>
+          <header className="crystal-diagnostic-header">
+            <h3>IP能力</h3>
+            <div className="crystal-family-tabs" role="group" aria-label="IP能力地址族">
+              {FAMILIES.map(value => <button key={value} type="button" aria-pressed={family === value} onClick={() => select(value)}>IPv{value}</button>)}
+            </div>
+          </header>
+          {ip && <IpQuality snapshot={ip[family]} family={family} timeZone={displayTimeZone} />}
+          {media && <MediaUnlock snapshot={media[family]} family={family} timeZone={displayTimeZone} />}
+        </section>
+      )}
+    </>
   );
 });

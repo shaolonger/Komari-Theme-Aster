@@ -636,12 +636,14 @@ export const NetworkSummary = memo(function NetworkSummary({
   mode,
   denseView,
   crystal = false,
+  crystalAction,
 }: {
   ping: Model["ping"];
   uuid: string;
   mode: Mode;
   denseView?: DenseNodeViewMode;
   crystal?: boolean;
+  crystalAction?: ReactNode;
 }) {
   const settings = useThemeSettings(),
     routes = useHomeRoutes(),
@@ -961,7 +963,7 @@ export const NetworkSummary = memo(function NetworkSummary({
               </div>
             );
           })}
-          {(routesVisible || speedsVisible) && (
+          {(routesVisible || speedsVisible || crystalAction) && (
             <footer className="crystal-network-controls">
               {denseView === "standard" && routesVisible && <span>最近检测 {time(routeTimes.at(-1))}</span>}
               {denseView === "standard" && speedsVisible && <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>}
@@ -969,6 +971,7 @@ export const NetworkSummary = memo(function NetworkSummary({
                 {speedsVisible && (cities.length > 1 || denseView === "standard") && cityPicker}
                 {routesVisible && <CheckAction uuid={uuid} module="routes" label="检测线路" />}
                 {speedsVisible && <CheckAction uuid={uuid} module="china-speed" label="测速" />}
+                {crystalAction}
               </div>
             </footer>
           )}

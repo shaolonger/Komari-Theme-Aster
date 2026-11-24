@@ -1,14 +1,13 @@
 import { memo, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, Ellipsis } from "lucide-react";
-import { NetworkSummary } from "@/components/aurora/AuroraNodeCard";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { useLuminousFavorites } from "@/hooks/useLuminousFavorites";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { formatBytes } from "@/utils/format";
 import { DenseNodeActions } from "./DenseNodeActions";
-import { CrystalDiagnostics, CrystalSegments, CrystalTrafficReset } from "./CrystalDiagnostics";
+import { CrystalNetwork, CrystalSegments, CrystalTrafficReset } from "./CrystalDiagnostics";
 import "@/styles/aurora.css";
 import "@/styles/crystal-card.css";
 
@@ -103,8 +102,7 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
         <CrystalSegments percent={usedPercent} />
       </section>
       <CrystalTrafficReset uuid={uuid} />
-      <NetworkSummary ping={model.ping} uuid={uuid} mode="standard" denseView={compact ? "compact" : "standard"} crystal />
-      <CrystalDiagnostics uuid={uuid} />
+      <CrystalNetwork ping={model.ping} uuid={uuid} denseView={compact ? "compact" : "standard"} />
     </article>
   );
 });

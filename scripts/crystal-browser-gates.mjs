@@ -227,13 +227,24 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   setFixture({ crystalLowMeters: true, homeDiagnostics: {
     "node-0": {
       "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
-      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
+      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" }, ipapi: { company: "business" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
         "6": { at, state: "partial", ipMode: "lite", dbIpScore: "0", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
-      "media-unlock": { "4": { at, state: "partial", services: { Netflix: { status: "unlocked", region: "US", mode: "dns" }, Reddit: { status: "blocked" } } } },
+      "media-unlock": { "4": { at, state: "partial", services: {
+        TikTok: { status: "unlocked", region: "WW", mode: "native" },
+        DisneyPlus: { status: "partial", region: "WW", mode: "dns" },
+        Netflix: { status: "unlocked", region: "US", mode: "dns" },
+        Youtube: { status: "unlocked", region: "HK" },
+        AmazonPrimeVideo: { status: "unlocked", mode: "native" },
+        Reddit: { status: "blocked" },
+        ChatGPT: { status: "unsupported", region: "TW", mode: "dns" },
+      } } },
     },
+    "node-1": { "ip-quality": { "4": { at, state: "ok", providers: { IPinfo: { company: "isp" } } } } },
   } });
   await cdp.call("Page.reload");
   const reset = `${card} [aria-label="周期消耗"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
+  const toggle = `${card} .crystal-network-actions .crystal-ip-toggle`;
+  const otherIp = '.crystal-card[data-node="node-1"] .crystal-diagnostic';
   await waitFor(`${unlock} .crystal-unlock-list`);
   failGate(await cdp.value(`(() => {
     const [reset, ip, unlock] = ${JSON.stringify([reset,ip,unlock])}.map(selector => document.querySelector(selector));
@@ -247,18 +258,50 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
       ip.querySelector('.crystal-risk').textContent.includes('Scamalytics63高风险') &&
       ip.querySelector('.crystal-risk li:last-child').textContent.includes('0低风险') &&
       unlock.textContent.includes('屏蔽') && unlock.textContent.includes('DNS') &&
-      !document.querySelector('.crystal-card[data-node="node-1"] .crystal-diagnostic');
+      !document.querySelector('.crystal-card[data-node="node-2"] .crystal-diagnostic, .crystal-card[data-node="node-2"] .crystal-ip-toggle');
   })()`), "Crystal homepage lost a per-node reset, IP or unlock observation");
   await click(`${ip} button:nth-child(2)`);
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(ip)}).textContent.includes('3.52%')`, 3000);
   failGate(await cdp.value(`document.querySelector(${JSON.stringify(ip)}).textContent.includes('IPQuality Lite · DB-IP 0 · 低风险')`),
     "Crystal did not show the measured DB-IP score in Lite mode");
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(unlock)}).textContent.includes('暂无 IPv6 解锁结果')`, 3000);
-  await click(`${ip} button:first-child`);
+  failGate(await cdp.value(`(() => {
+    const button = document.querySelector(${JSON.stringify(toggle)});
+    const panel = document.querySelector(${JSON.stringify(ip)});
+    return button?.textContent==='IP能力' && button.getAttribute('aria-expanded')==='true' &&
+      button.getAttribute('aria-controls')===panel.id && !panel.hidden &&
+      !button.parentElement.querySelector('.aurora-check');
+  })()`), "Crystal IP capability did not have a standalone control");
+  await click(toggle);
+  await waitFor(`${toggle}[aria-expanded="false"]`);
+  failGate(await cdp.value(`(() => {
+    const panel = document.querySelector(${JSON.stringify(ip)});
+    const other = document.querySelector(${JSON.stringify(otherIp)});
+    return panel.hidden && !panel.getClientRects().length && other.id !== panel.id && !other.hidden;
+  })()`), "Crystal capability toggle did not collapse only its own card");
+  await click(toggle);
+  await waitFor(`${toggle}[aria-expanded="true"]`);
+  failGate(await cdp.value(exists(`${ip}:not([hidden]) button:nth-child(2)[aria-pressed="true"]`)),
+    "Crystal capability lost its selected address family");
+
+  setFixture({ auroraHidden: false, auroraSpeedFamilies: ["4", "6"] });
+  await metric(390);
+  await cdp.call("Page.reload");
   await waitFor(`${unlock} .crystal-unlock-list`);
+  await waitFor(`${card} .aurora-check > button`);
+  failGate(await cdp.value(`(() => {
+    const button = document.querySelector(${JSON.stringify(toggle)});
+    const checks = [...button.parentElement.querySelectorAll('.aurora-check > button')];
+    const bounds = button.getBoundingClientRect();
+    return checks.map(check => check.textContent.trim()).join('|')==='检测线路|测速' &&
+      checks.every(check => {
+        const r = check.getBoundingClientRect();
+        return r.right <= bounds.left && Math.abs(r.top - bounds.top) < .5 && Math.abs(r.height - bounds.height) < .5;
+      });
+  })()`), "Crystal IP capability control is not aligned after route and speed actions");
   for (const scheme of ["crystal-light", "crystal-dark"]) {
     await cdp.value(`document.documentElement.dataset.themeStyle=${JSON.stringify(scheme)}`);
-    for (const width of [320, 390]) {
+    for (const width of [320, 360, 375, 458, 390]) {
       await metric(width);
       failGate(await cdp.value(`(() => {
         const bars = [...document.querySelectorAll(${JSON.stringify(`${card} .crystal-resource-track i`)})];
@@ -277,6 +320,24 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         const text = range.getBoundingClientRect(), cell = label.closest('li').getBoundingClientRect();
         return range.getClientRects().length === 1 && text.left >= cell.left && text.right <= cell.right;
       })`), `Crystal split or clipped an unlock service at ${width}px in ${scheme}`);
+      const diagnostics = await cdp.value(`(() => {
+        const ip = document.querySelector(${JSON.stringify(ip)});
+        const labels = [...ip.querySelectorAll('tbody th, .crystal-risk-heading')].map(el => {
+          const { left, right } = el.getBoundingClientRect();
+          return [left, right];
+        });
+        const business = ip.querySelector('tbody .crystal-diagnostic-badge[data-tone="business"]');
+        const brokenTags = [...ip.querySelectorAll('.crystal-unlock-tags')].flatMap(group => {
+          const cell = group.closest('li').getBoundingClientRect();
+          const rects = [...group.children].map(chip => chip.getBoundingClientRect());
+          return rects.every(r => r.left >= cell.left - .5 && r.right <= cell.right + .5 && Math.abs(r.top - rects[0].top) < .4)
+            ? [] : [group.textContent];
+        });
+        return { labels, brokenTags, yellow: business?.textContent==='企业' && getComputedStyle(business).backgroundImage.includes('255, 229, 133') };
+      })()`);
+      failGate(diagnostics.yellow && !diagnostics.brokenTags.length && diagnostics.labels.length === 3 &&
+        diagnostics.labels.every(([left, right]) => Math.abs(left - diagnostics.labels[0][0]) < 1 && Math.abs(right - diagnostics.labels[0][1]) < 1),
+      `Crystal IP capability geometry or color at ${width}px in ${scheme}: ${JSON.stringify(diagnostics)}`);
     }
     failGate(await cdp.value(`new Set([...document.querySelectorAll(${JSON.stringify(`${unlock} li`)})].map(cell => cell.offsetTop)).size === 1`),
       `Crystal did not align seven unlock services in one row at 390px in ${scheme}`);
