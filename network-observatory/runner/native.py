@@ -814,8 +814,9 @@ IP_TYPES = {"isp": "isp", "line isp": "line-isp", "residential": "isp", "busines
             "organization": "organization", "military": "military", "library": "library",
             "cdn": "cdn", "mobile isp": "mobile-isp", "web spider": "web-spider",
             "reserved": "reserved", "other": "other"}
-ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+ANSI = re.compile(r"(?:\x1b|\\033|\\?x1[bB])\[[0-?]*[ -/]*[@-~]")
 MAX_SCRIPT = 524288
+SCORE = re.compile(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?")
 
 
 def home_diagnostics_supported():
@@ -826,6 +827,15 @@ def object_or_empty(value):
     return value if isinstance(value, dict) else {}
 
 
+def diagnostic_text(value):
+    return ANSI.sub("", str(value)).strip()
+
+
+def read_score(value):
+    value = diagnostic_text(value)
+    return value if SCORE.fullmatch(value) and float(value.rstrip("%")) <= 100 else None
+
+
 def ip_rows(report):
     kinds = object_or_empty(report.get("Type"))
     usage = object_or_empty(kinds.get("Usage"))
@@ -834,13 +844,15 @@ def ip_rows(report):
     providers = {}
     for key in PROVIDERS:
         upstream = "IP2LOCATION" if key == "IP2Location" else key
+        risk = read_score(score.get(upstream))
         row = {}
         for field, source in (("usage", usage), ("company", company)):
-            kind = IP_TYPES.get(str(source.get(upstream, "")).strip().lower())
-            if kind:
+            kind = IP_TYPES.get(diagnostic_text(source.get(upstream, "")).lower())
+            # IPQuality's fallback "Other" can also mean the AbuseIPDB
+            # response did not contain a record or a usage type.
+            if kind and not (key == "AbuseIPDB" and kind == "other" and risk is None):
                 row[field] = kind
-        risk = str(score.get(upstream, "")).strip()
-        if re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?", risk):
+        if risk is not None:
             row["score"] = risk
         if row:
             providers[key] = row
@@ -851,46 +863,69 @@ def risk_scores(report):
     values = object_or_empty(report.get("Score"))
     scores = {}
     for name, key in RISK_PROVIDERS.items():
-        value = str(values.get(key, "")).strip()
-        if re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?", value):
+        value = read_score(values.get(key))
+        if value is not None:
             scores[name] = value
     return scores
 
 
-def media_status(message):
-    value = str(message).strip().lower()
+def media_status(message, service, region_check=False):
+    value = diagnostic_text(message).lower()
+    if re.match(r"^(?:failed\b|error\b|timeout\b|失败)", value):
+        return "failed"
+    if re.search(r"\bunknown\b", value) or (region_check and service == "ChatGPT" and value == "no"):
+        return "unknown"
     if re.match(r"^(?:yes\b|unlocked\b|解锁)", value):
         return "unlocked"
-    if re.match(r"^(?:no\b|block(?:ed)?\b|屏蔽)", value) and "(unknown)" not in value:
+    if re.match(r"^(?:no\b|block(?:ed)?\b|china\b|noprem\b|屏蔽|中国|禁会员)", value):
         return "blocked"
-    if re.match(r"^(?:web only|originals only|available for|provided by|pending|idc\b|仅)", value):
+    if re.match(r"^(?:web\s*only|app\s*only|nf\.only|originals only|available for|provided by|pending|idc\b|仅|待支持|机房)", value):
         return "partial"
     if re.match(r"^(?:ipv[46] not support|unsupported)", value):
         return "unsupported"
     return None
 
 
-def media_rows(output, supplement):
-    result = {}
+def media_observation(status, region="", mode=""):
+    row = {"status": status}
+    if status in ("failed", "unknown"):
+        return row
+    region = diagnostic_text(region).strip(" []").upper()
+    if re.fullmatch(r"[A-Z]{2}", region):
+        row["region"] = region
+    mode = {"native": "native", "dns": "dns", "viadns": "dns", "原生": "native"}.get(diagnostic_text(mode).lower())
+    if mode and status in ("unlocked", "partial"):
+        row["mode"] = mode
+    return row
+
+
+def media_rows(output, primary):
+    region_results = {}
     names = {label.lower(): key for label, key in SERVICES.items()}
     for line in ANSI.sub("", output).splitlines():
         label, _, text = line.strip().partition(":")
         key = names.get(label.lower())
-        state = media_status(text)
+        state = media_status(text, key, region_check=True)
         if not key or not state:
             continue
-        region = re.search(r"\bRegion:\s*([A-Z]{2})(?![A-Z])", text, re.I)
-        result[key] = {"status": state, **({"region": region[1].upper()} if region else {})}
+        region = re.search(r"\bRegion:\s*([A-Z]{2})\b", text, re.I)
+        region_results[key] = media_observation(state, region[1] if region else "")
+    result, evidence = {}, {}
     for key in SERVICES.values():
-        row = object_or_empty(supplement.get(key))
-        state = media_status(row.get("Status", ""))
-        if key not in result and state:
-            region = str(row.get("Region", "")).upper()
-            result[key] = {"status": state, **({"region": region} if re.fullmatch(r"[A-Z]{2}", region) else {})}
-        mode = {"native": "native", "dns": "dns", "原生": "native"}.get(str(row.get("Type", "")).strip().lower())
-        if mode and key in result and state == result[key]["status"] == "unlocked" and result[key].get("region") == str(row.get("Region", "")).upper():
-            result[key]["mode"] = mode
-    return result
+        upstream = object_or_empty(primary.get(key))
+        state = media_status(upstream.get("Status", ""), key)
+        sources = {}
+        if state:
+            sources["ipQuality"] = media_observation(state, upstream.get("Region"), upstream.get("Type"))
+        if key in region_results:
+            sources["regionRestriction"] = region_results[key]
+        if sources:
+            evidence[key] = sources
+        for row in sources.values():
+            if row["status"] not in ("failed", "unknown"):
+                result[key] = row
+                break
+    return result, evidence
 
 
 def download(spec, destination, env):
@@ -913,6 +948,152 @@ def select_media_checks(script, family):
     return True
 
 
+def select_ip_checks(script, kind):
+    # Adjust known entry points only after verifying the pinned script digest.
+    source = script.read_text()
+    providers = source.find("countRunTimes\ndb_maxmind $2")
+    media = source.find("\nMediaUnlockTest_TikTok $2\n", providers)
+    trailing_checks = '\ncheck_mail\n[[ $2 -eq 4 ]]&&check_dnsbl "$IP" 50\n'
+    end = source.find(trailing_checks, media)
+    render = source.find('if [[ $mode_lite -eq 0 ]];then\nlocal ip_report=$(show_head\n', end)
+    after_render = source.find('local report_link=""', render)
+    if min(providers, media, end, render, after_render) < 0:
+        return False
+    tail = source[end + len(trailing_checks):render] + 'local ip_report=""\n' + source[after_render:]
+    if kind == "media-unlock":
+        # The upstream TikTok fallback and OpenAI locale request omit -4/-6.
+        # Preserve address discovery and DNS comparisons; pin media HTTP calls.
+        enforce_family = 'aster_media_family=$2\ncurl() { command curl -q "-$aster_media_family" "$@"; }\n'
+        source = source[:providers] + enforce_family + source[media:end] + "\n" + tail
+    else:
+        source = source[:media] + "\n" + tail
+        source = source.replace("countRunTimes\ndb_maxmind $2", "db_maxmind $2")
+        retry = """
+aster_provider_json(){
+    local family=$1 url=$2 filter=$3 retain_partial=${4:-yes} first body timeout
+    for timeout in 10 5; do
+        body=$(command curl -q -fsSL "-$family" --max-time "$timeout" "$url" 2>/dev/null) || continue
+        if jq -e "$filter" >/dev/null 2>&1 <<<"$body"; then printf '%s' "$body"; return; fi
+        if [[ $retain_partial == yes && -z $first ]] && jq -e 'type == "object"' >/dev/null 2>&1 <<<"$body"; then first=$body; fi
+    done
+    printf '%s' "$first"
+}
+"""
+        clear_missing_types = []
+        for provider in ("ipinfo", "ipregistry", "ipapi", "ip2location", "abuseipdb"):
+            fields = ("usetype",) if provider == "abuseipdb" else ("usetype", "comtype")
+            for field in fields:
+                raw = "${" + provider + "[" + field + "]}"
+                clear_missing_types.append(f"if [[ -z {raw} || {raw} == null ]]; then unset '{provider}[s{field}]'; fi")
+        replacements = {
+            "db_maxmind(){": retry + "\ndb_maxmind(){",
+            'curl $CurlARG -Ls -$1 -m 10 "https://ipinfo.check.place/$IP?lang=$YY"':
+                """aster_provider_json "$1" "https://ipinfo.check.place/$IP?lang=$YY" '(.ASN // .Country) | type == "object"' no""",
+            'curl $CurlARG -sL -$1 -m 10 "https://ipinfo.check.place/$IP?db=scamalytics"':
+                """aster_provider_json "$1" "https://ipinfo.check.place/$IP?db=scamalytics" '.scamalytics.scamalytics_score | tonumber?'""",
+            'curl $CurlARG -sL -$1 -m 10 "https://ipinfo.check.place/$IP?db=abuseipdb"':
+                """aster_provider_json "$1" "https://ipinfo.check.place/$IP?db=abuseipdb" '.data.abuseConfidenceScore | tonumber?'""",
+            # DB-IP's /self score describes the connection's address rather
+            # than accepting the measured address in the query.
+            'local tmpcurlarg="$CurlARG"\nif [[ $IP == *:* ]];then\ntmpcurlarg=""\nfi': 'local tmpcurlarg="-$1 $CurlARG"',
+            '\ndb_dbip\n': '\ndb_dbip $2\n',
+            '[[ -n ${ipapi[scorenum]} ]]&&ipapi[score]=':
+                r'[[ ${ipapi[scorenum]} =~ ^[0-9]+([.][0-9]+)?$ || ${ipapi[scorenum]} =~ ^[.][0-9]+$ ]]&&ipapi[score]=',
+            'local head_updates=""': "\n".join(clear_missing_types) + '\nlocal head_updates=""',
+        }
+        for original, replacement in replacements.items():
+            if source.count(original) != 1:
+                return False
+            source = source.replace(original, replacement)
+        source = source.replace("\ncheck_connectivity\nread_ref\n", "\n")
+    startup = '\nshow_ad\n[[ $IPV4work'
+    discovery = "\nget_ipv4\nget_ipv6\nis_valid_ipv4 $IPV4\nis_valid_ipv6 $IPV6\nget_opts"
+    if source.count(startup) != 1 or source.count(discovery) != 1:
+        return False
+    source = source.replace(startup, '\n[[ $IPV4work')
+    source = source.replace(discovery, '\n[[ $1 != -6 ]] && get_ipv4\n[[ $1 != -4 ]] && get_ipv6\nis_valid_ipv4 $IPV4\nis_valid_ipv6 $IPV6\nget_opts')
+    clean = source.find("clean_ansi(){\n")
+    after_clean = source.find("\nfactor_bool(){", clean)
+    save = 'ipjson=$(echo "$ipjson"|jq "$head_updates$basic_updates$type_updates$score_updates$factor_updates$media_updates$mail_updates.")'
+    if clean < 0 or after_clean < 0 or source.count(save) != 1:
+        return False
+    # GNU and BusyBox sed interpret a replacement containing \x1b differently.
+    # Feed sed a literal escape byte and omit unrelated metadata from the JSON.
+    source = source[:clean] + r"""clean_ansi(){
+local value=${1//\\033/$'\033'}
+printf '%s' "$value" | sed -e $'s|\033\\[[0-9;]*m||g' -e 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}""" + source[after_clean:]
+    source = source.replace(save, r"""local aster_mode=full
+[[ $mode_lite == 1 ]] && aster_mode=lite
+ipjson=$(printf '%s' "$ipjson" | jq --arg mode "$aster_mode" "$type_updates$score_updates$media_updates.Head.Mode = \$mode")""")
+    script.write_text(source)
+    return True
+
+
+def run_ip_checks(root, kind, family, env):
+    script, target = root / "ip.sh", root / "result.json"
+    if not download(IP_SCRIPT, script, env):
+        return {}, "IPQuality 脚本下载或校验失败"
+    if not select_ip_checks(script, kind):
+        return {}, "IPQuality 脚本入口不兼容"
+    code, _, _ = execute(["bash", str(script), "-" + family, "-n", "-p", "-E", "-o", str(target)],
+                         timeout=150, env=env, cwd=str(root), input_text="")
+    # The IPv4-only run can exit on a false IPv6 condition after writing JSON.
+    if code in (0, 1, 124) and target.is_file() and target.stat().st_size <= MAX_SCRIPT:
+        try:
+            report = object_or_empty(json.loads(target.read_text()))
+            if report:
+                return report, ""
+        except (ValueError, OSError):
+            pass
+    return {}, "IPQuality 执行超时" if code == 124 else "IPQuality 未返回有效的 JSON"
+
+
+def ip_result(report, diagnostic):
+    values, scores = ip_rows(report), risk_scores(report)
+    mode = object_or_empty(report.get("Head")).get("Mode")
+    db_ip = read_score(object_or_empty(report.get("Score")).get("DBIP"))
+    if db_ip not in ("0", "50", "100"):
+        db_ip = None
+    if not values and not scores and db_ip is None:
+        return {"kind": "ip-quality", "state": "failed", "diagnostic": diagnostic or "该地址族未返回可识别的 IP 质量数据"}
+    missing_providers = [name for name in PROVIDERS if not values.get(name, {}).get("usage")
+                         or (name != "AbuseIPDB" and not values.get(name, {}).get("company"))]
+    missing_scores = [name for name in RISK_PROVIDERS if name not in scores]
+    issues = [diagnostic] if diagnostic else []
+    if mode == "lite":
+        issues.append("IPQuality 对该地址族使用 Lite 模式，跳过 IP2Location、Scamalytics 和 AbuseIPDB")
+    if missing_providers:
+        issues.append("缺少部分 IP 类型：" + "、".join(missing_providers))
+    if missing_scores:
+        issues.append("未取得评分：" + "、".join(missing_scores))
+    return {"kind": "ip-quality", "state": "partial" if issues else "ok", "providers": values,
+            "diagnostic": "。".join(issues), **({"riskScores": scores} if scores else {}),
+            **({"ipMode": mode} if mode in ("full", "lite") else {}),
+            **({"dbIpScore": db_ip} if db_ip is not None else {})}
+
+
+def media_result(report, output, issues):
+    rows, evidence = media_rows(output, object_or_empty(report.get("Media")))
+    conflicts = []
+    for name, sources in evidence.items():
+        main, secondary = sources.get("ipQuality"), sources.get("regionRestriction")
+        if main and secondary and all(row["status"] not in ("unknown", "failed") for row in (main, secondary)):
+            if main["status"] != secondary["status"] or (main.get("region") and secondary.get("region") and main["region"] != secondary["region"]):
+                conflicts.append(name)
+    missing = [name for name in SERVICES.values() if name not in rows]
+    missing_metadata = [name for name, row in rows.items() if row["status"] == "unlocked" and (not row.get("region") or not row.get("mode"))]
+    if missing:
+        issues.append("未能确认：" + "、".join(missing))
+    if missing_metadata:
+        issues.append("缺少地区或方式：" + "、".join(missing_metadata))
+    if conflicts:
+        issues.append("两套脚本判定不同，采用 IPQuality：" + "、".join(conflicts))
+    return {"kind": "media-unlock", "state": "failed" if not rows else "partial" if issues else "ok",
+            "diagnostic": "。".join(issues), **({"services": rows} if rows else {}),
+            **({"mediaEvidence": evidence} if evidence else {})}
+
+
 def home_diagnostics(kind, family):
     if kind not in HOME_DIAGNOSTIC_OPERATIONS or family not in ("4", "6"):
         raise ValueError("主页检测类型或地址族无效")
@@ -924,38 +1105,23 @@ def home_diagnostics(kind, family):
             root = Path(directory)
             env = {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", "HOME": directory, "TMPDIR": directory,
                    "LC_ALL": "C", "TERM": "dumb"}
+            report, diagnostic = run_ip_checks(root, kind, family, env)
+            if kind == "ip-quality":
+                return ip_result(report, diagnostic)
+            issues = [diagnostic] if diagnostic else []
             output = ""
-            if kind == "media-unlock":
+            if not cancelled():
                 script = root / "region.sh"
                 if not download(MEDIA_SCRIPT, script, env):
-                    return {**failed, "diagnostic": "解锁脚本下载或校验失败"}
-                if not select_media_checks(script, family):
-                    return {**failed, "diagnostic": "解锁脚本入口不兼容"}
-                _, output, _ = execute(["bash", str(script), "-E", "-M", family, "-S", "force6"], timeout=95, env=env,
+                    issues.append("RegionRestrictionCheck 下载或校验失败")
+                elif not select_media_checks(script, family):
+                    issues.append("RegionRestrictionCheck 入口不兼容")
+                else:
+                    code, output, _ = execute(["bash", str(script), "-E", "-M", family, "-S", "force6"], timeout=95, env=env,
                                               cwd=directory, input_text="")
-            report = {}
-            if not cancelled():
-                script, target = root / "ip.sh", root / "result.json"
-                if download(IP_SCRIPT, script, env):
-                    code, _, _ = execute(["bash", str(script), "-" + family, "-n", "-p", "-E", "-o", str(target)],
-                                         timeout=150, env=env, cwd=directory, input_text="")
-                    # An IPv4-only run can exit on a false IPv6 condition
-                    # after writing its complete JSON.
-                    if code in (0, 1) and target.is_file() and target.stat().st_size <= MAX_SCRIPT:
-                        try:
-                            report = object_or_empty(json.loads(target.read_text()))
-                        except (ValueError, OSError):
-                            pass
-                elif kind == "ip-quality":
-                    return {**failed, "diagnostic": "IP 质量脚本下载或校验失败"}
-            field = "providers" if kind == "ip-quality" else "services"
-            values = ip_rows(report) if kind == "ip-quality" else media_rows(output, object_or_empty(report.get("Media")))
-            scores = risk_scores(report) if kind == "ip-quality" else {}
-            if not values and not scores:
-                return {**failed, "diagnostic": "该地址族没有返回可识别的检测结果"}
-            complete = len(values) == len(SERVICES) if kind == "media-unlock" else len(values) == len(PROVIDERS) and len(scores) == len(RISK_PROVIDERS)
-            return {"kind": kind, "state": "ok" if complete else "partial", field: values,
-                    **({"riskScores": scores} if scores else {})}
+                    if code:
+                        issues.append("RegionRestrictionCheck 执行超时" if code == 124 else "RegionRestrictionCheck 未正常结束")
+            return media_result(report, output, issues)
     except (OSError, ValueError):
         return {**failed, "diagnostic": "主页检测执行失败"}
 

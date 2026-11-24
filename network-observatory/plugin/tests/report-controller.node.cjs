@@ -128,9 +128,15 @@ test("homepage diagnostics schedule both address families and publish only selec
       assert.equal(task.target, "localhost");
       slots.push([task.operation, task.options.family]);
       const data = task.operation === "ip-quality"
-        ? { kind: task.operation, state: "partial", providers: { IPinfo: { company: "hosting" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%" } }
-        : { kind: task.operation, state: "partial", services: { Netflix: { status: "unlocked", region: "JP", mode: "dns" } } };
+        ? { kind: task.operation, state: "partial", providers: { IPinfo: { company: "hosting" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%" },
+            ipMode: task.options.family === "6" ? "lite" : "full", dbIpScore: "0" }
+        : { kind: task.operation, state: "partial", services: { Netflix: { status: "unlocked", region: "JP", mode: "dns" } },
+            mediaEvidence: { Netflix: { ipQuality: { status: "unlocked", region: "JP", mode: "dns" }, regionRestriction: { status: "partial", region: "JP" } },
+              ChatGPT: { regionRestriction: { status: "unknown" } } } };
       if (index === 0) assert.equal((await post("/result", { id: task.id, data: { ...data, providers: { IPinfo: { ip: "192.0.2.1" } } } })).status, 400);
+      if (task.operation === "media-unlock") {
+        assert.equal((await post("/result", { id: task.id, data: { ...data, mediaEvidence: { Netflix: { ipQuality: { status: "unlocked", ip: "192.0.2.1" } } } } })).status, 400);
+      }
       assert.equal((await post("/result", { id: task.id, data })).status, 200);
     }
     assert.deepEqual(slots.sort(), [["ip-quality", "4"], ["ip-quality", "6"], ["media-unlock", "6"]]);
@@ -140,10 +146,16 @@ test("homepage diagnostics schedule both address families and publish only selec
     assert.deepEqual(first[A]["traffic-reset"], { day: 20, elapsed: 5, total: 30, nextAt });
     assert.deepEqual(JSON.parse(JSON.stringify(first[A]["ip-quality"]["6"].providers)), { IPinfo: { company: "hosting" } });
     assert.deepEqual(first[A]["ip-quality"]["4"].riskScores, { Scamalytics: "63", ipapi: "0.00%" });
+    assert.equal(first[A]["ip-quality"]["6"].ipMode, "lite");
+    assert.equal(first[A]["ip-quality"]["6"].dbIpScore, "0");
     assert.equal(first[A]["media-unlock"], undefined);
     const revision = (await f.invoke("GET", v3 + "/catalog")).body.revision;
     assert.equal((await f.invoke("PUT", v3 + "/home-diagnostics", { section: "media-unlock", nodeUuids: [A], revision })).status, 200);
     assert.equal((await read())[A]["media-unlock"]["6"].services.Netflix.region, "JP");
+    assert.equal((await read())[A]["media-unlock"]["6"].mediaEvidence, undefined);
+    const media = (await f.invoke("GET", v3 + "/nodes/" + A + "/rounds?module=media-unlock")).body.rounds[0];
+    const mediaRound = (await f.invoke("GET", v3 + "/nodes/" + A + "/rounds/" + media.id)).body;
+    assert.equal(mediaRound.slots[0].metrics.mediaEvidence.ChatGPT.regionRestriction.status, "unknown");
     const publish = (section, latestRevision, display) => f.invoke("PUT", v3 + "/home-diagnostics", { section, nodeUuids: [A], revision: latestRevision, display });
     assert.equal((await publish("ip-quality", revision + 1, false)).status, 200);
     assert.equal((await publish("traffic-reset", revision + 2, false)).status, 200);

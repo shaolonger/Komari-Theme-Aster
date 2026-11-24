@@ -115,7 +115,13 @@ const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module
  if (module === 'ip-quality' || module === 'media-unlock') {
    const at = new Date().toISOString();
    const slots = ['4','6'].map(family=>({id:module+family,jobId:'job-'+family,target:'localhost',direction:'VPS 公网出口',source:{provider:'runner'},endpoint:null,options:{family},state:family==='4'?'ok':'failed',missingReason:''}));
-   const measurements = slots.map(slot=>({id:slot.jobId,roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:slot.target,direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:slot.options,startedAt:at,completedAt:at,data:{kind:module,state:slot.state,...(slot.state==='failed'?{diagnostic:'该地址族没有返回可识别的检测结果'}:module==='ip-quality'?{providers:{IPinfo:{usage:'isp'},IP2Location:{company:'hosting'}},riskScores:{Scamalytics:'63'}}:{services:{Netflix:{status:'unlocked',region:'US',mode:'dns'},ChatGPT:{status:'blocked'}}})}}));
+   const streaming = {
+     services: { Netflix: {status:'unlocked',region:'US',mode:'dns'}, ChatGPT: {status:'unlocked',region:'US',mode:'native'} },
+     mediaEvidence: { ChatGPT: {ipQuality:{status:'unlocked',region:'US',mode:'native'},regionRestriction:{status:'unknown'}} },
+   };
+   const quality = {providers:{IPinfo:{usage:'isp'},IP2Location:{company:'hosting'}},riskScores:{Scamalytics:'63'},dbIpScore:'0'};
+   const measurements = slots.map(slot=>({id:slot.jobId,roundId:'round-'+module,slotId:slot.id,nodeUuid:'node-0',target:slot.target,direction:slot.direction,operation:module,pairId:'',executor:'node:node-0',source:slot.source,options:slot.options,startedAt:at,completedAt:at,
+     data:{kind:module,state:slot.state,...(slot.state==='failed'?{diagnostic:'该地址族没有返回可识别的检测结果'}:module==='ip-quality'?quality:streaming)}}));
    return [module,{schema:3,id:'round-'+module,nodeUuid:'node-0',module,suiteId:'suite-fixture',plannedAt:at,startedAt:at,completedAt:at,state:'partial',counts:{expected:2,completed:2,ok:1,partial:0,failed:1,missing:0,cancelled:0},detailAvailable:true,parameters:{...config,family:'auto'},catalogVersion:reportCatalogVersion,slots,measurements}];
  }
  if (module === 'nodequality-full') {
@@ -1519,11 +1525,15 @@ try {
   await cdp.value(`[...document.querySelectorAll('.report-main-tabs button')].find(button=>button.textContent==='公网出口周检').click()`);
   await waitUntil(cdp, `document.querySelector('.report-diagnostic-family table')!==null`, 3000);
   failGate(await cdp.value(`document.querySelector('.report-diagnostic-results').textContent.includes('63高风险') &&
+    document.querySelector('table[aria-label="风险评分"]').textContent.includes('DB-IP0低风险') &&
     document.querySelector('.report-diagnostic-results').textContent.includes('IPv6') &&
     document.querySelector('.report-diagnostic-results').textContent.includes('没有返回可识别') &&
     !document.querySelector('.report-history')`), 'IP plan rendered wrong results or generic TCP trends');
   await cdp.value(`[...document.querySelectorAll('.report-plan-module-tabs button')].find(button=>button.textContent==='流媒体和AI解锁检测').click()`);
   await waitUntil(cdp, `document.querySelector('.report-diagnostic-results')?.textContent.includes('Netflix解锁USDNS')`, 3000);
+  await cdp.value(`document.querySelector('.report-diagnostic-family summary').click()`);
+  failGate(await cdp.value(`document.querySelector('[aria-label="解锁判定依据"]').textContent.includes('ChatGPTRegionRestrictionCheck未能确认') &&
+    document.querySelector('[aria-label="流媒体和 AI 解锁"]').textContent.includes('ChatGPT解锁US原生')`), 'Unlock evidence did not preserve the conflicting and selected observations');
   activeFixture.reportSuites=undefined;
   await cdp.call('Page.reload');
   await waitUntil(cdp, `document.querySelectorAll('.report-main-tabs button').length>0 && document.querySelectorAll('.report-latency-card').length>0`,6000);

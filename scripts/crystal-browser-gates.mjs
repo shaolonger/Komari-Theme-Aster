@@ -223,7 +223,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     "node-0": {
       "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
       "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
-        "6": { at, state: "partial", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
+        "6": { at, state: "partial", ipMode: "lite", dbIpScore: "0", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
       "media-unlock": { "4": { at, state: "partial", services: { Netflix: { status: "unlocked", region: "US", mode: "dns" }, Reddit: { status: "blocked" } } } },
     },
   } });
@@ -244,6 +244,8 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   })()`), "Crystal homepage lost a per-node reset, IP or unlock observation");
   await click(`${ip} button:nth-child(2)`);
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(ip)}).textContent.includes('3.52%')`, 3000);
+  failGate(await cdp.value(`document.querySelector(${JSON.stringify(ip)}).textContent.includes('IPQuality Lite · DB-IP 0 · 低风险')`),
+    "Crystal did not show the measured DB-IP score in Lite mode");
   failGate(await cdp.value(exists(`${unlock} button:first-child[aria-pressed="true"]`)), "IP and unlock address family switches were coupled");
   await click(`${unlock} button:nth-child(2)`);
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(unlock)}).textContent.includes('暂无 IPv6 检测结果')`, 3000);

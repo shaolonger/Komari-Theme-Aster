@@ -335,8 +335,9 @@ function roundStore(root, isMissingFile, clock = () => Date.now()) {
       routeEvidence: data.routeEvidence,
       synProbes: data.synProbes,
     };
-    if (data.kind === "ip-quality") Object.assign(value, { providers: data.providers, riskScores: data.riskScores, diagnostic: data.diagnostic });
-    if (data.kind === "media-unlock") Object.assign(value, { services: data.services, diagnostic: data.diagnostic });
+    if (data.kind === "ip-quality") Object.assign(value, { providers: data.providers, riskScores: data.riskScores,
+      ipMode: data.ipMode, dbIpScore: data.dbIpScore, diagnostic: data.diagnostic });
+    if (data.kind === "media-unlock") Object.assign(value, { services: data.services, mediaEvidence: data.mediaEvidence, diagnostic: data.diagnostic });
     if (data.tcpQuality)
       Object.assign(value, {
         address: data.tcpQuality.address,

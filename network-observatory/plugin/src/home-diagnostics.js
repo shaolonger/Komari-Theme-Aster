@@ -13,6 +13,10 @@ const STATUSES = ["unlocked", "blocked", "partial", "unsupported"];
 const object = value => value && typeof value === "object" && !Array.isArray(value);
 const score = value => typeof value === "string" && /^\d{1,3}(?:\.\d{1,4})?%?$/.test(value);
 const region = value => typeof value === "string" && /^[A-Z]{2}$/.test(value);
+const mediaRow = (row, evidence = false) => object(row) &&
+  (STATUSES.includes(row.status) || (evidence && ["failed", "unknown"].includes(row.status))) &&
+  Object.entries(row).every(([field, item]) => field === "status" || (field === "region" ? region(item)
+    : field === "mode" && ["native", "dns"].includes(item)));
 
 function validateDiagnostics(data, kind) {
   if (!DIAGNOSTICS.includes(kind)) return;
@@ -20,15 +24,21 @@ function validateDiagnostics(data, kind) {
   if (data.riskScores !== undefined && (!ip || !object(data.riskScores) ||
       Object.entries(data.riskScores).some(([name, value]) => !RISK_PROVIDERS.includes(name) || !score(value))))
     throw new Error("风险评分格式无效");
+  if ((data.ipMode !== undefined && (!ip || !["full", "lite"].includes(data.ipMode))) ||
+      (data.dbIpScore !== undefined && (!ip || !["0", "50", "100"].includes(data.dbIpScore))))
+    throw new Error("IP 质量覆盖格式无效");
+  if (data.mediaEvidence !== undefined && (ip || !object(data.mediaEvidence) ||
+      Object.entries(data.mediaEvidence).some(([name, checks]) => !SERVICES.includes(name) || !object(checks) ||
+        !Object.keys(checks).length || Object.entries(checks).some(([source, row]) =>
+          !["ipQuality", "regionRestriction"].includes(source) || !mediaRow(row, true)))))
+    throw new Error("解锁判定依据格式无效");
   if (rows === undefined && data.state === "failed") return;
   const keys = ip ? PROVIDERS : SERVICES;
-  if (!object(rows) || (!Object.keys(rows).length && (!ip || !Object.keys(data.riskScores || {}).length)) || Object.entries(rows).some(([key, value]) =>
+  if (!object(rows) || (!Object.keys(rows).length && (!ip || (!Object.keys(data.riskScores || {}).length && data.dbIpScore === undefined))) || Object.entries(rows).some(([key, value]) =>
     !keys.includes(key) || !object(value) || (ip
       ? !Object.keys(value).length || Object.entries(value).some(([field, item]) =>
         field === "score" ? !score(item) : !["usage", "company"].includes(field) || !TYPES.includes(item))
-      : !STATUSES.includes(value.status) || Object.entries(value).some(([field, item]) =>
-        field === "status" ? false : field === "region" ? !region(item)
-          : field !== "mode" || !["native", "dns"].includes(item))))) {
+      : !mediaRow(value)))) {
     throw new Error("主页检测结果格式无效");
   }
 }
@@ -75,7 +85,8 @@ function homeDiagnosticsStore(root, isMissingFile) {
           : { status: value.status, region: value.region, mode: value.mode };
       }
     } catch (_error) { return; }
-    const risk = ip && data.state !== "failed" && data.riskScores ? { riskScores: data.riskScores } : {};
+    const risk = ip && data.state !== "failed"
+      ? { riskScores: data.riskScores, ipMode: data.ipMode, dbIpScore: data.dbIpScore } : {};
     store.write({ ...all, [kind]: { ...families, [family]: { at, state: data.state, order, [field]: rows, ...risk } } });
   }
 

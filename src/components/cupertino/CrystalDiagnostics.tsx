@@ -1,7 +1,7 @@
 import { memo, useState, type ReactNode } from "react";
 import { Layers3, Play } from "lucide-react";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
-import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
+import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, dbIpRisk, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
 import { formatDisplayDateTime } from "@/utils/timeDisplay";
 
 const QUOTA_SEGMENTS = 35;
@@ -89,6 +89,9 @@ function IpQuality({ results, timeZone }: { results: NonNullable<HomeDiagnosticN
             })}
           </ul>
         </section>
+        {snapshot?.ipMode === "lite" && <p className="crystal-diagnostic-empty">
+          IPQuality Lite{snapshot.dbIpScore !== undefined && <> · DB-IP {snapshot.dbIpScore} · {dbIpRisk[snapshot.dbIpScore]}</>}
+        </p>}
       </> : <p className="crystal-diagnostic-empty">暂无 IPv{family} 检测结果</p>}
     </DiagnosticPanel>
   );
@@ -109,7 +112,7 @@ function MediaUnlock({ results, timeZone }: { results: NonNullable<HomeDiagnosti
             const tone = row?.status === "unlocked" ? "good" : row?.status === "blocked" ? "bad" : row?.status === "partial" ? "warn" : "neutral";
             return <li key={key}>
               <strong title={key === "AmazonPrimeVideo" ? "Amazon Prime Video" : undefined}>{key === "AmazonPrimeVideo" ? "AmazonPV" : label}</strong>
-              <span className="crystal-diagnostic-badge" data-tone={tone}>{row ? mediaStatuses[row.status] : "未测"}</span>
+              <span className="crystal-diagnostic-badge" data-tone={tone}>{row ? mediaStatuses[row.status] : "暂无"}</span>
               {(row?.region || row?.mode) && <span className="crystal-unlock-tags">
                 {row.region && <span>{row.region}</span>}
                 {row.mode && <span data-mode={row.mode}>{row.mode === "native" ? "原生" : "DNS"}</span>}

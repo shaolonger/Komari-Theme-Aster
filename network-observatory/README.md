@@ -1,6 +1,6 @@
 # Aster 网络观测
 
-主题 **1.44.1** / 插件 **1.24.1** / 探测器 **1.15.1**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
+主题 **1.44.2** / 插件 **1.24.2** / 探测器 **1.15.2**。支持 Komari ≥1.4.3，独立探测器通过出站 HTTPS 领取任务，不需要 Web SSH 或 Agent 远程执行权限。
 
 所有配置统一在 **Aster 工作室 → 网络观测**：
 
@@ -24,7 +24,7 @@
 「主页流量重置」与「主页IP质量」可一键选择可见节点，关闭总开关会暂停首页展示并保留已选节点。两类检测方案支持固定间隔、每日指定时刻、固定星期以及每隔 N 天的规则组合。VPS 详情按关联检测方案查看轮次和对应脚本结果。升级探测器并完成新一轮 IP 质量检测后，单独风险区会填入 Scamalytics 分数。已有分数继续显示。
 
 - **流量重置**从 Linux VPS 上正在运行的标准 `komari-agent` 进程读取 `--month-rotate`，按 VPS 本地日期及 Komari 短月顺延规则计算，通过探测器现有心跳上报。未启用月重置、参数无法读取或启动方式无法确认时，卡片显示「暂无重置周期」。此功能读取周期供展示。
-- **IP 和解锁**在「检测方案」添加「IP质量检测」「流媒体和AI解锁检测」，选择目标 VPS 与地址族，然后立即运行或设定运行时间。探测器以普通用户运行经过摘要校验的固定版本 [IPQuality](https://github.com/xykt/IPQuality/tree/8643bcd0a0b7b42ed53030f794d63ce72067ca77) 和 [RegionRestrictionCheck](https://github.com/1-stream/RegionRestrictionCheck/tree/ef841d0a2910a44a6ca565e3a03de0f2282d83b3)。解锁使用上游全球及 AI 分组，IPQuality 可补充 Reddit 和可确认的原生 / DNS 信息。仅将结构化摘要用于卡片。上游缺失字段显示「未测」或破折号，两个地址族独立显示。
+- **IP 和解锁**在「检测方案」添加「IP质量检测」「流媒体和AI解锁检测」，选择目标 VPS 与地址族，然后立即运行或设定运行时间。探测器以普通用户运行经过摘要校验的固定版本 [IPQuality](https://github.com/xykt/IPQuality/tree/8643bcd0a0b7b42ed53030f794d63ce72067ca77) 和 [RegionRestrictionCheck](https://github.com/1-stream/RegionRestrictionCheck/tree/ef841d0a2910a44a6ca565e3a03de0f2282d83b3)。解锁优先采用同地址族的 IPQuality 结论，由 RegionRestrictionCheck 的全球和 AI 分组补充。轮次报告可展开两套脚本的判定。IP 质量对关键数据库缺测短暂重试一次，报告会注明 Lite 模式、所缺字段及可用的 DB-IP 评分。仅将所选结构化摘要用于卡片。
 - 两个检测方案需要 VPS 能出站访问 GitHub 和相应检测服务，并可使用 Bash、curl、jq、Python 3、bc 和 dig。节点版一键安装与升级会补装检测依赖。自动升级的旧探测器如缺少这些工具，可用保留凭证的升级命令补齐。
 
 **全面报告历史（1.20.0）**：主题和插件增加逐目标历史摘要读取与网络趋势图。原始明细和摘要仍受保留期限制；无需升级探测器或重置凭证。

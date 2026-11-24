@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { diagnosticModules, ipProvidersSchema, mediaServicesSchema, riskScoresSchema, type DiagnosticSection } from "./homeDiagnostics";
+import { dbIpScoreSchema, diagnosticModules, ipProvidersSchema, mediaEvidenceSchema, mediaServicesSchema, riskScoresSchema, type DiagnosticSection } from "./homeDiagnostics";
 
 export const reportModules = [
   "routes",
@@ -214,7 +214,10 @@ const measurementDataSchema = z
     rawOutput: z.string().optional(),
     providers: ipProvidersSchema.optional().catch(undefined),
     riskScores: riskScoresSchema.optional().catch(undefined),
+    ipMode: z.enum(["full", "lite"]).optional(),
+    dbIpScore: dbIpScoreSchema.optional().catch(undefined),
     services: mediaServicesSchema.optional().catch(undefined),
+    mediaEvidence: mediaEvidenceSchema.optional().catch(undefined),
     profile: z.string().optional(),
     reportUrl: z.string().optional(),
     cleanLog: z.string().optional(),
