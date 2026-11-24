@@ -1007,7 +1007,17 @@ test("history summary exposes retained per-target metrics only to admins without
   try {
     const slotId = 'route:shanghai', jobId = crypto.randomUUID();
     const r = store.create({ nodeUuid: A, module: 'routes', suiteId: crypto.randomUUID(), batchId: crypto.randomUUID(), parameters: { family: '4' }, slots: [{ id: slotId, jobId, target: '8.8.8.8', direction: 'VPS→大陆', source: { city: '上海', carrier: '电信', provider: '测试', token: 'SECRET' }, options: { protocol: 'tcp' } }] });
-    store.complete({ id: jobId, roundId: r.id, slotId, nodeUuid: A, executor: 'node:' + A, operation: 'route', target: '8.8.8.8', options: { family: '4', protocol: 'tcp' }, source: { city: '上海', carrier: '电信', provider: '测试' } }, { kind: 'route', state: 'ok', hops: [{ asn: '4809' }], routeEvidence: { headlineLabels: ['CN2'] } });
+    const hops = [{ asn: '4134' }, { address: '59.43.1.2' }];
+    const { routeFacts } = require('../src/route-evidence.js');
+    const facts = routeFacts(hops);
+    const routeEvidence = { ...facts, ruleVersion: '2026-11-12', headlineLabels: ['163', 'CN2'],
+      networks: facts.networks.map(row => row.basis === 'registry-prefix' ? { ...row, label: 'CN2', known: true } : row) };
+    store.complete({ id: jobId, roundId: r.id, slotId, nodeUuid: A, executor: 'node:' + A, operation: 'route', target: '8.8.8.8', options: { family: '4', protocol: 'tcp' }, source: { city: '上海', carrier: '电信', provider: '测试' } }, { kind: 'route', state: 'ok', hops, routeEvidence });
+    const detail = await f.invoke('GET', `${v3}/nodes/${A}/rounds/${r.id}`);
+    assert.deepEqual(detail.body.measurements[0].data.routeEvidence.headlineLabels, ['163']);
+    assert.deepEqual(detail.body.measurements[0].data.routeEvidence.registryLabels, ['CN2-BB']);
+    assert.deepEqual(detail.body.slots[0].metrics.routeEvidence.headlineLabels, ['163']);
+    assert.deepEqual(store.measurement(A, r.id, slotId).data.routeEvidence.headlineLabels, ['163', 'CN2']);
     const dir = path.join(f.root, 'report-v3', 'nodes', A), manifest = path.join(dir, 'rounds', r.id, 'manifest.json'), index = path.join(dir, 'indexes', 'routes', r.plannedAt.slice(0, 10) + '.json');
     const m = JSON.parse(fs.readFileSync(manifest)); m.detailAvailable = false; fs.writeFileSync(manifest, JSON.stringify(m));
     const rows = JSON.parse(fs.readFileSync(index)); rows[0].detailAvailable = false; fs.writeFileSync(index, JSON.stringify(rows));
@@ -1015,7 +1025,8 @@ test("history summary exposes retained per-target metrics only to admins without
     assert.equal((await f.invoke('GET', `${v3}/nodes/${A}/history-summary?module=routes`, {}, false)).status, 403);
     const response = await f.invoke('GET', `${v3}/nodes/${A}/history-summary?module=routes`);
     assert.equal(response.status, 200); assert.equal(rawReads, 0);
-    assert.deepEqual(response.body.rounds[0].slots[0].metrics.routeEvidence.headlineLabels, ['CN2']);
+    assert.deepEqual(response.body.rounds[0].slots[0].metrics.routeEvidence.headlineLabels, ['163']);
+    assert.deepEqual(response.body.rounds[0].slots[0].metrics.routeEvidence.registryLabels, ['CN2-BB']);
     assert.equal(response.body.rounds[0].slots[0].source.city, '上海');
     assert.equal(JSON.stringify(response.body).includes('SECRET'), false);
   } finally { fs.readFileSync = originalRead; f.close(); }

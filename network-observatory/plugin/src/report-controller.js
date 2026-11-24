@@ -8,6 +8,7 @@ const { VERSION, PRESETS } = require("./report-catalog.js");
 const B = require("./bgp.js");
 const { originQuery } = require("./route-enrichment.js");
 const { DIAGNOSTICS, SECTIONS, homeDiagnosticsStore } = require("./home-diagnostics.js");
+const { routeFacts, reviseRouteFacts } = require("./route-evidence.js");
 const BASE = "/api/aster-network-observatory/v3";
 const MAX_QUEUE = 10000;
 const measurementKey = (j) =>
@@ -79,7 +80,7 @@ function registerReportController(ctx, native) {
     retention: { detailDays: 7, summaryDays: 90 },
   };
   function completeAndProject(job, data, source) {
-    if (data.kind === "route") data = { ...data, routeEvidence: require("./route-evidence.js").routeFacts(data.hops || []) };
+    if (data.kind === "route") data = { ...data, routeEvidence: routeFacts(data.hops || []) };
     const result = store.complete(job, data, source);
     if (result) {
       if (DIAGNOSTICS.includes(job.operation)) {
@@ -586,9 +587,13 @@ function registerReportController(ctx, native) {
   function homePayload(s, uuids, admin = false) {
     const nodes = homeRoutes.summary(uuids);
     // Tool diagnostics can contain private endpoint addresses; only admins receive them.
+    const publicDirections = row => ({
+      forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
+      return: row.return ? { ...row.return, diagnostic: "" } : null,
+    });
     if (!admin) for (const uuid of Object.keys(nodes)) nodes[uuid] = Object.fromEntries(Object.entries(nodes[uuid]).map(([family, rows]) => [family,
-      rows.map(row => ({ ...row, forward: row.forward ? { ...row.forward, diagnostic: "" } : null,
-        return: row.return ? { ...row.return, diagnostic: "" } : null }))]));
+      rows.map(row => ({ carrier: row.carrier, ...publicDirections(row),
+        cities: Object.fromEntries(Object.entries(row.cities).map(([city, directions]) => [city, publicDirections(directions)])) }))]));
     const configured = cardFamilies(s, "routes");
     return { available: true, configuredFamilies: Object.fromEntries(uuids.map(id => [id, configured[id] || []])), nodes, access: admin ? "admin" : "public",
       backfillPending: admin && uuids.some(uuid => routeHistoryQueue.has(uuid)),
@@ -940,13 +945,25 @@ function registerReportController(ctx, native) {
       return { ...row, slots: (round?.slots || []).map(slot => ({
         id: slot.id, state: slot.state, completedAt: slot.completedAt, target: slot.target, direction: slot.direction,
         source: { id: slot.source?.id, city: slot.source?.city, carrier: slot.source?.carrier, provider: slot.source?.provider, name: slot.source?.name },
-        options: { protocol: slot.options?.protocol }, metrics: slot.metrics,
+        options: { protocol: slot.options?.protocol },
+        metrics: module === "routes" ? currentRouteMetrics(slot.metrics) : slot.metrics,
       })) };
     });
     ctx.respond(res, 200, { ...page, rounds });
   });
+  function currentRouteMetrics(metrics) {
+    if (!metrics?.routeEvidence) return metrics;
+    return { ...metrics, routeEvidence: reviseRouteFacts(metrics.routeEvidence) };
+  }
   route("GET", "/nodes/:uuid/rounds/:id", (req, res) => {
-    const result = store.get(part(req, 2), part(req, 4));
+    let result = store.get(part(req, 2), part(req, 4));
+    if (result?.module === "routes") result = { ...result,
+      slots: result.slots.map(slot => ({ ...slot, metrics: currentRouteMetrics(slot.metrics) })),
+      measurements: result.measurements.map(measurement => ({
+        ...measurement, data: { ...measurement.data, routeEvidence: Array.isArray(measurement.data.hops)
+          ? routeFacts(measurement.data.hops) : reviseRouteFacts(measurement.data.routeEvidence) },
+      })),
+    };
     ctx.respond(
       res,
       result ? 200 : 404,

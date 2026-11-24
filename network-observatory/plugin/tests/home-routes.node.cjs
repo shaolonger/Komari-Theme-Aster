@@ -2,17 +2,97 @@ const { test } = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { project, homeRouteStore } = require('../src/home-routes.js');
 const { registerReportController, BASE } = require('../src/report-controller.js');
+const { routeFacts } = require('../src/route-evidence.js');
 const A = 'c388e74d-a922-4ae1-bd10-1fb30e2e53de', B = '59d6e276-1d4b-4657-9021-908460853ba3';
 const sample = (override = {}) => ({ nodeUuid:A,operation:'route',direction:'VPS→大陆',options:{family:'4',protocol:'tcp'},source:{carrier:'电信',city:'上海',token:'SECRET'},target:'SECRET_TARGET',completedAt:new Date().toISOString(),data:{kind:'route',state:'ok',complete:true,hops:[{asn:'AS4809'},{asn:'4134'}]},...override });
-test('cross-carrier CTGNet, registry CN2 and unknown networks are retained without product certification',()=>{
+test('CTGNet and 9929 use observed ASNs while CN2-BB is shown as a separate registry observation',()=>{
  const input=sample({source:{carrier:'联通'},data:{kind:'route',state:'partial',complete:false,hops:[{ttl:1,asn:'23764',address:'8.8.8.8'},{ttl:2,asn:'',address:'59.43.246.117'},{ttl:3,asn:'9929',address:'1.1.1.1'},{ttl:4,asn:'65001',address:'9.9.9.9'}]}});
  const row=project(input).evidence;
- assert.equal(row.label,'CTGNet / CN2 / 9929'); assert.ok(row.asns.includes('65001'));
+ assert.equal(row.label,'CTGNet / 9929'); assert.deepEqual(row.registryLabels,['CN2-BB']); assert.ok(row.asns.includes('65001'));
  assert.equal(row.state,'partial'); assert.ok(!row.asns.includes('4809'));
- const facts=require('../src/route-evidence.js').routeFacts(input.data.hops);
+ const facts=routeFacts(input.data.hops);
  assert.equal(facts.productStatus,'unverified');
  assert.equal(facts.networks.find(n=>n.basis==='registry-prefix').ttls[0],2);
  assert.equal(facts.labels.some(label=>/GIA|GT$/.test(label)),false);
+});
+test('Guangzhou prefix-only hops do not promote 163 to CN2 in either direction', () => {
+  const hops = [
+    { ttl: 1, asn: 'AS149513' },
+    { ttl: 3, asn: 'AS4134' },
+    { ttl: 4, address: '59.43.246.233' },
+    { ttl: 6, address: '59.43.22.34' },
+    { ttl: 12, asn: 'AS4134' },
+  ];
+  const facts = routeFacts(hops);
+  assert.deepEqual(facts.headlineLabels, ['163']);
+  assert.deepEqual(facts.asPath, ['149513', '4134', '?', '4134']);
+  assert.deepEqual(facts.networks.find(row => row.basis === 'registry-prefix').ttls, [4, 6]);
+  assert.deepEqual(routeFacts([hops[2]]).headlineLabels, []);
+  for (const direction of ['大陆→VPS', 'VPS→大陆']) {
+    const cityRoute = routeHops => project(sample({
+      direction, source: { carrier: '电信', city: '广州' },
+      data: { kind: 'route', state: 'ok', complete: true, hops: routeHops },
+    })).evidence;
+    assert.equal(cityRoute(hops).label, '163');
+    assert.deepEqual(cityRoute(hops).registryLabels, ['CN2-BB']);
+    assert.equal(cityRoute([hops[2]]).label, '未识别');
+    assert.equal(cityRoute([...hops, { asn: 'AS4809' }]).label, '163 / CN2');
+  }
+});
+test('city projection keeps each direction and address family independent', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-routes-city-'));
+  const now = Date.now();
+  try {
+    const store = homeRouteStore(root, e => e.code === 'ENOENT', () => now);
+    function record({ city, asn, age, roundId, direction = 'VPS→大陆', family = '4' }) {
+      store.observe(sample({
+        roundId, completedAt: new Date(now - age).toISOString(), direction, options: { family, protocol: 'tcp' },
+        source: { carrier: '电信', city, provider: direction === '大陆→VPS' ? 'Globalping' : 'NextTrace' },
+        data: asn ? { kind: 'route', state: 'ok', complete: true, hops: [{ asn }] } : { kind: 'route', state: 'failed', hops: [] },
+      }));
+    }
+    record({ city: '广州', asn: '4134', age: 4000, roundId: A });
+    record({ city: '北京', asn: '23764', age: 3000, roundId: A });
+    record({ city: 'Shanghai', asn: '4134', age: 1500, roundId: B });
+    record({ city: 'Shanghai', asn: '4809', age: 1000, roundId: B, direction: '大陆→VPS' });
+    record({ city: 'GUANGZHOU', asn: '4809', age: 1000, roundId: B, direction: '大陆→VPS', family: '6' });
+    const { 4: v4, 6: v6 } = store.summary([A])[A];
+    assert.equal(v4[0].cities.广州.return.label, '163');
+    assert.equal(v4[0].cities.广州.forward, null);
+    assert.equal(v4[0].cities.北京.return.label, 'CTGNet');
+    assert.equal(v4[0].cities.上海.forward.label, 'CN2');
+    assert.equal(v4[0].cities.上海.forward.observations[0].city, '上海');
+    assert.equal(v4[0].cities.上海.return.label, '163');
+    assert.equal(v6[0].cities.广州.forward.label, 'CN2');
+    assert.equal(v6[0].cities.广州.return, null);
+    record({ city: '广州', age: 0, roundId: B });
+    assert.equal(store.summary([A])[A]['4'][0].cities.广州.return.label, '测量失败');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+test('cached legacy CN2 snapshots are corrected without loading measurement files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aster-routes-legacy-'));
+  try {
+    const store = homeRouteStore(root, e => e.code === 'ENOENT');
+    const input = sample({
+      source: { carrier: '电信', city: 'Guangzhou' },
+      data: { kind: 'route', state: 'ok', complete: true, hops: [{ asn: '4134' }, { address: '59.43.1.2' }] },
+    });
+    store.observe(input);
+    const file = path.join(root, 'home-routes', A + '.json');
+    const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const row = Object.values(snapshot['4'].电信.return)[0];
+    delete row.registryLabels;
+    row.city = 'Guangzhou';
+    row.label = '163 / CN2';
+    row.networkLabels = ['163', 'CN2'];
+    fs.writeFileSync(file, JSON.stringify(snapshot));
+    const freshStore = homeRouteStore(root, e => e.code === 'ENOENT');
+    const corrected = freshStore.summary([A])[A]['4'][0].cities.广州.return;
+    assert.equal(corrected.label, '163');
+    assert.deepEqual(corrected.registryLabels, ['CN2-BB']);
+    assert.equal(corrected.observations[0].label, '163');
+    assert.ok(fs.readFileSync(file, 'utf8').includes('163 / CN2'));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 test('homepage keeps per-measurement sequences and never combines separate rounds',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'aster-route-rounds-'));
@@ -158,8 +238,10 @@ test('private failure diagnostics remain available to admins and are stripped fr
   registerReportController({storageDir:root,isMissingFile:e=>e.code==='ENOENT',server:{route:(m,p,f)=>routes.set(m+' '+p,f)},authorized:()=>true,readBody:()=>({}),respond:(res,status,body)=>Object.assign(res,{status,body})},{read:()=>state,lock:fn=>Promise.resolve(fn()),save:()=>{}});
   const admin={};await routes.get('GET '+BASE+'/home-routes')({},admin);
   assert.ok(admin.body.nodes[A]['4'][0].return.diagnostic.includes('PRIVATE_TARGET'));
+  assert.ok(admin.body.nodes[A]['4'][0].cities.上海.return.diagnostic.includes('PRIVATE_TARGET'));
   const pub={};await routes.get('GET '+BASE+'/public/routes')({},pub);
   assert.equal(pub.body.nodes[A]['4'][0].return.label,'测量失败');
+  assert.equal(pub.body.nodes[A]['4'][0].cities.上海.return.diagnostic,'');
   assert.ok(!JSON.stringify(pub.body).includes('PRIVATE_'));
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

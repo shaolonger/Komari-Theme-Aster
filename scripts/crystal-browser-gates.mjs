@@ -111,7 +111,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   })()`), "Crystal overflow menu lost Dense node actions");
   await click(`${card} .dense-node-actions summary`);
 
-  setFixture({ nodes: 4, crystalControls: true });
+  setFixture({ nodes: 4, crystalControls: true, regionalRoutes: true });
   await cdp.call("Page.reload");
   await waitFor(`${card} .crystal-network-controls .aurora-check button`);
   await click(`${card} .dense-node-actions summary`);
@@ -121,11 +121,38 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await waitUntil(cdp, "document.querySelectorAll('.crystal-card[data-node]').length===1", 6000);
   await click(".cupertino-status-filters button:first-child");
   await waitUntil(cdp, "document.querySelectorAll('.crystal-card[data-node]').length===4", 6000);
-  await cdp.value(`(()=>{
-    const select=document.querySelector(${JSON.stringify(`${card} .aurora-city select`)});
-    select.value='上海'; select.dispatchEvent(new Event('change',{bubbles:true}));
+  const picker = `${card} .aurora-city select[aria-label="线路与测速地区"]`;
+  const switchCity = city => cdp.value(`(()=>{
+    const select=document.querySelector(${JSON.stringify(picker)});
+    select.value=${JSON.stringify(city)}; select.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
+  const firstRoute = direction => `${card} [data-family="4"][data-carrier="电信"] .crystal-route-value[data-direction="${direction}"]`;
+  await waitFor(picker);
+  await waitFor(firstRoute("return") + '[data-network="163"]');
+  await switchCity("上海");
   await waitUntil(cdp, `document.querySelector(${JSON.stringify(`${card} .crystal-speed-value`)}).textContent.trim()==='0.0'`, 6000);
+  await waitFor(firstRoute("forward") + '[data-network="CTGNet"]');
+  await waitFor(firstRoute("return") + '[data-network="CN2"]');
+  const drawer = ".network-drawer";
+  const close = '.network-drawer button[aria-label="关闭面板"]';
+  await click(firstRoute("forward"));
+  await waitFor(drawer + " article");
+  failGate(await cdp.value("document.querySelector('.network-drawer article').textContent.includes('上海')"), "Crystal went to the wrong city for the forward route");
+  await click(close);
+  await switchCity("广州");
+  await waitFor(firstRoute("forward") + ':disabled');
+  await waitFor(firstRoute("return") + '[data-network="163"]');
+  await click(firstRoute("return"));
+  await waitFor(drawer + " article");
+  failGate(await cdp.value(`(() => {
+    const detail = document.querySelector('.network-drawer');
+    const paths = [...detail.querySelectorAll('article')];
+    return paths.length === 1 && paths[0].textContent.includes('广州') &&
+      paths[0].textContent.includes('AS4134 → 未知 → AS4134') &&
+      detail.textContent.includes('登记地址段：CN2-BB') && !detail.textContent.includes('上海');
+  })()`), "Crystal mixed city observations or promoted a registered prefix to an ASN");
+  await click(close);
+  await switchCity("上海");
   failGate(await cdp.value(`document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-controls .aurora-check button`)}).length===2`), "Crystal card is missing authorized quick checks");
 
   const layouts = [];
@@ -298,5 +325,5 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.reload");
   await waitFor("#network-traffic-reset .report-checkbox input:not(:checked)");
   await waitFor("#network-ip-quality .report-checkbox input:not(:checked)");
-  return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, exact per-node Ping bindings, and homepage diagnostics by address family", layouts };
+  return { crystal: "light and dark palettes, overview shadows, fixed card width during search, asset sort order, exact per-node Ping bindings, city-specific routes and speeds, and homepage diagnostics by address family", layouts };
 }

@@ -19,22 +19,37 @@ function networkEvidence(hops = []) {
       if (!rule.startsWith.some(prefix => String(hop.address || "").startsWith(prefix))) continue;
       const key = "prefix:" + rule.id;
       if (!rows.has(key)) rows.set(key, { id: key, asn: "", label: rule.label,
-        description: rule.description, known: true, basis: "registry-prefix", ttls: [],
+        description: rule.description, known: false, basis: "registry-prefix", ttls: [],
         source: rule.sourceUrl, ruleVersion: rules.version });
       rows.get(key).ttls.push(ttl);
     }
   }
   return [...rows.values()];
 }
+function evidenceLabels(networks) {
+  const asnRows = networks.filter(row => row.basis === "asn");
+  const known = asnRows.filter(row => row.known);
+  return {
+    labels: [...new Set(networks.map(row => row.label))],
+    headlineLabels: [...new Set((known.length ? known : asnRows).map(row => row.label))],
+    registryLabels: [...new Set(networks.filter(row => row.basis === "registry-prefix").map(row => row.label))],
+  };
+}
 function routeFacts(hops = []) {
-  const networks = networkEvidence(hops), labels = [];
-  for (const row of networks) if (!labels.includes(row.label)) labels.push(row.label);
-  const knownLabels = [...new Set(networks.filter(row => row.known).map(row => row.label))];
+  const networks = networkEvidence(hops);
   const asPath = [];
   for (const hop of hops) {
     const value = asNumbers(hop.asn).join("/") || "?";
     if (asPath[asPath.length - 1] !== value) asPath.push(value);
   }
-  return { networks, labels, headlineLabels: knownLabels.length ? knownLabels : labels, asPath, productStatus: "unverified", ruleVersion: rules.version };
+  return { networks, ...evidenceLabels(networks), asPath, productStatus: "unverified", ruleVersion: rules.version };
 }
-module.exports = { networkEvidence, routeFacts, asNumbers };
+function reviseRouteFacts(facts) {
+  if (!Array.isArray(facts?.networks) || facts.ruleVersion === rules.version) return facts;
+  const networks = facts.networks.map(row => {
+    const rule = row.basis === "registry-prefix" && rules.prefixes.find(prefix => row.id === "prefix:" + prefix.id);
+    return rule ? { ...row, label: rule.label, description: rule.description, known: false, ruleVersion: rules.version } : row;
+  });
+  return { ...facts, networks, ...evidenceLabels(networks), ruleVersion: rules.version };
+}
+module.exports = { networkEvidence, routeFacts, reviseRouteFacts, asNumbers };

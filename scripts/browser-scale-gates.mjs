@@ -529,7 +529,7 @@ const server = createServer(async (request, response) => {
   if ((url.pathname === '/api/aster-network-observatory/v3/public/routes' || (url.pathname === '/api/aster-network-observatory/v3/home-routes' && request.method === 'GET'))) {
     count('home-routes');
     if (fixture.aurora) {
-      const data = auroraRoutes(fixture.crystal);
+      const data = auroraRoutes(fixture.crystal, fixture.regionalRoutes);
       return sendJson(response, {...data, diagnostics: fixture.homeDiagnostics, quickCheck: !fixture.crystal || Boolean(fixture.crystalControls), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,data.nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraRouteFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     }
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });

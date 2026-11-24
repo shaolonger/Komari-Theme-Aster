@@ -51,7 +51,7 @@ import { regionLabel } from "@/utils/regionLabel";
 import type { DenseNodeViewMode } from "@/utils/themeSettings";
 import type { PingOverviewSample } from "@/types/komari";
 import { routeHeadline } from "@/utils/carrierRoutePresentation";
-import type { RouteEvidence } from "@/services/homeRoutes";
+import { MAINLAND_CITIES, type MainlandCity, type RouteEvidence } from "@/services/homeRoutes";
 import type { HomeSpeedNode, SpeedValue } from "@/services/homeSpeeds";
 import {
   CARRIERS,
@@ -647,7 +647,7 @@ export const NetworkSummary = memo(function NetworkSummary({
     routes = useHomeRoutes(),
     speeds = useHomeSpeeds();
   const [selectedPanel, setPanel] = useState<Panel>("all"),
-    [city, setCity] = useState("北京");
+    [city, setCity] = useState<MainlandCity>("北京");
   const [selectedFamily, setFamily] = useState<Family>("4");
   const [speedDetail, setSpeedDetail] = useState<HomeSpeedNode | null>(null);
   const rows = buildHomepagePingSourceRows(
@@ -718,26 +718,27 @@ export const NetworkSummary = memo(function NetworkSummary({
   ]
     .filter(Boolean)
     .join(" ");
-  const cities = [
-    ...new Set(
-      speedFamilies.flatMap(
-        (f) => speedNode?.[f]?.cities.map((c) => c.city) || [],
-      ),
-    ),
-  ];
-  const selectedCity = cities.includes(city as "北京")
+  const hasRegionalRoutes = routeFamilies.some(family => routeNode?.[family].some(row => row.cities !== undefined));
+  const cities = MAINLAND_CITIES.filter(name =>
+    speedFamilies.some(family => speedNode?.[family]?.cities.some(entry => entry.city === name)) ||
+    routeFamilies.some(family => routeNode?.[family].some(row => row.cities?.[name])));
+  const selectedCity = cities.includes(city)
     ? city
     : cities[0] || "北京";
   const routeTimes = routeFamilies
     .flatMap(
       (f) =>
         routeNode?.[f]
-          .flatMap((r) => [r.forward?.at, r.return?.at])
+          .flatMap((r) => {
+            const selected = r.cities ? r.cities[selectedCity] : r;
+            return [selected?.forward?.at, selected?.return?.at];
+          })
           .filter((t): t is string => Boolean(t)) || [],
     )
     .sort();
   const speedTimes = speedFamilies
-    .flatMap((f) => (speedNode?.[f]?.at ? [speedNode[f]!.at] : []))
+    .flatMap(family => speedNode?.[family]?.cities.find(entry => entry.city === selectedCity)?.rows.map(row => row.at) || [])
+    .filter((at): at is string => Boolean(at))
     .sort();
   const time = (at?: string) =>
     at
@@ -768,10 +769,10 @@ export const NetworkSummary = memo(function NetworkSummary({
     <label className="aurora-city">
       <MapPin />
       <select
-        aria-label="测速地区"
+        aria-label={hasRegionalRoutes ? "线路与测速地区" : "测速地区"}
         value={selectedCity}
         disabled={!cities.length}
-        onChange={(e) => setCity(e.target.value)}
+        onChange={(e) => setCity(e.target.value as MainlandCity)}
       >
         {(cities.length ? cities : ["北京"]).map((c) => (
           <option key={c}>{c}</option>
@@ -783,11 +784,12 @@ export const NetworkSummary = memo(function NetworkSummary({
     const row = carrier && (!crystal || routeFamilies.includes(family))
       ? routeNode?.[family].find((row) => row.carrier === carrier)
       : undefined;
-    const title = carrier ? `${carrier} IPv${family}` : taskName;
+    const selected = row?.cities ? row.cities[selectedCity] : row;
+    const title = carrier ? `${carrier} IPv${family}${row?.cities ? ` · ${selectedCity}` : ""}` : taskName;
     return (
       <div className={crystal ? "crystal-route-pair" : "aurora-route-pair"}>
         <RouteValue
-          value={row?.forward}
+          value={selected?.forward}
           direction={`${title} 去程（大陆 → VPS）`}
           carrier={carrier}
           timeZone={settings.displayTimeZone}
@@ -796,7 +798,7 @@ export const NetworkSummary = memo(function NetworkSummary({
         />
         {!crystal && <ArrowRight />}
         <RouteValue
-          value={row?.return}
+          value={selected?.return}
           direction={`${title} 回程（VPS → 大陆）`}
           carrier={carrier}
           timeZone={settings.displayTimeZone}
@@ -939,7 +941,7 @@ export const NetworkSummary = memo(function NetworkSummary({
             module={panel === "speeds" ? "china-speed" : "routes"}
             label="重新检测"
           />
-          {panel === "speeds" && cityPicker}
+          {!!cities.length && cityPicker}
         </header>
       )}
       {crystal ? (
@@ -966,7 +968,7 @@ export const NetworkSummary = memo(function NetworkSummary({
               {denseView === "standard" && routesVisible && <span>最近检测 {time(routeTimes.at(-1))}</span>}
               {denseView === "standard" && speedsVisible && <span>最近测速 {time(speedTimes.at(-1))} · P1 单连接</span>}
               <div className="crystal-network-actions">
-                {speedsVisible && (cities.length > 1 || denseView === "standard") && cityPicker}
+                {!!cities.length && cityPicker}
                 {routesVisible && <CheckAction uuid={uuid} module="routes" label="检测线路" />}
                 {speedsVisible && <CheckAction uuid={uuid} module="china-speed" label="测速" />}
               </div>
@@ -1023,7 +1025,10 @@ export const NetworkSummary = memo(function NetworkSummary({
               {heading(
                 Route,
                 "三网线路",
-                <CheckAction uuid={uuid} module="routes" label="检测" />,
+                <>
+                  {!speedsVisible && !!cities.length && cityPicker}
+                  <CheckAction uuid={uuid} module="routes" label="检测" />
+                </>,
               )}
               <div
                 className="aurora-dual"
