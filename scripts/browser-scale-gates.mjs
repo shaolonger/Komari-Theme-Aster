@@ -1644,11 +1644,13 @@ try {
     await waitUntil(cdp,`document.querySelectorAll('.report-target-checklist label').length===1 && document.querySelector('.report-target-checklist').textContent.includes('Scale Node 2')`,2000);
     await cdp.value(`document.querySelector('input[aria-label="搜索执行 VPS"]').focus(); document.querySelector('input[aria-label="搜索执行 VPS"]').select()`);
     await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
-    await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);
-    if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-plan-mobile-${appearance}.png`);
-    // Preview renders before mutate() has finished refreshing the catalog.
-    // Wait for the real enabled action so a disabled click cannot be lost.
+    failGate(await cdp.value(`(() => {
+      const targets=document.querySelector('.report-execution-vps');
+      const groups=document.querySelector('.report-group-options');
+      return parseFloat(getComputedStyle(targets).paddingInlineStart)>=10 &&
+        getComputedStyle(groups).display==='flex' && getComputedStyle(groups).flexWrap==='wrap' &&
+        document.querySelector('.report-coverage-preview')===null;
+    })()`), 'VPS editor padding, group layout or initial preview state is incorrect');
     await waitUntil(cdp,`Array.from(document.querySelectorAll('.report-plan-footer button')).some(b=>b.textContent.includes('保存报告方案') && !b.disabled)`,3000);
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-footer button')).find(b=>b.textContent.includes('保存报告方案')).click()`);
     await waitUntil(cdp,`document.querySelector('.report-saved-plan-select')!==null`,3000);
@@ -1657,6 +1659,9 @@ try {
     failGate(await cdp.value(`document.querySelector('.report-saved-plan-select').getAttribute('aria-pressed')==='true'`),'saved plan card did not select plan');
     if(process.env.BROWSER_GATE_SCREENSHOT){ await cdp.value(`document.querySelector('.report-saved-plans').scrollIntoView({block:'start'})`); await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.saved-plans-${appearance}.png`); }
     await cdp.value(`Array.from(document.querySelectorAll('.report-plan-steps button')).find(b=>b.textContent.includes('VPS 与覆盖')).click()`);
+    await cdp.value(`Array.from(document.querySelectorAll('.report-plan-panel button')).find(b=>b.textContent.includes('预览每台')).click()`);
+    await waitUntil(cdp,`document.querySelector('.report-coverage-preview details')!==null`,2000);
+    if(process.env.BROWSER_GATE_SCREENSHOT)await captureScreenshot(cdp,`${process.env.BROWSER_GATE_SCREENSHOT}.report-plan-mobile-${appearance}.png`);
     failGate(await cdp.value(`['主页延迟检测','主页三网线路','检测方案','探测器与测量点','目标端点'].every(title=>Array.from(document.querySelectorAll('.aster-studio-panel h2')).some(e=>e.textContent===title))`), 'network center panels missing');
     failGate(await cdp.value(`!document.body.textContent.includes('旧版单次检测与历史') && !document.body.textContent.includes('工具诊断与旧计划') && !document.body.textContent.includes('兼容与迁移')`), 'removed network functionality is still visible');
     failGate(await cdp.value(`Array.from(document.querySelectorAll('.report-target-checklist input:checked')).length===1`),'instance shortcut lost selected VPS');

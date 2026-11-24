@@ -5,6 +5,7 @@ const worker = z.object({
   tools: z.array(z.string()),
   authScheme: z.string(),
   features: z.array(z.string()).default([]),
+  missingDiagnosticTools: z.array(z.string()).optional(),
 });
 const catalog = z.object({
   runnerRelease: z.object({ version: z.string(), protocol: z.number(), releaseTag: z.string(), archive: z.string() }).optional(),

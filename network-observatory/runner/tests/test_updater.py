@@ -102,6 +102,41 @@ class UpdaterTests(unittest.TestCase):
     def test_opted_in_automatic_upgrade_uses_the_same_transaction(self):
         self.exercise(automatic=True)
 
+    def test_diagnostics_repair_at_current_version_requires_opt_in_and_idle_worker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp)
+            (config / "agent.json").write_text("{}")
+            credential = {"role": "node", "nodeUuid": NODE}
+            args = SimpleNamespace(command="repair-diagnostics")
+            for enabled, busy in [(False, False), (True, True), (True, False)]:
+                with self.subTest(enabled=enabled, busy=busy):
+                    def api(_config, suffix, **kwargs):
+                        if suffix == "update-policy":
+                            return {"enabled": enabled, "busy": busy, "release": RELEASE, "version": RELEASE["version"]}
+                        return {"lease": "a" * 32}
+                    native = SimpleNamespace(missing_diagnostic_tools=Mock(side_effect=[["jq", "dig"], []]))
+                    agent = SimpleNamespace(native=native, load_config=lambda _: credential, api_request=Mock(side_effect=api))
+                    with patch.object(U, "CONFIG", config), patch.object(U, "STATE", config), \
+                            patch.object(U, "service", return_value=SimpleNamespace(returncode=0)), \
+                            patch.object(U, "install_diagnostic_tools") as install, patch.object(U, "download") as download, \
+                            patch.dict(sys.modules, {"agent": agent}):
+                        U.perform(args)
+                        download.assert_not_called()
+                        if enabled and not busy:
+                            install.assert_called_once_with(["jq", "dig"])
+                            actions = [call.kwargs["body"] for call in agent.api_request.call_args_list if "body" in call.kwargs]
+                            self.assertTrue(actions[0]["automatic"])
+                            self.assertEqual(actions[-1]["state"], "ok")
+                        else:
+                            install.assert_not_called()
+
+    def test_diagnostic_package_names_are_fixed_by_distribution(self):
+        with patch.object(U.shutil, "which", side_effect=lambda name: "/usr/bin/apt-get" if name == "apt-get" else None), \
+                patch.object(U.subprocess, "run") as run:
+            U.install_diagnostic_tools(["jq", "dig", "unexpected-package"])
+        self.assertEqual(run.call_args_list[0].args[0], ["/usr/bin/apt-get", "update"])
+        self.assertEqual(run.call_args_list[1].args[0], ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "jq", "dnsutils"])
+
     def test_automatic_upgrade_is_off_by_default_and_waits_for_measurements(self):
         self.exercise(automatic=True, enabled=False)
         self.exercise(automatic=True, busy=True)

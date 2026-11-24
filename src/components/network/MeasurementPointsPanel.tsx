@@ -88,7 +88,7 @@ export function MeasurementPointsPanel({
       setConfirm(null);
     }, registered ? "新凭证已生成，旧凭证已失效；请在对应 VPS 写入新密钥" : "接入凭证已生成，请在对应 VPS 执行安装命令并输入密钥");
   }
-  const featureNames: Record<string, string> = { "report-v3": "成组报告", "latency-samples": "延迟采样", "full-mtr": "逐跳路由", "speed-intervals": "测速分段", "http-speed": "HTTP 测速", "tcp-quality": "TCP 质量", "public-speed": "公共测速", "tcpquality-full": "TcpQuality 完整检测", "nodequality-full": "NodeQuality 完整检测" };
+  const featureNames: Record<string, string> = { "report-v3": "成组报告", "latency-samples": "延迟采样", "full-mtr": "逐跳路由", "speed-intervals": "测速分段", "http-speed": "HTTP 测速", "tcp-quality": "TCP 质量", "public-speed": "公共测速", "tcpquality-full": "TcpQuality 完整检测", "nodequality-full": "NodeQuality 完整检测", "ip-quality": "IP 质量检测", "media-unlock": "流媒体和 AI 解锁检测" };
   return (
     <div className="network-form measurement-points-panel">
       <p className="measurement-intro">
@@ -117,6 +117,7 @@ export function MeasurementPointsPanel({
         <h3>VPS 探测器</h3>
         <div className="measurement-status"><strong>{node?.name || "请选择 VPS"}</strong><span data-online={!!online}>{online ? "在线" : worker ? "离线" : registered ? "等待连接" : "未接入"}</span></div>
         <dl className="measurement-facts"><div><dt>当前版本</dt><dd>{worker?.version || "尚未上报"}</dd></div><div><dt>最后连接</dt><dd>{worker ? formatNetworkTime(worker.seenAt) : "尚无记录"}</dd></div><div><dt>建议版本</dt><dd>{data.runnerRelease?.version || "更新插件后可查看"}</dd></div></dl>
+        {online && !!worker.missingDiagnosticTools?.length && <p role="status">IP 质量与解锁检测缺少依赖：{worker.missingDiagnosticTools.join("、")}</p>}
         {worker && <details className="measurement-technical"><summary>查看工具与检测能力</summary><p>已安装工具：{worker.tools.join("、") || "未上报"}</p><div className="measurement-capabilities">{worker.features.map(f => <span key={f}>{featureNames[f] || f}</span>)}</div></details>}
         <div className="measurement-install">
           <strong>{registered ? "保留凭证升级" : "安装探测器"}</strong>
@@ -127,7 +128,7 @@ export function MeasurementPointsPanel({
           <button disabled={!selected || busy} onClick={() => void act(() => navigator.clipboard.writeText(maintenanceCommand), registered ? "升级命令已复制，现有凭证保持不变" : "安装命令已复制")}>{registered ? "复制升级命令" : "复制安装命令"}</button>
           <small>以 root 登录时省略 sudo。128 MiB VPS 建议轻量模式；轻量模式不自动安装 NextTrace 等可选工具。完整检测运行时还需要挂载权限及足够磁盘空间，受限容器或小规格 VPS 可能无法运行。</small>
         </div>
-        {data.runnerRelease && <div className="measurement-auto-update"><label className="network-check"><input type="checkbox" checked={data.updatePolicies["node:" + selected]?.enabled || false} disabled={busy || !registered} onChange={e => void act(() => setWorkerUpdatePolicy("node", selected, e.target.checked), "自动更新偏好已保存")} />允许此 VPS 自动更新探测器</label><p>默认关闭。首次需运行上方升级命令安装维护服务；之后约每小时检查兼容版本，空闲时更新，失败回滚。共用同一机器的接入身份均需允许。</p>{data.updates["node:" + selected] && <small role="status">{data.updates["node:" + selected].message} · {formatNetworkTime(data.updates["node:" + selected].at)}</small>}</div>}
+        {data.runnerRelease && <div className="measurement-auto-update"><label className="network-check"><input type="checkbox" checked={data.updatePolicies["node:" + selected]?.enabled || false} disabled={busy || !registered} onChange={e => void act(() => setWorkerUpdatePolicy("node", selected, e.target.checked), "自动更新偏好已保存")} />允许此 VPS 自动更新探测器</label><p>默认关闭。维护服务约每小时检查兼容版本和检测依赖，空闲时执行。共用同一机器的接入身份均需允许。</p>{data.updates["node:" + selected] && <small role="status">{data.updates["node:" + selected].message} · {formatNetworkTime(data.updates["node:" + selected].at)}</small>}</div>}
         {!registered && <button disabled={busy || !selected} onClick={() => void issue()}>生成 VPS 接入凭证</button>}
         {registered && <details className="measurement-credentials"><summary>凭证管理</summary><p>仅在密钥遗失或需要轮换时重置。升级探测器不需要更换凭证。</p>
         <div className="network-actions">

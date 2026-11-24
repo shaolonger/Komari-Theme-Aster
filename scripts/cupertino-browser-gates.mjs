@@ -193,8 +193,9 @@ export async function checkCupertino({
     "Cupertino reference card density drifted",
   );
   failGate(
-    Math.abs(measurements.instance[".cupertino-instance-metrics"].y - (dark ? 207 : 211)) < 5,
-    "Cupertino reference metric row drifted",
+    measurements.instance[".cupertino-instance-metrics"].y >=
+      measurements.instance[".luminous-instance-navigation"].y + measurements.instance[".luminous-instance-navigation"].height,
+    "Cupertino metric row must follow the shared navigation",
   );
   failGate(
     measurements.ping[".instance-ping-panel>.instance-uplot-wrap"].y -
@@ -228,6 +229,11 @@ export async function checkCupertino({
     4000,
   );
   await click(".instance-ping-task-row:first-child .instance-ping-task");
+  const tabBounds = () => cdp.value(`(() => {
+    const rect = document.querySelector('.instance-segmented[role=tablist]').getBoundingClientRect();
+    return [rect.x + scrollX, rect.y + scrollY, rect.width, rect.height];
+  })()`);
+  const sharedTabBounds = await tabBounds();
   for (const view of ["traffic", "network", "load", "ping", "load"]) {
     await click("#instance-view-" + view);
     await waitUntil(
@@ -236,6 +242,9 @@ export async function checkCupertino({
       8000,
     );
     await fits("detail " + view);
+    const actualTabBounds = await tabBounds();
+    failGate(actualTabBounds.every((value, i) => Math.abs(value - sharedTabBounds[i]) < 1),
+      `Cupertino view switcher moved or resized in ${view}: ${sharedTabBounds} -> ${actualTabBounds}`);
     failGate(
       await cdp.value(
         "document.querySelector('.instance-segmented[role=tablist]')?.offsetHeight>0",

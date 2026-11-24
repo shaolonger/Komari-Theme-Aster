@@ -93,6 +93,34 @@ const draft = () => ({
   revision: 0,
   modules: [{ module: "international", endpoints: ["aws:ap-east-1"] }],
 });
+test("installed version and IP diagnostics readiness are independent", async () => {
+  const f = await fixture();
+  const client = `${v2}/workers/node/${A}`;
+  try {
+    const { version } = require("../src/runner-release.json");
+    const heartbeat = (features, missingDiagnosticTools) => f.invoke("POST", client + "/heartbeat", {
+      version, tools: [], features: ["report-v3", ...features], missingDiagnosticTools,
+    }, false, true);
+    assert.equal((await heartbeat([], ["dig", "jq", "invalid"])).status, 200);
+    const catalog = (await f.invoke("GET", v2 + "/catalog")).body;
+    assert.equal(catalog.workers["node:" + A].version, catalog.runnerRelease.version);
+    assert.deepEqual(catalog.workers["node:" + A].missingDiagnosticTools, ["jq", "dig"]);
+    const saved = await f.invoke("POST", v3 + "/suites", { revision: 0, clients: [A],
+      modules: [{ module: "ip-quality", family: "4" }, { module: "media-unlock", family: "4" }] });
+    assert.equal(saved.status, 200);
+    const start = () => f.invoke("POST", `${v3}/suites/${saved.body.suite.id}/run`);
+    const first = await start();
+    assert.equal(first.status, 202);
+    assert.equal(first.body.rounds.length, 2);
+    for (const id of first.body.rounds) {
+      const detail = (await f.invoke("GET", `${v3}/nodes/${A}/rounds/${id}`)).body;
+      assert.equal(detail.measurements[0].data.diagnostic, "探测器缺少检测依赖：jq、dig");
+    }
+    assert.equal((await heartbeat(["ip-quality", "media-unlock"], [])).status, 200);
+    assert.equal((await start()).status, 202);
+    assert.ok((await f.invoke("GET", client + "/poll", {}, false, true)).body.task);
+  } finally { f.close(); }
+});
 test("homepage diagnostics schedule both address families and publish only selected snapshots", async () => {
   const f = await fixture(undefined, [A, B], undefined, [A]);
   try {

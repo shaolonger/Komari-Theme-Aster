@@ -665,7 +665,7 @@ export function ReportPlanPanel({
       )}
       {step === 3 && (
         <>
-          <fieldset>
+          <fieldset className="report-execution-vps">
             <legend>执行 VPS</legend>
             <div className="report-target-actions">
               <button
@@ -708,26 +708,28 @@ export function ReportPlanPanel({
               {!matchedInventory.length && <p role="status">没有匹配的 VPS。</p>}
             </div>
           </fieldset>
-          <fieldset>
+          <fieldset className="report-inherited-groups">
             <legend>按分组继承新 VPS</legend>
-            {[
-              ...new Set(catalog.inventory.map((n) => n.group).filter(Boolean)),
-            ].map((group) => (
-              <label className="report-checkbox" key={group}>
-                <input
-                  type="checkbox"
-                  checked={current.groups.includes(group)}
-                  onChange={(e) =>
-                    change({
-                      groups: e.target.checked
-                        ? [...current.groups, group]
-                        : current.groups.filter((g) => g !== group),
-                    })
-                  }
-                />
-                {group}
-              </label>
-            ))}
+            <div className="report-group-options">
+              {[
+                ...new Set(catalog.inventory.map((n) => n.group).filter(Boolean)),
+              ].map((group) => (
+                <label className="report-checkbox" key={group}>
+                  <input
+                    type="checkbox"
+                    checked={current.groups.includes(group)}
+                    onChange={(e) =>
+                      change({
+                        groups: e.target.checked
+                          ? [...current.groups, group]
+                          : current.groups.filter((g) => g !== group),
+                      })
+                    }
+                  />
+                  {group}
+                </label>
+              ))}
+            </div>
             <label className="report-checkbox">
               <input
                 type="checkbox"
@@ -799,7 +801,7 @@ export function ReportPlanPanel({
         <p role="alert">
           配置已被更新。请核对新的目录及方案后
           <button onClick={() => change({ revision: catalog.revision })}>
-            重新预览当前编辑内容
+            使用最新配置版本
           </button>
         </p>
       )}
@@ -816,7 +818,7 @@ export function ReportPlanPanel({
           </button>
         ) : (
           <button
-            disabled={busy || !preview || preview.exceedsCapacity}
+            disabled={busy || !current.modules.length || current.revision !== catalog.revision || preview?.exceedsCapacity}
             onClick={() =>
               void mutate(async () => {
                 await saveReportSuite(current);

@@ -576,6 +576,23 @@
   border: 1px solid var(--border-subtle);
   border-radius: 0.6rem;
 }
+.report-plan-panel :is(.report-execution-vps, .report-inherited-groups) {
+  padding: 0.35rem clamp(0.65rem, 1.3vw, 1rem) 0.9rem;
+}
+.report-plan-panel :is(.report-execution-vps, .report-inherited-groups) > legend {
+  padding-inline: 0.35rem;
+}
+.report-group-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.85rem;
+}
+.report-group-options > .report-checkbox {
+  min-width: 0;
+  margin: 0;
+  padding-block: 0.2rem;
+  overflow-wrap: anywhere;
+}
 .report-coverage-preview details {
   padding: 0.6rem;
   border: 1px solid var(--border-subtle);

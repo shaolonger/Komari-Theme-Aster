@@ -215,13 +215,14 @@ function registerReportController(ctx, native) {
         : "BGP 快照需要 VPS 的公网 IP；域名、私网与保留地址不作为路由证据";
     if (job.executor === "globalping")
       return previewOnly ? native.coverage(s, job) : ""; // Discovery at execution occurs outside the state lock.
+    if (DIAGNOSTICS.includes(job.operation)) return native.coverage(s, job);
     if (
-      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(
+      !["latency", "route", "benchmark", "http-speed", "iperf-speed", "public-speed", "tcp-quality", "tcpquality-full", "nodequality-full"].includes(
         job.operation,
       )
     )
       return "当前采集器未提供此测量操作";
-    const required = ["tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS].includes(job.operation) ? job.operation :
+    const required = ["tcp-quality", "public-speed", "tcpquality-full", "nodequality-full"].includes(job.operation) ? job.operation :
       job.operation === "latency"
         ? "latency-samples"
         : job.operation === "route"

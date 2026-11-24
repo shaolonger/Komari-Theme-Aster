@@ -97,12 +97,10 @@ export function InstanceDetails({
   onNodeReady,
   view = "load",
   children,
-  navigation,
 }: {
   uuid: string;
   view?: InstanceView;
   children?: ReactNode;
-  navigation?: ReactNode;
   onNodeReady?: () => (() => void) | void;
 }) {
   const meta = useNodeMeta(uuid);
@@ -333,7 +331,7 @@ export function InstanceDetails({
         </div>
       </div>
   );
-  if (usesCupertinoLayout(appearance)) return <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}><CupertinoInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>} navigation={navigation}>{children}</CupertinoInstanceSummary></Suspense>;
+  if (usesCupertinoLayout(appearance)) return <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}><CupertinoInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>}>{children}</CupertinoInstanceSummary></Suspense>;
   if (appearance === "luminous") return (
     <Suspense fallback={<div className="instance-chart-loading" role="status">正在加载节点…</div>}>
       <LuminousInstanceSummary node={{...nodeMeta,...metrics}} loss={ping.loss} workbench={workbenchNode} view={view} details={<>{decisionGrid}{infoGroups}</>}>

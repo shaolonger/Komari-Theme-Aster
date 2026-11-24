@@ -4,7 +4,7 @@ const { UUID } = require("./model.js");
 const M = require("./native-model.js"),
   G = require("./globalping.js");
 const { createEnricher } = require("./route-enrichment.js");
-const { DIAGNOSTICS, resetCycle } = require("./home-diagnostics.js");
+const { DIAGNOSTICS, DIAGNOSTIC_TOOLS, resetCycle } = require("./home-diagnostics.js");
 const BASE = "/api/aster-network-observatory/v2";
 const RUNNER_RELEASE = require("./runner-release.json");
 function registerNativeController(ctx) {
@@ -178,8 +178,11 @@ function registerNativeController(ctx) {
         : "公共目录未确认此 ASN 的当前覆盖";
     }
     if (!online(s, j.executor)) return "测量端未就绪";
-    if (DIAGNOSTICS.includes(j.operation) && !s.workers[j.executor]?.features?.includes(j.operation))
-      return "需要新版 VPS 探测器与 bash、curl、jq、Python 3、bc、dig";
+    if (DIAGNOSTICS.includes(j.operation)) {
+      const worker = s.workers[j.executor];
+      if (worker.missingDiagnosticTools?.length) return "探测器缺少检测依赖：" + worker.missingDiagnosticTools.join("、");
+      if (!worker.features?.includes(j.operation)) return "当前探测器未上报此检测能力；请检查版本及 bash、curl、jq、Python 3、bc、dig";
+    }
     const tools = s.workers[j.executor].tools;
     if (j.operation === "website" && !tools.includes("curl"))
       return "测量端缺少 curl";
@@ -505,6 +508,8 @@ function registerNativeController(ctx) {
               )
             : [],
           ...(role === "node" && b.trafficReset ? { trafficReset: resetCycle(b.trafficReset) } : {}),
+          ...(role === "node" && Array.isArray(b.missingDiagnosticTools)
+            ? { missingDiagnosticTools: DIAGNOSTIC_TOOLS.filter(tool => b.missingDiagnosticTools.includes(tool)) } : {}),
         };
         const active = Array.isArray(b.activeJobIds)
           ? b.activeJobIds.filter((id) => UUID.test(id)).slice(0, 4)

@@ -6,8 +6,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
+# Only the local package-manager step needs writable system paths.
+ExecStartPre=-+/usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py repair-diagnostics
 ExecStart=/usr/bin/python3 -B /usr/local/libexec/aster-network-observatory/updater.py auto
-TimeoutStartSec=300
+TimeoutStartSec=8min
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

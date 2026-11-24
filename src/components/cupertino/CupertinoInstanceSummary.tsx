@@ -33,7 +33,6 @@ export default function CupertinoInstanceSummary({
   view,
   details,
   children,
-  navigation,
 }: {
   node: NodeInfo & NodeMetrics;
   loss: number | null | undefined;
@@ -41,7 +40,6 @@ export default function CupertinoInstanceSummary({
   view: InstanceView;
   details: ReactNode;
   children?: ReactNode;
-  navigation?: ReactNode;
 }) {
   const { data } = useLoadRecords(node.uuid, 1, view === "load", node),
     ping = usePingMini(node.uuid),
@@ -159,7 +157,6 @@ export default function CupertinoInstanceSummary({
           </article>
         </section>
       )}
-      {navigation}
       <div
         className="cupertino-detail-columns"
         data-sidebar={view === "load" || view === "traffic"}

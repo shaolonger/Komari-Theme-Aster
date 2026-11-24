@@ -34,7 +34,7 @@ CONFIG_PATH = Path("/etc/aster-network-observatory/agent.json")
 SERVICE_NAME = "aster-network-observatory-agent.service"
 SERVICE_DIR = Path("/usr/local/libexec/aster-network-observatory")
 INIT_DIR = Path("/etc/init.d")
-RUNNER_VERSION = "1.15.3"
+RUNNER_VERSION = "1.15.4"
 RUN_INSTANCE = uuid.uuid4().hex
 POLL_SECONDS = 15
 REQUEST_TIMEOUT = 25
@@ -259,7 +259,9 @@ def heartbeat(config, stop):
             active = native.active_tasks() + [t["id"] for t in (helper_tasks or [])]
             observations = {}
             if config.get("role", "node") == "node":
-                if native.home_diagnostics_supported():
+                missing = native.missing_diagnostic_tools()
+                observations["missingDiagnosticTools"] = missing
+                if not missing:
                     features.extend(native.HOME_DIAGNOSTIC_OPERATIONS)
                 observations["trafficReset"] = traffic_cycle()
             response = api_request(config, "heartbeat", method="POST", body={"version": RUNNER_VERSION, "instanceId": RUN_INSTANCE, "tools": [x for x in ("curl", "nexttrace", "traceroute", "mtr", "iperf3", "openssl", "nping") if shutil.which(x)], "authScheme": native.auth_scheme(), "features": features, "activeJobIds": list(dict.fromkeys(active)), **observations})

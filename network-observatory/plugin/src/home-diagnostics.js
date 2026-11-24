@@ -3,6 +3,7 @@ const { UUID } = require("./model.js");
 const { jsonState } = require("./json-state.js");
 
 const DIAGNOSTICS = ["ip-quality", "media-unlock"];
+const DIAGNOSTIC_TOOLS = ["bash", "curl", "jq", "python3", "bc", "dig"];
 const SECTIONS = ["traffic-reset", ...DIAGNOSTICS];
 const PROVIDERS = ["IPinfo", "ipregistry", "ipapi", "IP2Location", "AbuseIPDB"];
 const RISK_PROVIDERS = ["IP2Location", "Scamalytics", "ipapi", "AbuseIPDB"];
@@ -116,4 +117,4 @@ function homeDiagnosticsStore(root, isMissingFile) {
   }
   return { observe, summary };
 }
-module.exports = { DIAGNOSTICS, SECTIONS, validateDiagnostics, resetCycle, homeDiagnosticsStore };
+module.exports = { DIAGNOSTICS, DIAGNOSTIC_TOOLS, SECTIONS, validateDiagnostics, resetCycle, homeDiagnosticsStore };

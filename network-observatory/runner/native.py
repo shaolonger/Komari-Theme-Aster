@@ -819,8 +819,12 @@ MAX_SCRIPT = 524288
 SCORE = re.compile(r"[0-9]{1,3}(?:\.[0-9]{1,4})?%?")
 
 
+def missing_diagnostic_tools():
+    return [tool for tool in ("bash", "curl", "jq", "python3", "bc", "dig") if not shutil.which(tool)]
+
+
 def home_diagnostics_supported():
-    return all(shutil.which(tool) for tool in ("bash", "curl", "jq", "python3", "bc", "dig"))
+    return not missing_diagnostic_tools()
 
 
 def object_or_empty(value):

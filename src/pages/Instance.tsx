@@ -146,11 +146,11 @@ export function Instance() {
         ) ?? chartControlsRef.current;
       if (target?.closest("details") && (!luminous || focus === "expiry"))
         target.closest("details")!.open = true;
-      if (!luminous)
+      if (!luminous && (!cupertino || focus === "expiry" || focus === "status"))
         target?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focus, uuid, luminous]);
+  }, [focus, uuid, luminous, cupertino]);
 
   const nodeOptions = useMemo(() => {
     const nodeByUuid = new Map(allNodes.map((node) => [node.uuid, node]));
@@ -603,7 +603,7 @@ export function Instance() {
       data-chart={chartType}
     >
       <div className="instance-topbar">
-        {cupertino ? <Suspense fallback={null}><CupertinoInstanceHeading uuid={uuid} view={chartType}/></Suspense> : luminous ? (
+        {cupertino ? <Suspense fallback={null}><CupertinoInstanceHeading uuid={uuid}/></Suspense> : luminous ? (
           <Suspense fallback={null}>
             <LuminousInstanceHeading uuid={uuid} view={chartType} />
           </Suspense>
@@ -639,7 +639,7 @@ export function Instance() {
           )}
         </div>
       </div>
-      {luminous && workspaceNavigation}
+      {workspaceLayout && workspaceNavigation}
       {!workspaceLayout && <InstanceDetails uuid={uuid} onNodeReady={alignCharts}/>}
       {!workspaceLayout && chartType !== "network" && (
         <Link
@@ -650,7 +650,7 @@ export function Instance() {
         </Link>
       )}
       {workspaceLayout ? (
-        <InstanceDetails uuid={uuid} view={chartType} onNodeReady={alignCharts} navigation={cupertino ? workspaceNavigation : undefined}>
+        <InstanceDetails uuid={uuid} view={chartType} onNodeReady={alignCharts}>
           {chartWorkspace}
         </InstanceDetails>
       ) : (

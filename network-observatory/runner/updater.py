@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -215,9 +216,69 @@ def enable_scheduler():
         subprocess.run(["systemctl", "enable", "--now", "aster-network-observatory-update.timer"], check=True)
 
 
+def install_diagnostic_tools(missing):
+    # Only the distribution's configured repositories and these fixed
+    # package names are used. Neither tool names nor commands come from the panel.
+    for manager, dns_package, install_args in (
+        ("apk", "bind-tools", ["add", "--no-cache"]),
+        ("apt-get", "dnsutils", ["install", "-y", "--no-install-recommends"]),
+        ("dnf", "bind-utils", ["install", "-y"]),
+        ("yum", "bind-utils", ["install", "-y"]),
+        ("zypper", "bind-utils", ["--non-interactive", "install"]),
+    ):
+        executable = shutil.which(manager)
+        if not executable:
+            continue
+        packages = [tool for tool in ("bash", "curl", "jq", "python3", "bc") if tool in missing]
+        if "dig" in missing:
+            packages.append(dns_package)
+        if not packages:
+            return
+        env = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+        if manager == "apt-get":
+            subprocess.run([executable, "update"], check=True, timeout=90, env=env)
+        subprocess.run([executable, *install_args, *packages], check=True, timeout=120, env=env)
+        return
+    raise ValueError("未找到受支持的系统包管理器")
+
+
+def repair_diagnostics(agent, configs, policies, missing):
+    if any(policy.get("busy") for policy in policies) or any(
+        service(service_name(config), "status", check=False).returncode != 0 for config in configs
+    ):
+        return
+    release = policies[0]["release"]
+    release_url(release)
+    if any(policy["release"] != release for policy in policies):
+        return
+    leases = []
+    state, message = "waiting", "等待同机测量端空闲后补齐 IP 质量与解锁检测依赖"
+    try:
+        for config in configs:
+            lease = agent.api_request(config, "maintenance", method="POST", body={"action": "claim", "version": release["version"], "automatic": True})
+            leases.append((config, lease["lease"]))
+        install_diagnostic_tools(missing)
+        if agent.native.missing_diagnostic_tools():
+            raise ValueError("安装后仍有检测依赖不可用")
+        state, message = "ok", "已补齐 IP 质量与解锁检测依赖"
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        if not isinstance(error, urllib.error.HTTPError) or error.code != 409:
+            state, message = "failed", "补齐检测依赖未完成，下次维护会重试；请检查本机维护日志和软件源"
+            print(str(error), file=sys.stderr)
+    finally:
+        for config, lease in leases:
+            try:
+                agent.api_request(config, "maintenance", method="POST", body={"action": "release", "lease": lease, "state": state, "message": message})
+            except (OSError, ValueError):
+                pass  # The lease also has a server-side deadline.
+
+
 def perform(args):
-    # Recovery deliberately runs before importing potentially damaged runner code.
-    recover()
+    repair_only = args.command == "repair-diagnostics"
+    if repair_only and (STATE / JOURNAL).exists():
+        return  # Leave recovery to the normal updater service.
+    if not repair_only:
+        recover()
     if args.command == "recover":
         return
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -225,9 +286,15 @@ def perform(args):
     paths = ([CONFIG / "agent.json"] if (CONFIG / "agent.json").exists() else []) + sorted(CONFIG.glob("probe-*.json"))
     configs = [agent.load_config(p) for p in paths]
     if not configs:
-        if args.command == "auto":
+        if args.command != "manual":
             return
         raise ValueError("未找到已有凭证；首次安装请勿使用 --upgrade")
+    auto = args.command == "auto"
+    missing = []
+    if (repair_only or (auto and manager() == "openrc")) and any(c["role"] == "node" for c in configs):
+        missing = agent.native.missing_diagnostic_tools()
+    if repair_only and not missing:
+        return
     if args.command == "manual":
         if args.node_uuid and args.probe_id:
             raise ValueError("--node-uuid 与 --probe-id 不能同时使用")
@@ -242,7 +309,7 @@ def perform(args):
         policies = [agent.api_request(c, "update-policy") for c in configs]
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            if args.command == "auto":
+            if auto or repair_only:
                 return
             raise ValueError("请先更新面板网络观测插件，以使用保留凭证的维护升级") from error
         raise
@@ -250,9 +317,13 @@ def perform(args):
         for config, policy in zip(configs, policies):
             if args.command != "auto" or policy.get("enabled"):
                 agent.api_request(config, "maintenance", method="POST", body={"action": "report", "state": state, "message": message})
-    if args.command == "auto" and not all(p.get("enabled") is True for p in policies):
-        if any(p.get("enabled") for p in policies):
+    if (auto or repair_only) and not all(p.get("enabled") is True for p in policies):
+        if auto and any(p.get("enabled") for p in policies):
             report("本机另有接入身份尚未允许自动更新，等待管理员授权")
+        return
+    if missing:
+        repair_diagnostics(agent, configs, policies, missing)
+    if repair_only:
         return
     release = policies[0]["release"]
     url = release_url(release)
@@ -359,7 +430,7 @@ def configs_without_tokens(configs):
 
 def main():
     parser = argparse.ArgumentParser(description="Aster 保留凭证升级器")
-    parser.add_argument("command", choices=["manual", "auto", "recover"])
+    parser.add_argument("command", choices=["manual", "auto", "recover", "repair-diagnostics"])
     parser.add_argument("--server-url", default="")
     parser.add_argument("--node-uuid", default="")
     parser.add_argument("--probe-id", default="")
@@ -373,7 +444,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             perform(args)
     except BlockingIOError:
-        if args.command in {"auto", "recover"}:
+        if args.command in {"auto", "recover", "repair-diagnostics"}:
             return 0
         print("另一个升级进程正在运行，请稍后重试", file=sys.stderr)
         return 1
