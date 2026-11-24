@@ -461,6 +461,9 @@ a.crystal-quality:hover { filter: brightness(.93); }
   line-height: 1;
 }
 .crystal-ip-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   box-shadow: 0 2px 4px #7a83be13;
   white-space: nowrap;
@@ -470,7 +473,8 @@ a.crystal-quality:hover { filter: brightness(.93); }
 }
 .crystal-network-controls .crystal-ip-toggle:hover { border-color: var(--accent-500); }
 .crystal-network-controls .aurora-city select { align-self: stretch; padding-block: 0; }
-.crystal-network-controls :is(.aurora-city, .aurora-check > button) svg { width: 1em; height: 1em; flex: none; }
+.crystal-network-controls :is(.aurora-city, .aurora-check > button, .crystal-ip-toggle) svg { width: 1em; height: 1em; flex: none; }
+.crystal-ip-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 .crystal-network :is(.aurora-empty, .aurora-extra) { font-size: clamp(10px, 1.42cqi, 14px); }
 .crystal-network .aurora-extra > a { color: var(--text-primary); }
 .crystal-network .aurora-quality-value { color: var(--text-primary) !important; }
@@ -589,9 +593,9 @@ a.crystal-quality:hover { filter: brightness(.93); }
 .crystal-diagnostic-badge[data-tone="warn"] { background: linear-gradient(#ad5b00, #8f4700); color: white; }
 .crystal-diagnostic-badge[data-tone="business"] { background: linear-gradient(#ffe585, #f2c737); color: #483300; }
 .crystal-unlock-tags {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: .18em;
   font-size: clamp(7px, 1.75cqi, 16px);
   white-space: nowrap;

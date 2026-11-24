@@ -1,4 +1,5 @@
 import { memo, useId, useState, type ComponentProps } from "react";
+import { ChevronDown } from "lucide-react";
 import { NetworkSummary } from "@/components/aurora/AuroraNodeCard";
 import { useHomeRoutes } from "@/hooks/useHomeRoutes";
 import { IP_PROVIDERS, MEDIA_SERVICES, RISK_PROVIDERS, dbIpRisk, ipKinds, mediaStatuses, riskPresentation, riskValue, type HomeDiagnosticNode } from "@/services/homeDiagnostics";
@@ -121,7 +122,10 @@ export const CrystalNetwork = memo(function CrystalNetwork({ uuid, ping, denseVi
   const family = chosen ?? (ip?.["4"] || media?.["4"] || !(ip?.["6"] || media?.["6"]) ? "4" : "6");
   const action = hasDiagnostics && (
     <button type="button" className="crystal-ip-toggle" aria-expanded={expanded} aria-controls={panelId}
-      onClick={() => setExpanded(value => !value)}>IP能力</button>
+      onClick={() => setExpanded(value => !value)}>
+      IP能力
+      <ChevronDown aria-hidden="true" />
+    </button>
   );
   return (
     <>

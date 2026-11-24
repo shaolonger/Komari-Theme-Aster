@@ -244,6 +244,8 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.reload");
   const reset = `${card} [aria-label="周期消耗"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
   const toggle = `${card} .crystal-network-actions .crystal-ip-toggle`;
+  const toggleChevronTransform = () => cdp.value(
+    `getComputedStyle(document.querySelector(${JSON.stringify(`${toggle} svg[aria-hidden="true"]`)})).transform`);
   const otherIp = '.crystal-card[data-node="node-1"] .crystal-diagnostic';
   await waitFor(`${unlock} .crystal-unlock-list`);
   failGate(await cdp.value(`(() => {
@@ -272,8 +274,11 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
       button.getAttribute('aria-controls')===panel.id && !panel.hidden &&
       !button.parentElement.querySelector('.aurora-check');
   })()`), "Crystal IP capability did not have a standalone control");
+  failGate(await toggleChevronTransform() === "matrix(-1, 0, 0, -1, 0, 0)",
+    "Crystal expanded IP capability arrow does not point up");
   await click(toggle);
   await waitFor(`${toggle}[aria-expanded="false"]`);
+  failGate(await toggleChevronTransform() === "none", "Crystal collapsed IP capability arrow does not point down");
   failGate(await cdp.value(`(() => {
     const panel = document.querySelector(${JSON.stringify(ip)});
     const other = document.querySelector(${JSON.stringify(otherIp)});
@@ -328,10 +333,12 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         });
         const business = ip.querySelector('tbody .crystal-diagnostic-badge[data-tone="business"]');
         const brokenTags = [...ip.querySelectorAll('.crystal-unlock-tags')].flatMap(group => {
-          const cell = group.closest('li').getBoundingClientRect();
-          const rects = [...group.children].map(chip => chip.getBoundingClientRect());
-          return rects.every(r => r.left >= cell.left - .5 && r.right <= cell.right + .5 && Math.abs(r.top - rects[0].top) < .4)
-            ? [] : [group.textContent];
+          const badge = group.previousElementSibling.getBoundingClientRect();
+          const chips = [...group.children];
+          const first = chips[0].getBoundingClientRect(), last = chips.at(-1).getBoundingClientRect();
+          const aligned = Math.abs(first.left - badge.left) < .5 && Math.abs(last.right - badge.right) < .5 &&
+            Math.abs(first.width - last.width) < .5 && Math.abs(first.top - last.top) < .5;
+          return aligned && chips.every(chip => chip.scrollWidth <= chip.clientWidth + 1) ? [] : [group.textContent];
         });
         return { labels, brokenTags, yellow: business?.textContent==='企业' && getComputedStyle(business).backgroundImage.includes('255, 229, 133') };
       })()`);
