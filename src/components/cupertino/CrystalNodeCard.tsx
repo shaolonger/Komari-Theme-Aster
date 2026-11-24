@@ -93,11 +93,11 @@ export default memo(function CrystalNodeCard({ uuid, compact }: { uuid: string; 
         </div>
       </section>
 
-      <section className="crystal-quota crystal-panel" aria-label="流量使用"
+      <section className="crystal-quota crystal-panel" aria-label="流量消耗"
         style={usedPercent >= 70 ? { "--crystal-quota-fill": traffic.color } as CSSProperties : undefined}
       >
         <div className="crystal-quota-labels">
-          <span>流量使用 <b>{limited ? known ? `${Math.round(usedPercent)}%` : MISSING : "不限量"}</b></span>
+          <span>流量消耗 <b>{limited ? known ? `${Math.round(usedPercent)}%` : MISSING : "不限量"}</b></span>
           <small title={limited ? `${traffic.typeLabel} · 剩余 ${known ? traffic.remainingLabel : MISSING}` : undefined}>已用 {known ? used : MISSING} / 总计 {total}</small>
         </div>
         <CrystalSegments percent={usedPercent} />

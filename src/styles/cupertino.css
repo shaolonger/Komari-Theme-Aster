@@ -2372,9 +2372,7 @@
 
 /* Native asset panel mirrors the overview and keeps all four sort controls visible. */
 [data-layout-style="cupertino"] .cost-summary-panel {
-  width: min(550px, calc(100vw - 40px));
   border-color: var(--border);
-  border-radius: 16px;
   box-shadow: var(--shadow-float, 0 14px 40px #0002);
 }
 [data-layout-style="cupertino"] .cost-summary-section-head {
@@ -2419,17 +2417,10 @@
 [data-layout-style="cupertino"] .cost-summary-expire-label[data-expire-tone="soon"] {
   color: var(--cupertino-amber-text, #b96c00);
 }
-@media (min-width: 981px) {
-  [data-layout-style="cupertino"][data-cupertino-page="home"] .cost-summary-panel {
-    top: 270px;
-    max-height: calc(100dvh - 290px);
-  }
+[data-layout-style="cupertino"] .cost-summary-detail-list {
+  max-height: none;
 }
 @media (max-width: 720px) {
-  [data-layout-style="cupertino"] .cost-summary-panel {
-    width: 100%;
-    border-radius: 20px 20px 0 0;
-  }
   [data-layout-style="cupertino"] .cost-summary-sort-tabs {
     flex: 1 1 190px;
   }

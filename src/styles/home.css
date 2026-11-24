@@ -1363,8 +1363,8 @@
   gap: 4px;
 }
 
-/* 顶部实时指标的明细浮层。它与资产面板共用固定定位层级，但保留更紧凑的排行行。 */
-.home-overview-panel {
+/* 首页总览明细共用浮层尺寸、定位和过渡。 */
+:is(.home-overview-panel, .cost-summary-panel) {
   position: fixed;
   top: 76px;
   right: max(20px, env(safe-area-inset-right));
@@ -1387,7 +1387,7 @@
   transition: opacity 220ms ease, transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.home-overview-panel.show {
+:is(.home-overview-panel, .cost-summary-panel).show {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
@@ -2345,7 +2345,7 @@
 }
 
 @media (max-width: 720px) {
-  .home-overview-panel {
+  :is(.home-overview-panel, .cost-summary-panel) {
     top: auto;
     right: 0;
     bottom: 0;
@@ -2360,7 +2360,7 @@
     transform-origin: bottom center;
   }
 
-  .home-overview-panel.show {
+  :is(.home-overview-panel, .cost-summary-panel).show {
     transform: translateY(0);
   }
 }

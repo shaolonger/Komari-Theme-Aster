@@ -23,11 +23,11 @@ export const CrystalTrafficReset = memo(function CrystalTrafficReset({ uuid }: {
   const valid = cycle && cycle.nextAt > Date.now() && cycle.elapsed < cycle.total;
   const percent = valid ? Math.round(100 * cycle.elapsed / cycle.total) : 0;
   return (
-    <section className="crystal-quota crystal-panel" aria-label="流量重置">
+    <section className="crystal-quota crystal-panel" aria-label="周期消耗">
       <div className="crystal-quota-labels">
-        <span>流量重置 {valid && <b>{percent}%</b>}</span>
-        {valid ? <small title={`每月第 ${cycle.day} 日 · 下次重置 ${formatDisplayDateTime(cycle.nextAt, displayTimeZone)}`}>
-          已过 {cycle.elapsed} 天 / 剩余 {cycle.total - cycle.elapsed} 天（{cycle.total} 天周期）
+        <span>周期消耗 {valid && <b>{percent}%</b>}</span>
+        {valid ? <small title={`${cycle.total} 天周期 · 每月第 ${cycle.day} 日 · 下次重置 ${formatDisplayDateTime(cycle.nextAt, displayTimeZone)}`}>
+          已过 {cycle.elapsed} 天 / 剩余 {cycle.total - cycle.elapsed} 天
         </small> : <small>暂无重置周期</small>}
       </div>
       {valid && <CrystalSegments percent={percent} />}
@@ -85,7 +85,6 @@ function MediaUnlock({ snapshot, family, timeZone }: {
   return (
     <section className="crystal-capability-unlock" aria-label="解锁"
       title={snapshot ? `解锁检测 ${formatDisplayDateTime(Date.parse(snapshot.at), timeZone)}` : undefined}>
-      <h4>解锁</h4>
       {snapshot?.state === "failed" ? <p className="crystal-diagnostic-empty">最近检测未取得解锁结果</p> : services ? (
         <ul className="crystal-unlock-list">
           {(Object.entries(MEDIA_SERVICES) as [keyof typeof MEDIA_SERVICES, string][]).map(([key, label]) => {

@@ -79,7 +79,7 @@ export function CostSummary({
   const setOpen = onOpenChange ?? setInternalOpen;
   const panelRef = useRef<HTMLElement | null>(null);
   const launcherRef = useRef<HTMLButtonElement | null>(null);
-  const [sortField, setSortField] = useState<CostSortField>("weight");
+  const [sortField, setSortField] = useState<CostSortField>("expiry");
   const [sortDirection, setSortDirection] = useState<CostSortDirection>("asc");
   const hiddenTabIndex = resolvedOpen ? undefined : -1;
   const nodes = useAllNodeMeta();

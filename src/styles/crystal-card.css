@@ -501,7 +501,6 @@ a.crystal-quality:hover { filter: brightness(.93); }
   padding-block-start: max(4px, .85cqi);
   border-top: 1px solid var(--crystal-cell-outline);
 }
-.crystal-capability-unlock h4 { margin-inline: .3em; font-weight: 740; }
 .crystal-family-tabs {
   display: flex;
   gap: 2px;

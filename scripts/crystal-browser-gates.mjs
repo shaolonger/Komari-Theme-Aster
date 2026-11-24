@@ -70,7 +70,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         card.querySelector('.crystal-flag img[alt="地区旗帜: US"]') &&
         getComputedStyle(document.documentElement).getPropertyValue('--bg-0').trim()===${JSON.stringify(scheme === "light" ? "#edf3fc" : "#0b111c")} &&
         [...card.querySelectorAll('.crystal-route-label')].every(label=>label.scrollWidth<=label.clientWidth+1) &&
-        ['PPFlight-Global','在线 1天22小时','8.3%','30.9%','23.2%','60%','1049','155.86','59.8','107.7'].every(value=>card.textContent.includes(value)) &&
+        ['PPFlight-Global','在线 1天22小时','8.3%','30.9%','23.2%','流量消耗','60%','1049','155.86','59.8','107.7'].every(value=>card.textContent.includes(value)) &&
         card.querySelectorAll('.crystal-quota-track [data-filled="true"]').length===21 &&
         card.querySelectorAll('.crystal-quota-track i').length===35;
     })()`), "Crystal overview or reference card is missing shared shadows, spacing, live data, or ordered names");
@@ -93,6 +93,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     await click(".cupertino-assets");
     await waitFor(".cost-summary-sort-tab");
     failGate(await cdp.value("[...document.querySelectorAll('.cost-summary-sort-tab')].map(tab=>tab.textContent.trim()).join('|')==='到期|剩余|价格|权重'"), "Asset sort controls appear in the wrong order");
+    failGate(await cdp.value("document.querySelector('.cost-summary-sort-tab[aria-pressed=true]').textContent==='到期'"), "Asset summary did not default to expiry");
     await click('.cost-summary-panel button[aria-label="关闭服务器花费"]');
   }
 
@@ -232,14 +233,15 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     },
   } });
   await cdp.call("Page.reload");
-  const reset = `${card} [aria-label="流量重置"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
+  const reset = `${card} [aria-label="周期消耗"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
   await waitFor(`${unlock} .crystal-unlock-list`);
   failGate(await cdp.value(`(() => {
     const [reset, ip, unlock] = ${JSON.stringify([reset,ip,unlock])}.map(selector => document.querySelector(selector));
-    return reset?.textContent.includes('17%') && reset.textContent.includes('剩余 25 天（30 天周期）') &&
+    return reset?.textContent.includes('周期消耗 17%') && reset.textContent.includes('已过 5 天 / 剩余 25 天') &&
+      !reset.textContent.includes('30 天周期') && reset.querySelector('small').title.includes('30 天周期') &&
       reset.querySelectorAll('.crystal-quota-track i').length === 35 &&
       reset.compareDocumentPosition(ip) & Node.DOCUMENT_POSITION_FOLLOWING &&
-      ip.contains(unlock) && ip.querySelector('h3').textContent==='IP能力' &&
+      ip.contains(unlock) && ip.querySelector('h3').textContent==='IP能力' && !unlock.querySelector('h4') &&
       !ip.querySelector('.crystal-diagnostic-header svg') && ip.querySelectorAll('.crystal-family-tabs').length===1 &&
       ip.textContent.includes('机房') && ip.querySelector('table tbody').rows.length === 2 &&
       ip.querySelector('.crystal-risk').textContent.includes('Scamalytics63高风险') &&
@@ -286,6 +288,29 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     }
   }
 
+  setFixture({ nodes: 24 });
+  await metric(1440, 900);
+  await cdp.call("Page.reload");
+  await waitFor(".cupertino-assets");
+  const panelBounds = selector => cdp.value(`(() => {
+    const panel = document.querySelector(${JSON.stringify(selector)});
+    return [panel.offsetLeft, panel.offsetTop, panel.offsetWidth, panel.offsetHeight];
+  })()`);
+  for (const [width, height] of [[1440, 900], [390, 850]]) {
+    await metric(width, height);
+    await click('.cupertino-assets');
+    await waitUntil(cdp, "document.querySelectorAll('.cost-summary-detail-item').length===24", 8000);
+    const assetBounds = await panelBounds(".cost-summary-panel.show");
+    for (const kind of ["bandwidth", "traffic"]) {
+      await click(`[data-home-overview-trigger="${kind}"]`);
+      await waitUntil(cdp, "document.querySelectorAll('.home-overview-panel.show .home-overview-row').length===24", 8000);
+      const metricBounds = await panelBounds(".home-overview-panel.show");
+      failGate(JSON.stringify(assetBounds) === JSON.stringify(metricBounds),
+        `Asset and ${kind} panels differ at ${width}px: ${assetBounds} vs ${metricBounds}`);
+    }
+    await click(".home-overview-close");
+  }
+  setFixture({ nodes: 4 });
   await metric(1086);
   await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage` });
   await waitFor('.studio-visual-choice input[value="crystal-light"]:checked');

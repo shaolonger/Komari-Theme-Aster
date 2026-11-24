@@ -35,7 +35,7 @@ export async function checkCupertinoResources({ cdp, waitUntil, failGate, captur
   await width(1920);
   await cdp.value("document.querySelector('.cupertino-assets').click()");
   await waitUntil(cdp, "document.querySelectorAll('.cost-summary-detail-item').length===8", 10000);
-  await cdp.value("[...document.querySelectorAll('.cost-summary-sort-tab')].find(b=>b.textContent==='到期').click()");
+  failGate(await cdp.value("document.querySelector('.cost-summary-sort-tab[aria-pressed=true]').textContent==='到期'"), 'Asset summary must open with expiry selected');
   const metricGridFits = () => cdp.value(`(()=>{const grid=document.querySelector('.cost-summary-metric-grid'),r=grid.getBoundingClientRect();return [...grid.querySelectorAll('.cost-summary-metric,.cost-summary-metric strong')].every(e=>{const a=e.getBoundingClientRect();return a.left>=r.left&&a.right<=r.right&&a.top>=r.top&&a.bottom<=r.bottom&&e.scrollWidth<=e.clientWidth+1})})()`);
   failGate(await metricGridFits(), 'Desktop asset summary metrics were compressed or clipped');
   const rowOrder = () => cdp.value("[...document.querySelectorAll('.cost-summary-detail-item')].map(e=>e.dataset.nodeUuid)");
