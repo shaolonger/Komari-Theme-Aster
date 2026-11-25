@@ -1432,6 +1432,16 @@ html[data-layout-style="cupertino"]:has(.cupertino-instance) {
   flex-direction: column;
   gap: 12px;
 }
+.cupertino-detail-columns[data-view="traffic"] {
+  align-items: stretch;
+}
+.cupertino-detail-columns[data-view="traffic"] .cupertino-detail-main {
+  display: flex;
+  flex-direction: column;
+}
+.cupertino-detail-columns[data-view="traffic"] :is(.instance-chart-workspace, .cupertino-system-panel) {
+  flex: 1;
+}
 .cupertino-quota-panel,
 .cupertino-system-panel {
   background: var(--surface);
@@ -2067,6 +2077,7 @@ html[data-layout-style="cupertino"]:has(.cupertino-instance) {
   gap: 12px;
   align-self: stretch;
   min-width: 0;
+  margin-bottom: 0;
 }
 [data-layout-style="cupertino"] .workspace-inspector-title {
   display: flex;
@@ -2403,9 +2414,6 @@ html[data-layout-style="cupertino"]:has(.cupertino-instance) {
   padding: 9px 2px;
   gap: 8px;
 }
-[data-layout-style="cupertino"] .cost-summary-detail-line {
-  flex-wrap: wrap;
-}
 [data-layout-style="cupertino"] .cost-summary-expire-label {
   margin-left: auto;
 }
@@ -2421,10 +2429,6 @@ html[data-layout-style="cupertino"]:has(.cupertino-instance) {
 @media (max-width: 720px) {
   [data-layout-style="cupertino"] .cost-summary-sort-tabs {
     flex: 1 1 190px;
-  }
-  [data-layout-style="cupertino"] .cost-summary-detail-title {
-    white-space: normal;
-    overflow-wrap: anywhere;
   }
 }
 @media (max-width: 390px) {

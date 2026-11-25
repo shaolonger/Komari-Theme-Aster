@@ -25,9 +25,9 @@ export const CrystalTrafficReset = memo(function CrystalTrafficReset({ uuid }: {
   const valid = cycle && cycle.nextAt > Date.now() && cycle.elapsed < cycle.total;
   const percent = valid ? Math.round(100 * cycle.elapsed / cycle.total) : 0;
   return (
-    <section className="crystal-quota crystal-panel" aria-label="周期消耗">
+    <section className="crystal-quota crystal-panel" aria-label="流量周期">
       <div className="crystal-quota-labels">
-        <span>周期消耗 {valid && <b>{percent}%</b>}</span>
+        <span>流量周期 {valid && <b>{percent}%</b>}</span>
         {valid ? <small title={`${cycle.total} 天周期 · 每月第 ${cycle.day} 日 · 下次重置 ${formatDisplayDateTime(cycle.nextAt, displayTimeZone)}`}>
           已过 {cycle.elapsed} 天 / 剩余 {cycle.total - cycle.elapsed} 天
         </small> : <small>暂无重置周期</small>}
@@ -114,7 +114,8 @@ export const CrystalNetwork = memo(function CrystalNetwork({ uuid, ping, denseVi
 >) {
   const { data, displayTimeZone } = useHomeRoutes();
   const panelId = useId();
-  const [expanded, setExpanded] = useState(true);
+  const [expandedOverride, setExpandedOverride] = useState<boolean>();
+  const expanded = expandedOverride ?? data?.ipCapabilityExpanded ?? true;
   const [chosen, select] = useState<Family>();
   const node = data?.diagnostics?.[uuid];
   const ip = node?.["ip-quality"], media = node?.["media-unlock"];
@@ -122,7 +123,7 @@ export const CrystalNetwork = memo(function CrystalNetwork({ uuid, ping, denseVi
   const family = chosen ?? (ip?.["4"] || media?.["4"] || !(ip?.["6"] || media?.["6"]) ? "4" : "6");
   const action = hasDiagnostics && (
     <button type="button" className="crystal-ip-toggle" aria-expanded={expanded} aria-controls={panelId}
-      onClick={() => setExpanded(value => !value)}>
+      onClick={() => setExpandedOverride(!expanded)}>
       IP能力
       <ChevronDown aria-hidden="true" />
     </button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -44,6 +44,32 @@ function formatCostExpiry(expiredAt: string, cycleDays: number) {
   if (days < 0) return "已过期";
   if (days === 0) return "今日到期";
   return `${days} 天后到期`;
+}
+
+function CostNodeName({ name }: { name: string }) {
+  const clipRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(0);
+
+  useEffect(() => {
+    const clip = clipRef.current;
+    const text = textRef.current;
+    if (!clip || !text) return;
+    const observer = new ResizeObserver(() => {
+      setOverflow(Math.max(0, text.offsetWidth - clip.clientWidth));
+    });
+    observer.observe(clip);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <span ref={clipRef} className="cost-summary-detail-title" data-overflow={overflow > 0}
+      tabIndex={overflow > 0 ? 0 : undefined} title={name}
+      style={{ "--cost-name-offset": `${-overflow}px`, "--cost-name-duration": `${Math.max(.5, overflow / 55)}s` } as CSSProperties}>
+      <span ref={textRef}>{name}</span>
+    </span>
+  );
 }
 
 function CostMetric({
@@ -270,13 +296,12 @@ export function CostSummary({
                       className="cost-summary-detail-item"
                       data-counted={detail.counted}
                       data-node-uuid={detail.uuid}
-                      title={detail.name}
                     >
                       <div className="cost-summary-detail-name">
                         <span className="cost-summary-detail-line">
                           <Flag region={detail.region} size={12} />
-                          <span className="cost-summary-detail-title">{detail.name}</span>
-                          <span className="cost-summary-price-chip">{priceLabel}</span>
+                          <CostNodeName name={detail.name} />
+                          <span className="cost-summary-price-chip" title={priceLabel}>{priceLabel}</span>
                           <span className="cost-summary-expire-label" data-expire-tone={detail.billingCycleDays !== -1 && days != null && days <= 30 ? days < 0 ? "expired" : "soon" : undefined}>{expiryLabel}</span>
                         </span>
                       </div>

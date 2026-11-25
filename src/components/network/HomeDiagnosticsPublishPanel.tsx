@@ -15,6 +15,7 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
   const [selection, setSelection] = useState<string[] | null>(null);
   const [search, setSearch] = useState("");
   const [display, setDisplay] = useState<boolean | null>(null);
+  const [expanded, setExpanded] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const known = new Set(catalog.inventory.map(node => node.uuid));
@@ -28,22 +29,27 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
   const nodes = catalog.inventory.filter(node => matchesNodeSearch(search, node.name, node.group, node.uuid, node.ip));
   const visibleIds = catalog.inventory.filter(node => node.publicVisible).map(node => node.uuid);
   const supportsDisplay = catalog.features.includes("home-diagnostic-display");
+  const supportsExpanded = section === "ip-capability" && catalog.features.includes("home-ip-capability-default");
+  const defaultExpanded = expanded ?? catalog.ipCapabilityExpanded;
   const previousDisplay = scopes.every(scope => scope.display) || scopes.some(scope => scope.display && scope.nodes.length > 0);
   const scopesDiffer = scopes.some(scope => scope.nodes.length !== published.size || scope.display !== previousDisplay);
   const displayChanged = display !== null && display !== previousDisplay;
+  const expandedChanged = supportsExpanded && defaultExpanded !== catalog.ipCapabilityExpanded;
   const selectionChanged = selection !== null && (selected.size !== published.size || [...published].some(id => !selected.has(id)));
 
   async function save() {
     setSaving(true);
     setMessage("");
     try {
-      await publishHomeDiagnostics(section, [...selected], catalog.revision, supportsDisplay ? display ?? previousDisplay : undefined);
+      await publishHomeDiagnostics(section, [...selected], catalog.revision,
+        supportsDisplay ? display ?? previousDisplay : undefined, expandedChanged ? defaultExpanded : undefined);
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["report-catalog"] }),
         cache.invalidateQueries({ queryKey: ["home-carrier-routes"] }),
       ]);
       setSelection(null);
       setDisplay(null);
+      setExpanded(null);
       setMessage("已保存首页显示范围");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
@@ -65,6 +71,12 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
           在首页卡片显示{displayLabels[section]}
         </label>
       ) : <p>更新网络观测插件后可使用首页总开关。</p>}
+      {section === "ip-capability" && (supportsExpanded ? (
+        <label className="report-checkbox">
+          <input type="checkbox" checked={defaultExpanded} disabled={saving} onChange={event => setExpanded(event.target.checked)} />
+          默认展开首页卡片的IP能力
+        </label>
+      ) : <p>更新网络观测插件后可设置首页 IP 能力的默认展开状态。</p>)}
       <label>搜索 VPS<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
       {nodes.length ? (
         <div className="home-speeds-publish-nodes">
@@ -84,7 +96,7 @@ export function HomeDiagnosticsPublishPanel({ section, catalog }: { section: Dia
         <button type="button" disabled={saving || visibleIds.every(id => selected.has(id))}
           onClick={() => setSelection([...new Set([...selected, ...visibleIds])])}>选择全部可见节点</button>
         <button type="button" disabled={saving || selected.size === 0} onClick={() => setSelection([])}>取消全部选择</button>
-        <button type="button" disabled={(!selectionChanged && !displayChanged && !scopesDiffer) || saving} onClick={() => void save()}>{saving ? "提交中…" : "保存显示范围"}</button>
+        <button type="button" disabled={(!selectionChanged && !displayChanged && !expandedChanged && !scopesDiffer) || saving} onClick={() => void save()}>{saving ? "提交中…" : "保存显示范围"}</button>
       </div>
       {message && <p role="status">{message}</p>}
     </div>

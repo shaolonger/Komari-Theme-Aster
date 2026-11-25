@@ -33,6 +33,7 @@ export const homeRoutesSchema = z.object({
   labelMode: z.enum(["preferred", "full"]).default("preferred"),
   showDetails: z.boolean().default(false),
   backfillPending: z.boolean().default(false),
+  ipCapabilityExpanded: z.boolean().optional(),
   diagnostics: diagnosticNodesSchema.optional().catch(undefined),
   nodes: z.record(
     z.object({ "4": z.array(row).max(3), "6": z.array(row).max(3) }),

@@ -927,7 +927,7 @@
 .report-saved-plans-heading > div { display: grid; gap: 0.2rem; }
 .report-saved-plans-heading small, .report-saved-plan small, .report-saved-plan span { color: var(--text-secondary); font-size: 0.73rem; }
 .report-saved-plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 0.65rem; max-height: 26rem; overflow: auto; }
-.report-saved-plan { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 0.65rem; background: var(--surface-b, #f5f7fa); }
+.report-saved-plan { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 0.65rem; background: var(--surface); }
 .report-saved-plan[data-selected="true"] { border-color: var(--accent-500); background: color-mix(in srgb, var(--accent-500) 6%, var(--surface-a)); }
 .report-saved-plan-select { display: grid; gap: 0.3rem; width: 100%; padding: 0.75rem; text-align: left; border: 0; background: transparent; overflow-wrap: anywhere; }
 .report-saved-plan-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0 0.65rem 0.65rem; }

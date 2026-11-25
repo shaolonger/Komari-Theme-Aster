@@ -107,7 +107,7 @@ function cardProjection(value, stamp) {
 }
 const reportRequire = createRequire(import.meta.url);
 const { ENDPOINTS: reportEndpoints, PRESETS: reportPresets, VERSION: reportCatalogVersion } = reportRequire('../network-observatory/plugin/src/report-catalog.js');
-const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki','home-diagnostics','home-diagnostic-display','home-ip-capability','suite-history'],modules:['routes','tcp-quality','tcpquality-full','nodequality-full','china-speed','international','idc','international-speed','bgp','ip-quality','media-unlock'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
+const reportCapabilities = {schema:3,features:['rounds','latency-samples','full-mtr','speed-intervals','bgp-rpki','home-diagnostics','home-diagnostic-display','home-ip-capability','home-ip-capability-default','suite-history'],modules:['routes','tcp-quality','tcpquality-full','nodequality-full','china-speed','international','idc','international-speed','bgp','ip-quality','media-unlock'],maxTargetsPerRound:250,retention:{detailDays:7,summaryDays:90}};
 let reportSavedSuite = null;
 let reportPlanRuns = [];
 const reportRoundData = Object.fromEntries(reportCapabilities.modules.map(module => {
@@ -203,7 +203,8 @@ function fixturePingTaskNames(fixture) {
 }
 
 function nodeList(size) {
-  if (activeFixture.aurora) return auroraNodes(size, activeFixture.crystal);
+  if (activeFixture.aurora) return auroraNodes(size, activeFixture.crystal).map(node => (
+    node.uuid === 'node-0' && activeFixture.crystalLongName ? {...node, name: activeFixture.crystalLongName} : node));
   const docsNames = [
     ["洛杉矶 Edge", "北美", "US", "Vultr"],
     ["东京 Core", "亚太", "JP", "Linode"],
@@ -536,7 +537,7 @@ const server = createServer(async (request, response) => {
     count('home-routes');
     if (fixture.aurora) {
       const data = auroraRoutes(fixture.crystal);
-      return sendJson(response, {...data, diagnostics: fixture.homeDiagnostics, quickCheck: !fixture.crystal || Boolean(fixture.crystalControls), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,data.nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraRouteFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
+      return sendJson(response, {...data, diagnostics: fixture.homeDiagnostics, ipCapabilityExpanded: fixture.ipCapabilityExpanded, quickCheck: !fixture.crystal || Boolean(fixture.crystalControls), nodes:fixture.auroraNoMeasurements?{}:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,data.nodes['node-0']])), configuredFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,fixture.auroraRouteFamilies??fixture.auroraFamilies??['4','6']])), quickFamilies:Object.fromEntries(nodeList(fixture.nodes).map(n=>[n.uuid,['4','6']])), ...(fixture.auroraEmpty ? {available:false,nodes:{},configuredFamilies:{"node-0":[]},quickCheck:false,quickFamilies:{}} : {}), display: !fixture.auroraHidden});
     }
     if (fixture.reports) return sendJson(response, { available: true, nodes: Object.fromEntries(nodeList(fixture.nodes).filter(n => fixture.ui || homeRouteNodes.includes(n.uuid)).map(n => [n.uuid,Object.fromEntries(['4','6'].map(f=>[f,cardProjection(projectedRouteFamilies[f],cardStamp(n.uuid,'routes',f))]))])), quickCheck:Boolean(fixture.ui),quickFamilies:fixture.ui?cardFamilies(fixture):{}, published: homeRouteNodes, display: homeRouteDisplay, labelMode: homeRouteLabelMode, showDetails: homeRouteShowDetails, access: fixture.ui ? "admin" : "public" });
     response.writeHead(404, { 'Content-Type':'application/json' });
@@ -546,7 +547,7 @@ const server = createServer(async (request, response) => {
   if (fixture.reports && url.pathname.startsWith('/api/aster-network-observatory/v3/')) {
     const suffix=url.pathname.slice('/api/aster-network-observatory/v3/'.length);
     if(suffix==='capabilities')return sendJson(response,reportCapabilities);
-    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:fixture.planCards?Array.from({length:7},(_,i)=>({id:'plan-'+i,name:['测速-v4','测速-v6','国际线路','大陆线路-v4','大陆线路-v6','TcpQuality','NodeQuality'][i],clients:i===3?[]:['node-0'],groups:i===3?['Group 0']:[],inherit:true,enabled:i!==6,trafficAccepted:true,modules:[reportRoundData.international.parameters],catalogVersion:reportCatalogVersion})):fixture.reportSuites??(reportSavedSuite?[reportSavedSuite]:[]),revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails,homeDiagnosticNodes:fixture.homeDiagnosticNodes,homeDiagnosticDisplay:fixture.homeDiagnosticDisplay});
+    if(suffix==='catalog')return sendJson(response,{...reportCapabilities,catalogVersion:reportCatalogVersion,endpoints:reportEndpoints,presets:reportPresets,suites:fixture.planCards?Array.from({length:7},(_,i)=>({id:'plan-'+i,name:['测速-v4','测速-v6','国际线路','大陆线路-v4','大陆线路-v6','TcpQuality','NodeQuality'][i],clients:i===3?[]:['node-0'],groups:i===3?['Group 0']:[],inherit:true,enabled:i!==6,trafficAccepted:true,modules:[reportRoundData.international.parameters],catalogVersion:reportCatalogVersion})):fixture.reportSuites??(reportSavedSuite?[reportSavedSuite]:[]),revision:0,inventory:nodeList(fixture.nodes).map(n=>({uuid:n.uuid,name:n.name,group:n.group||'',ip:'8.8.8.8',publicVisible:true})),timezones:['Asia/Shanghai','America/Los_Angeles'],probes:[],homeRouteNodes,homeRouteDisplay,homeRouteLabelMode,homeRouteShowDetails,homeSpeedNodes,homeSpeedDisplay,homeSpeedShowDetails,homeDiagnosticNodes:fixture.homeDiagnosticNodes,homeDiagnosticDisplay:fixture.homeDiagnosticDisplay,ipCapabilityExpanded:fixture.ipCapabilityExpanded});
     if(/^nodes\/[^/]+\/(?:rounds|history-summary)$/.test(suffix)){
       const module=url.searchParams.get('module'), suite=url.searchParams.get('suite'), r=fixtureReportRound(module);
       if (fixture.planCards && suite && r) r.suiteId=suite;
@@ -576,6 +577,7 @@ const server = createServer(async (request, response) => {
         (fixture.homeDiagnosticNodes??={})[section]=body.nodeUuids;
         (fixture.homeDiagnosticDisplay??={})[section]=body.display;
       }
+      if (typeof body.ipCapabilityExpanded === 'boolean') fixture.ipCapabilityExpanded = body.ipCapabilityExpanded;
       return sendJson(response,{revision:0});
     }
     if(suffix==='preview'){const suite={...body,id:'suite-fixture',catalogVersion:reportCatalogVersion,modules:body.modules.map(m=>({...m,nextAt:Date.now()+60000}))};return sendJson(response,{suite,exceedsCapacity:false,nodes:body.clients.map(uuid=>({uuid,name:'Scale Node '+uuid.split('-').at(-1),capacity:{measurementsPerDay:100,samplesPerDay:1000,speedSecondsPerDay:0,estimatedLightSecondsPerDay:450},modules:suite.modules.map(m=>({module:m.module,nextAt:m.nextAt,expected:m.endpoints.length,estimatedQueueSeconds:20,targets:[]}))}))});}

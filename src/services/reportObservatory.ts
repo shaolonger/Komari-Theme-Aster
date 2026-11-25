@@ -383,6 +383,7 @@ const catalogSchema = capabilitiesSchema.extend({
     "ip-quality": z.boolean().optional(),
     "media-unlock": z.boolean().optional(),
   }).default({}),
+  ipCapabilityExpanded: z.boolean().default(true),
   homeSpeedDisplay: z.boolean().default(true),
   homeSpeedShowDetails: z.boolean().default(false),
   revision: z.number(),
@@ -551,6 +552,6 @@ export const publishHomeRoutes = (nodeUuids: string[], revision: number, display
 
 export const rebuildHomeRoutes = () => request("/home-routes/rebuild", "POST", {});
 export const publishHomeSpeeds = (nodeUuids: string[], revision: number, display: boolean, showDetails?: boolean) => request("/home-speeds", "PUT", { nodeUuids, revision, display, showDetails });
-export const publishHomeDiagnostics = (section: DiagnosticSection, nodeUuids: string[], revision: number, display?: boolean) =>
-  request("/home-diagnostics", "PUT", { section, nodeUuids, revision, display });
+export const publishHomeDiagnostics = (section: DiagnosticSection, nodeUuids: string[], revision: number, display?: boolean, ipCapabilityExpanded?: boolean) =>
+  request("/home-diagnostics", "PUT", { section, nodeUuids, revision, display, ipCapabilityExpanded });
 export const rebuildHomeSpeeds = () => request("/home-speeds/rebuild", "POST", {});

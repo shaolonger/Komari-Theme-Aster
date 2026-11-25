@@ -242,7 +242,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     "node-1": { "ip-quality": { "4": { at, state: "ok", providers: { IPinfo: { company: "isp" } } } } },
   } });
   await cdp.call("Page.reload");
-  const reset = `${card} [aria-label="周期消耗"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
+  const reset = `${card} [aria-label="流量周期"]`, ip = `${card} [aria-label="IP能力"]`, unlock = `${ip} [aria-label="解锁"]`;
   const toggle = `${card} .crystal-network-actions .crystal-ip-toggle`;
   const toggleChevronTransform = () => cdp.value(
     `getComputedStyle(document.querySelector(${JSON.stringify(`${toggle} svg[aria-hidden="true"]`)})).transform`);
@@ -250,7 +250,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await waitFor(`${unlock} .crystal-unlock-list`);
   failGate(await cdp.value(`(() => {
     const [reset, ip, unlock] = ${JSON.stringify([reset,ip,unlock])}.map(selector => document.querySelector(selector));
-    return reset?.textContent.includes('周期消耗 17%') && reset.textContent.includes('已过 5 天 / 剩余 25 天') &&
+    return reset?.textContent.includes('流量周期 17%') && reset.textContent.includes('已过 5 天 / 剩余 25 天') &&
       !reset.textContent.includes('30 天周期') && reset.querySelector('small').title.includes('30 天周期') &&
       reset.querySelectorAll('.crystal-quota-track i').length === 35 &&
       reset.compareDocumentPosition(ip) & Node.DOCUMENT_POSITION_FOLLOWING &&
@@ -306,6 +306,11 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   })()`), "Crystal IP capability control is not aligned after route and speed actions");
   for (const scheme of ["crystal-light", "crystal-dark"]) {
     await cdp.value(`document.documentElement.dataset.themeStyle=${JSON.stringify(scheme)}`);
+    failGate(await cdp.value(`(() => {
+      const panel = document.querySelector(${JSON.stringify(ip)});
+      return getComputedStyle(panel.querySelector('header')).borderBottomWidth === '0px' &&
+        [...panel.querySelectorAll('.crystal-risk, .crystal-capability-unlock')].every(section => getComputedStyle(section).borderTopWidth === '0px');
+    })()`), `Crystal IP capability still draws separators in ${scheme}`);
     for (const width of [320, 360, 375, 458, 390]) {
       await metric(width);
       failGate(await cdp.value(`(() => {
@@ -356,10 +361,15 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     }
   }
 
-  setFixture({ nodes: 24 });
+  const longName = 'long-datacenter-node.central-europe.ipv6.tier-3.compute-instance-00001';
+  setFixture({ nodes: 24, crystalLongName: longName });
   await metric(1440, 900);
   await cdp.call("Page.reload");
   await waitFor(".cupertino-assets");
+  await cdp.call("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await cdp.value("(() => { const input = document.querySelector('.cupertino-home-search input'); input.blur(); input.focus(); })()");
+  await waitUntil(cdp, "document.body.textContent.includes('us cn2, de 9929')", 3000);
+  await cdp.value("document.activeElement.blur()");
   const panelBounds = selector => cdp.value(`(() => {
     const panel = document.querySelector(${JSON.stringify(selector)});
     return [panel.offsetLeft, panel.offsetTop, panel.offsetWidth, panel.offsetHeight];
@@ -368,6 +378,32 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     await metric(width, height);
     await click('.cupertino-assets');
     await waitUntil(cdp, "document.querySelectorAll('.cost-summary-detail-item').length===24", 8000);
+    const longTitle = '.cost-summary-detail-item[data-node-uuid="node-0"] .cost-summary-detail-title[data-overflow="true"]';
+    await waitFor(longTitle);
+    failGate(await cdp.value(`(() => {
+      const title = document.querySelector(${JSON.stringify(longTitle)});
+      const rows = [...document.querySelectorAll('.cost-summary-detail-item')];
+      return title.title === ${JSON.stringify(longName)} && getComputedStyle(title).maskImage.includes('linear-gradient') &&
+        rows.every(row => Math.abs(row.getBoundingClientRect().height - rows[0].getBoundingClientRect().height) < .5 &&
+          row.scrollWidth <= row.clientWidth + 1);
+    })()`), `Asset rows or overflow mask break at ${width}px`);
+    if (width === 1440) {
+      await cdp.value("Promise.all(document.querySelector('.cost-summary-panel.show').getAnimations().map(animation => animation.finished.catch(() => {})))");
+      const point = await cdp.value(`(() => {
+        const title = document.querySelector(${JSON.stringify(longTitle)});
+        title.scrollIntoView({block:'center', behavior:'instant'});
+        const { x, y, width, height } = title.getBoundingClientRect();
+        return { x: x + width / 2, y: y + height / 2 };
+      })()`);
+      await cdp.call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      failGate(await cdp.value(`document.querySelector(${JSON.stringify(longTitle)}).matches(':hover')`),
+        `Asset overflow test did not hover the name at ${JSON.stringify(point)}`);
+      await waitUntil(cdp, `(() => {
+        const title = document.querySelector(${JSON.stringify(longTitle)});
+        return title.matches(':hover') && Math.abs(title.firstElementChild.getBoundingClientRect().right - title.getBoundingClientRect().right) < 1;
+      })()`, 12000);
+      await cdp.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+    }
     const assetBounds = await panelBounds(".cost-summary-panel.show");
     for (const kind of ["bandwidth", "traffic"]) {
       await click(`[data-home-overview-trigger="${kind}"]`);
@@ -378,7 +414,21 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     }
     await click(".home-overview-close");
   }
-  setFixture({ nodes: 4 });
+  setFixture({ nodes: 4, crystalLongName: undefined, comprehensive: true });
+  await metric(1440, 900);
+  for (const [view, left, right] of [
+    ['traffic', '.instance-chart-workspace', '.cupertino-system-panel'],
+    ['ping', '.workspace-ping-legend', '.instance-ping-task-groups'],
+  ]) {
+    await cdp.call('Page.navigate', { url: `${origin}/instance/node-0?focus=${view}` });
+    await waitFor(view === 'traffic' ? '.instance-traffic-panel .uplot' : '.instance-ping-panel .uplot');
+    await waitUntil(cdp, `(() => {
+      const a = document.querySelector(${JSON.stringify(left)})?.getBoundingClientRect();
+      const b = document.querySelector(${JSON.stringify(right)})?.getBoundingClientRect();
+      return a && b && b.left > a.left && Math.abs(a.bottom - b.bottom) < .5;
+    })()`, 4000);
+  }
+  setFixture({ comprehensive: false });
   await metric(1086);
   await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage` });
   await waitFor('.studio-visual-choice input[value="crystal-light"]:checked');
@@ -390,9 +440,14 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   await cdp.call("Page.navigate", { url: origin });
   await waitUntil(cdp, "document.documentElement.dataset.themeStyle==='crystal-dark' && localStorage.getItem('appearance_default')===JSON.stringify('crystal-dark')", 8000);
   await waitFor(card);
-  setFixture({ homeDiagnosticNodes: { "ip-quality": ["node-0"], "media-unlock": ["node-1"] }, homeDiagnosticDisplay: { "ip-quality": false } });
+  setFixture({ planCards: true, homeDiagnosticNodes: { "ip-quality": ["node-0"], "media-unlock": ["node-1"] }, homeDiagnosticDisplay: { "ip-quality": false } });
   await cdp.call("Page.navigate", { url: `${origin}/?view=theme-manage&section=network&panel=traffic-reset` });
   await waitFor("#network-ip-capability .report-checkbox input:checked");
+  const defaultToggle = '#network-ip-capability .report-checkbox + .report-checkbox input';
+  await waitFor(`${defaultToggle}:checked`);
+  await waitFor('.report-saved-plan[data-selected="false"]');
+  const planColor = await cdp.value("getComputedStyle(document.querySelector('.report-saved-plan[data-selected=false]')).backgroundColor");
+  failGate(planColor === 'rgb(24, 29, 39)', `Saved plan card did not use the Studio dark surface: ${planColor}`);
   failGate(await cdp.value(`document.querySelectorAll('#network-ip-capability .home-speeds-publish-nodes input:checked').length===2 &&
     !document.querySelector('#network-ip-quality, #network-media-unlock')`), "Crystal lost the union of separately configured nodes");
   for (const id of ["network-traffic-reset", "network-ip-capability"]) {
@@ -406,6 +461,22 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   }
   await cdp.call("Page.reload");
   await waitFor("#network-traffic-reset .report-checkbox input:not(:checked)");
-  await waitFor("#network-ip-capability .report-checkbox input:not(:checked)");
+  await waitFor("#network-ip-capability .report-checkbox:first-of-type input:not(:checked)");
+  await click(defaultToggle);
+  const saveCapability = '#network-ip-capability .network-actions button:last-child';
+  await waitFor(`${saveCapability}:enabled`);
+  await click(saveCapability);
+  await waitUntil(cdp, "document.querySelector('#network-ip-capability [role=status]')?.textContent.includes('已保存')", 3000);
+  await cdp.call('Page.reload');
+  await waitFor(`${defaultToggle}:not(:checked)`);
+  await click('#network-ip-capability .report-checkbox:first-of-type input');
+  await click(saveCapability);
+  await waitUntil(cdp, "document.querySelector('#network-ip-capability [role=status]')?.textContent.includes('已保存')", 3000);
+  await cdp.call('Page.navigate', { url: origin });
+  await waitFor(`${toggle}[aria-expanded="false"]`);
+  await waitFor(`${otherIp}[hidden]`);
+  await click(toggle);
+  await waitFor(`${ip}:not([hidden])`);
+  failGate(await cdp.value(exists(`${otherIp}[hidden]`)), 'Opening one Crystal panel changed another card’s default');
   return { crystal: "light and dark palettes, fixed card width, per-node Ping bindings, city-independent routes, round meters and unified IP capability", layouts };
 }

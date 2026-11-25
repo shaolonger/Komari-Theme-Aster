@@ -217,17 +217,27 @@ test("homepage diagnostics schedule both address families and publish only selec
 test("card presentation preferences survive native controller restart and remain independent", async () => {
   const first = await fixture();
   try {
+    const publish = { section: "ip-capability", revision: 2, nodeUuids: [], display: true, ipCapabilityExpanded: false };
+    assert.equal((await first.invoke("GET", v3 + "/public/routes", {}, false)).body.ipCapabilityExpanded, true);
     assert.equal((await first.invoke("PUT", v3 + "/home-routes", {revision:0,nodeUuids:[],labelMode:"full",showDetails:true})).status,200);
     assert.equal((await first.invoke("PUT", v3 + "/home-speeds", {revision:1,nodeUuids:[],showDetails:true})).status,200);
+    assert.equal((await first.invoke("PUT", v3 + "/home-diagnostics", publish, false)).status, 403);
+    assert.equal((await first.invoke("PUT", v3 + "/home-diagnostics", { ...publish, revision: 1 })).status, 409);
+    assert.equal((await first.invoke("PUT", v3 + "/home-diagnostics", { ...publish, ipCapabilityExpanded: "false" })).status, 400);
+    assert.equal((await first.invoke("PUT", v3 + "/home-diagnostics", { ...publish, section: "traffic-reset" })).status, 400);
+    assert.equal((await first.invoke("PUT", v3 + "/home-diagnostics", publish)).status, 200);
     const restarted = await fixture(first.root);
     const catalog = (await restarted.invoke("GET", v3 + "/catalog")).body;
     assert.equal(catalog.homeRouteLabelMode,"full");
     assert.equal(catalog.homeRouteShowDetails,true);
     assert.equal(catalog.homeSpeedShowDetails,true);
-    assert.equal((await restarted.invoke("PUT", v3 + "/home-speeds", {revision:2,nodeUuids:[],showDetails:false})).status,200);
+    assert.equal(catalog.ipCapabilityExpanded, false);
+    assert.equal((await restarted.invoke("PUT", v3 + "/home-speeds", {revision:3,nodeUuids:[],showDetails:false})).status,200);
     const routes = (await restarted.invoke("GET", v3 + "/public/routes",{},false)).body;
     const speeds = (await restarted.invoke("GET", v3 + "/public/speeds",{},false)).body;
     assert.equal(routes.labelMode,"full"); assert.equal(routes.showDetails,true); assert.equal(speeds.showDetails,false);
+    assert.equal(routes.ipCapabilityExpanded, false);
+    assert.equal((await restarted.invoke("GET", v3 + "/home-routes")).body.ipCapabilityExpanded, false);
   } finally { first.close(); }
 });
 const result = () => ({

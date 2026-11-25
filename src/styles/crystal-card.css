@@ -503,7 +503,6 @@ a.crystal-quality:hover { filter: brightness(.93); }
   justify-content: space-between;
   gap: 5px;
   padding-block-end: max(4px, .85cqi);
-  border-bottom: 1px solid var(--crystal-cell-outline);
 }
 .crystal-diagnostic-header h3 {
   font-size: clamp(12px, 3.45cqi, 30px);
@@ -512,7 +511,6 @@ a.crystal-quality:hover { filter: brightness(.93); }
 .crystal-capability-unlock {
   margin-block-start: var(--crystal-diagnostic-gap);
   padding-block-start: max(4px, .85cqi);
-  border-top: 1px solid var(--crystal-cell-outline);
 }
 .crystal-family-tabs {
   display: flex;
@@ -619,7 +617,6 @@ a.crystal-quality:hover { filter: brightness(.93); }
   padding-block-start: max(4px, .7cqi);
   padding-inline: var(--crystal-diagnostic-gap);
   margin-block-start: max(3px, .55cqi);
-  border-top: 1px solid var(--crystal-cell-outline);
 }
 .crystal-risk-heading, .crystal-risk-list > li {
   min-width: 0;

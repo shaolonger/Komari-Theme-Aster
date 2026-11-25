@@ -284,8 +284,20 @@
   font-size: 13px;
   font-weight: 760;
   line-height: 1.2;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cost-summary-detail-title > span { display: block; width: max-content; }
+.cost-summary-detail-title[data-overflow="true"] {
+  mask-image: linear-gradient(to right, #000 0 calc(100% - 14px), transparent);
+}
+.cost-summary-detail-title[data-overflow="true"]:is(:hover, :focus-visible) { mask-image: none; }
+.cost-summary-detail-title[data-overflow="true"]:is(:hover, :focus-visible) > span {
+  transform: translateX(var(--cost-name-offset));
+  transition: transform var(--cost-name-duration) linear .25s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cost-summary-detail-title[data-overflow="true"]:is(:hover, :focus-visible) > span { transition: none; }
 }
 
 .cost-summary-expire-label {
@@ -297,7 +309,7 @@
 }
 
 .cost-summary-price-chip {
-  display: inline-flex;
+  display: block;
   flex: 0 0 auto;
   max-width: 8.5em;
   min-width: 0;

@@ -73,7 +73,7 @@ function registerReportController(ctx, native) {
       "full-mtr",
       "bgp-rpki",
       "speed-intervals",
-      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics", "home-diagnostic-display", "home-ip-capability", "suite-history",
+      "http-speed", "tcp-quality", "public-speed", "tcpquality-full", "nodequality-full", ...DIAGNOSTICS, "home-diagnostics", "home-diagnostic-display", "home-ip-capability", "home-ip-capability-default", "suite-history",
     ],
     modules: MODULES,
     maxTargetsPerRound: 250,
@@ -595,7 +595,8 @@ function registerReportController(ctx, native) {
     return { available: true, configuredFamilies: Object.fromEntries(uuids.map(id => [id, configured[id] || []])), nodes, access: admin ? "admin" : "public",
       backfillPending: admin && uuids.some(uuid => routeHistoryQueue.has(uuid)),
       labelMode: s.homeRouteLabelMode || "preferred", showDetails: s.homeRouteShowDetails === true,
-      published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false };
+      published: uuids.filter(id => (s.homeRouteNodes || []).includes(id)), display: s.homeRouteDisplay !== false,
+      ipCapabilityExpanded: s.ipCapabilityExpanded !== false };
   }
   route("GET", "/home-routes", (_req, res, s) => {
     const ids = s.inventory.map(n => n.uuid);
@@ -632,17 +633,19 @@ function registerReportController(ctx, native) {
     ctx.respond(res, 200, { revision: s.revision });
   });
   route("PUT", "/home-diagnostics", (req, res, s) => {
-    const { revision, section, nodeUuids, display } = ctx.readBody(req);
+    const { revision, section, nodeUuids, display, ipCapabilityExpanded } = ctx.readBody(req);
     if (revision !== s.revision) { ctx.respond(res, 409, { error: "配置已变化，请刷新后保存" }); return; }
     const known = new Set(s.inventory.map(node => node.uuid));
     const combined = section === "ip-capability";
     if ((!combined && !SECTIONS.includes(section)) || ((combined || display !== undefined) && typeof display !== "boolean") || !Array.isArray(nodeUuids) || nodeUuids.length > 2000 ||
         nodeUuids.some(id => !UUID.test(id || "") || !known.has(id))) throw new Error("首页检测项目或 VPS 范围无效");
+    if (ipCapabilityExpanded !== undefined && (!combined || typeof ipCapabilityExpanded !== "boolean")) throw new Error("首页 IP 能力默认展开设置无效");
     const selected = [...new Set(nodeUuids)];
     for (const key of combined ? DIAGNOSTICS : [section]) {
       (s.homeDiagnosticNodes ||= {})[key] = selected;
       if (display !== undefined) (s.homeDiagnosticDisplay ||= {})[key] = display;
     }
+    if (ipCapabilityExpanded !== undefined) s.ipCapabilityExpanded = ipCapabilityExpanded;
     s.revision++;
     native.save(s);
     ctx.respond(res, 200, { revision: s.revision });
@@ -778,6 +781,7 @@ function registerReportController(ctx, native) {
       homeSpeedShowDetails: s.homeSpeedShowDetails === true,
       homeDiagnosticNodes: s.homeDiagnosticNodes || {},
       homeDiagnosticDisplay: s.homeDiagnosticDisplay || {},
+      ipCapabilityExpanded: s.ipCapabilityExpanded !== false,
       revision: s.revision,
       inventory: s.inventory,
       timezones: M.TIMEZONES,

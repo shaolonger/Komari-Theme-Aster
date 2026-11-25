@@ -140,7 +140,7 @@ export default function LuminousSearch({ value, onChange, texts, resultCount = 0
         {tokens.length > 0 && <div className="luminous-search-all">{tokens.map(token => chip(token, true))}</div>}
         {hasQuery && stats.total === 0 && <p className="luminous-search-warning">没有匹配的 VPS，请检查名称或 IP；点击标签可修改。</p>}
         <p>逗号 / 换行添加条件，匹配任意一项；空格要求同时满足。</p>
-        <p>例如 <code>hk mini, jp taxi</code> · 支持粘贴多行名称或 IP，回车确认标签。</p>
+        <p>例如 <code>us cn2, de 9929</code> · 支持粘贴多行名称或 IP，回车确认标签。</p>
       </div>}
     </div>
   );

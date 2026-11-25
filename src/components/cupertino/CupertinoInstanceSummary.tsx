@@ -159,6 +159,7 @@ export default function CupertinoInstanceSummary({
       )}
       <div
         className="cupertino-detail-columns"
+        data-view={view}
         data-sidebar={view === "load" || view === "traffic"}
       >
         <div className="cupertino-detail-main">{children}</div>
