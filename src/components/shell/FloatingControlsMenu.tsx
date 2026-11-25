@@ -18,6 +18,8 @@ import { isDenseCardAppearance, isDenseNodeViewMode } from "@/utils/themeSetting
 import { clsx } from "clsx";
 
 const APPEARANCE_OPTIONS = [
+  { value: "crystal-light", icon: Sun, label: "晶透 · 亮色" },
+  { value: "crystal-dark", icon: Moon, label: "晶透 · 暗色" },
   { value: "aurora", icon: Sparkles, label: "极光玻璃" },
   { value: "light", icon: Sun, label: "浅色" },
   { value: "system", icon: Monitor, label: "跟随系统" },
@@ -25,8 +27,6 @@ const APPEARANCE_OPTIONS = [
   { value: "cupertino", icon: Sparkles, label: "原生 · Cupertino" },
   { value: "cupertino-dark", icon: Moon, label: "原生 · 暗色" },
   { value: "cupertino-dense", icon: Rows3, label: "原生 · 密集" },
-  { value: "crystal-light", icon: Sun, label: "晶透 · 亮色" },
-  { value: "crystal-dark", icon: Moon, label: "晶透 · 暗色" },
   { value: "luminous", icon: Sparkles, label: "光域未来" },
 ] as const;
 

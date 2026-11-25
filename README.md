@@ -114,8 +114,10 @@ Aster 1.12.0 将配置统一到 **工作室 → 网络观测**：主页延迟、
 以下图片由当前仓库代码在官方 Komari 兼容模拟环境中直接运行并截图，展示 Aster 当前界面；演示节点和监控数值均为模拟数据。
 
 <p align="center">
-  <img src="docs/images/theme-preview.png" alt="Komari-Theme-Aster 综合预览" width="90%">
+  <img src="docs/images/theme-preview.png" alt="晶透亮色与暗色主题的节点卡片，包含流量、三网检测及 IP 能力" width="90%">
 </p>
+
+分别查看[晶透 · 亮色](docs/images/crystal/light.png)与[晶透 · 暗色](docs/images/crystal/dark.png)的完整卡片。
 
 ### 首页总览
 

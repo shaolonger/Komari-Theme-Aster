@@ -473,6 +473,8 @@ a.crystal-quality:hover { filter: brightness(.93); }
 }
 .crystal-network-controls .crystal-ip-toggle:hover { border-color: var(--accent-500); }
 .crystal-network-controls .aurora-city select { align-self: stretch; padding-block: 0; }
+.crystal-network-controls .aurora-city select:focus { outline: none; }
+.crystal-network-controls .aurora-city:has(select:focus-visible) { border-color: var(--accent-500); }
 .crystal-network-controls :is(.aurora-city, .aurora-check > button, .crystal-ip-toggle) svg { width: 1em; height: 1em; flex: none; }
 .crystal-ip-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 .crystal-network :is(.aurora-empty, .aurora-extra) { font-size: clamp(10px, 1.42cqi, 14px); }
@@ -559,6 +561,7 @@ a.crystal-quality:hover { filter: brightness(.93); }
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: var(--crystal-diagnostic-gap);
   margin-block-start: max(4px, .85cqi);
+  margin-inline: var(--crystal-diagnostic-gap);
 }
 .crystal-unlock-list > li {
   display: grid;

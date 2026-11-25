@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs";
 
 export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixture }) {
   const card = '.crystal-card[data-node="node-0"]';
-  const metric = (width, height = 900) =>
-    cdp.call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 721 });
+  const metric = (width, height = 900, deviceScaleFactor = 1) =>
+    cdp.call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor, mobile: width < 721 });
   const exists = selector => `document.querySelector(${JSON.stringify(selector)})!==null`;
   const waitFor = selector => waitUntil(cdp, exists(selector), 8000);
   const click = selector => cdp.value(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -23,14 +23,33 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
     return [rect.x,rect.width,rect.height].map(value=>Math.round(value*100)/100);
   })()`;
   const chooseTheme = async (scheme, label) => {
-    if (!await cdp.value(exists('.floating-controls button[aria-label="晶透 · 亮色"]'))) {
+    if (!await cdp.value(exists('.floating-controls-trigger[aria-expanded="true"]'))) {
       await click(".floating-controls-trigger");
     }
     const selector = `.floating-controls button[aria-label="晶透 · ${label}"]`;
     await waitFor(selector);
+    failGate(await cdp.value(`Array.from(document.querySelectorAll('.floating-controls-inner [aria-label="外观选择"] button'))
+      .slice(0, 2).map(button => button.getAttribute('aria-label')).join('|') === '晶透 · 亮色|晶透 · 暗色'`),
+    'Crystal appearances must lead the floating picker');
     await click(selector);
     await waitUntil(cdp, `document.documentElement.dataset.themeStyle==='crystal-${scheme}'`, 6000);
     await click(".floating-controls-trigger");
+  };
+  const captureCard = async name => {
+    const clip = await cdp.value(`document.fonts.ready.then(()=>{
+      const rect=document.querySelector(${JSON.stringify(card)}).getBoundingClientRect();
+      const y=Math.max(0,Math.floor(rect.top+scrollY-16));
+      const width=Math.min(innerWidth,Math.ceil(rect.right+16));
+      const height=Math.ceil(rect.height+40);
+      const style=document.createElement('style');
+      style.id='crystal-crop';
+      style.textContent='body{min-height:'+(y+height)+'px}.cupertino-home,.cupertino-masthead,.floating-controls,.site-footer{visibility:hidden}';
+      document.head.append(style);
+      return {x:0,y,width,height,scale:1};
+    })`);
+    const screenshot = await cdp.call('Page.captureScreenshot', { format: 'png', clip, captureBeyondViewport: true });
+    writeFileSync(`${process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE}-${name}.png`, Buffer.from(screenshot.data, 'base64'));
+    await cdp.value("document.querySelector('#crystal-crop').remove()");
   };
 
   await metric(1086, 1448);
@@ -74,22 +93,7 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
         card.querySelectorAll('.crystal-quota-track [data-filled="true"]').length===21 &&
         card.querySelectorAll('.crystal-quota-track i').length===35;
     })()`), "Crystal overview or reference card is missing shared shadows, spacing, live data, or ordered names");
-    if (process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE) {
-      const clip = await cdp.value(`document.fonts.ready.then(()=>{
-        const rect=document.querySelector(${JSON.stringify(card)}).getBoundingClientRect();
-        const y=Math.max(0,Math.floor(rect.top+scrollY-16));
-        const width=Math.min(innerWidth,Math.ceil(rect.right+16));
-        const height=Math.ceil(rect.height+40);
-        const style=document.createElement('style');
-        style.id='crystal-crop';
-        style.textContent='body{min-height:'+(y+height)+'px}.cupertino-home,.cupertino-masthead,.floating-controls,.site-footer{visibility:hidden}';
-        document.head.append(style);
-        return {x:0,y,width,height,scale:1};
-      })`);
-      const screenshot = await cdp.call("Page.captureScreenshot", { format: "png", clip, captureBeyondViewport: true });
-      writeFileSync(`${process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE}-${scheme}.png`, Buffer.from(screenshot.data, "base64"));
-      await cdp.value("document.querySelector('#crystal-crop').remove()");
-    }
+    if (process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE) await captureCard(scheme);
     await click(".cupertino-assets");
     await waitFor(".cost-summary-sort-tab");
     failGate(await cdp.value("[...document.querySelectorAll('.cost-summary-sort-tab')].map(tab=>tab.textContent.trim()).join('|')==='到期|剩余|价格|权重'"), "Asset sort controls appear in the wrong order");
@@ -125,6 +129,19 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   const routeLabels = `[...document.querySelectorAll(${JSON.stringify(`${card} .crystal-route-value`)})].map(route => route.textContent)`;
   await waitFor(`${card} .crystal-route-value:enabled`);
   const initialRoutes = await cdp.value(routeLabels);
+  await cdp.call('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await cdp.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await cdp.call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  failGate(await cdp.value(`(() => {
+    const city = document.querySelector(${JSON.stringify(`${card} .aurora-city`)});
+    const select = city.querySelector('select');
+    const border = getComputedStyle(city).borderTopColor;
+    select.focus();
+    const valid = select.matches(':focus-visible') && getComputedStyle(select).outlineStyle === 'none' &&
+      getComputedStyle(city).borderTopColor !== border;
+    select.blur();
+    return valid;
+  })()`), 'Crystal city keyboard focus should use the button border without an outline');
   await cdp.value(`(()=>{
     const select=document.querySelector(${JSON.stringify(`${card} .aurora-city select`)});
     select.value='上海'; select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -227,7 +244,11 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
   setFixture({ crystalLowMeters: true, homeDiagnostics: {
     "node-0": {
       "traffic-reset": { day: 16, elapsed: 5, total: 30, nextAt: Date.now() + 25 * 86400000 },
-      "ip-quality": { "4": { at, state: "partial", providers: { IP2Location: { usage: "hosting", score: "3" }, ipapi: { company: "business" } }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
+      "ip-quality": { "4": { at, state: "ok", providers: {
+        IPinfo: { usage: "isp", company: "isp" }, ipregistry: { usage: "isp", company: "isp" },
+        ipapi: { usage: "isp", company: "business" }, IP2Location: { usage: "hosting", company: "hosting", score: "3" },
+        AbuseIPDB: { usage: "isp" },
+      }, riskScores: { Scamalytics: "63", ipapi: "0.00%", AbuseIPDB: "0" } },
         "6": { at, state: "partial", ipMode: "lite", dbIpScore: "0", providers: { IPinfo: { usage: "isp" }, ipapi: { score: "3.52%" } } } },
       "media-unlock": { "4": { at, state: "partial", services: {
         TikTok: { status: "unlocked", region: "WW", mode: "native" },
@@ -345,9 +366,15 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
             Math.abs(first.width - last.width) < .5 && Math.abs(first.top - last.top) < .5;
           return aligned && chips.every(chip => chip.scrollWidth <= chip.clientWidth + 1) ? [] : [group.textContent];
         });
-        return { labels, brokenTags, yellow: business?.textContent==='企业' && getComputedStyle(business).backgroundImage.includes('255, 229, 133') };
+        const riskStart = ip.querySelector('.crystal-risk-heading').getBoundingClientRect();
+        const riskEnd = ip.querySelector('.crystal-risk-list li:last-child').getBoundingClientRect();
+        const unlocks = [...ip.querySelectorAll('.crystal-unlock-list li')].map(el => el.getBoundingClientRect());
+        const unlockStart = unlocks[0];
+        const unlockEnd = unlocks.findLast(rect => Math.abs(rect.top - unlockStart.top) < .5);
+        const edgesAligned = Math.abs(riskStart.left - unlockStart.left) < .5 && Math.abs(riskEnd.right - unlockEnd.right) < .5;
+        return { labels, edgesAligned, brokenTags, yellow: business?.textContent==='企业' && getComputedStyle(business).backgroundImage.includes('255, 229, 133') };
       })()`);
-      failGate(diagnostics.yellow && !diagnostics.brokenTags.length && diagnostics.labels.length === 3 &&
+      failGate(diagnostics.yellow && diagnostics.edgesAligned && !diagnostics.brokenTags.length && diagnostics.labels.length === 3 &&
         diagnostics.labels.every(([left, right]) => Math.abs(left - diagnostics.labels[0][0]) < 1 && Math.abs(right - diagnostics.labels[0][1]) < 1),
       `Crystal IP capability geometry or color at ${width}px in ${scheme}: ${JSON.stringify(diagnostics)}`);
     }
@@ -358,6 +385,21 @@ export async function checkCrystal({ cdp, origin, waitUntil, failGate, setFixtur
       await cdp.value(`document.querySelector(${JSON.stringify(ip)}).scrollIntoView({block:'center'})`);
       const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
       writeFileSync(`${process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE}-diagnostics-${scheme}.png`, Buffer.from(screenshot.data, "base64"));
+    }
+  }
+
+  if (process.env.BROWSER_CRYSTAL_SCREENSHOT_BASE) {
+    setFixture({ nodes: 1, auroraOffline: false, crystalLowMeters: false, crystalPingBindings: undefined,
+      crystalPingTaskOrder: undefined, auroraRouteFamilies: ['4', '6'] });
+    await metric(463, 1120, 2);
+    await cdp.call('Page.reload');
+    await waitFor(`${card} .crystal-status[data-online="true"]`);
+    await selectMode('compact');
+    await waitFor(`${unlock} .crystal-unlock-list`);
+    await waitUntil(cdp, `document.querySelectorAll(${JSON.stringify(`${card} .crystal-network-row`)}).length === 6`, 6000);
+    for (const [scheme, label] of [['light', '亮色'], ['dark', '暗色']]) {
+      await chooseTheme(scheme, label);
+      await captureCard(`showcase-${scheme}`);
     }
   }
 
